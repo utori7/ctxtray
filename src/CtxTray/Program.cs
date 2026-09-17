@@ -239,14 +239,14 @@ namespace CtxTray
                                         for (var i = 0; i < count; i++)
                                         {
                                             var value = AppConfig.AllTrayValues[i];
-                                            gauges.Add(PreviewSample(value, i == 0 ? level : Level.Normal, theme));
+                                            gauges.Add(PreviewSample(value, i == 0 ? level : Level.Normal));
                                         }
                                         caption = count + (count == 1 ? " bar" : " bars");
                                     }
                                     else
                                     {
                                         var value = AppConfig.AllTrayValues[col];
-                                        gauges = new List<TrayGauge> { PreviewSample(value, level, theme) };
+                                        gauges = new List<TrayGauge> { PreviewSample(value, level) };
                                         caption = value;
                                     }
 
@@ -288,7 +288,7 @@ namespace CtxTray
         /// <summary>
         /// 見本用のゲージ。値ごとに長さを変え、長い・中くらい・短いバーを同時に見られるようにする。
         /// </summary>
-        private static TrayGauge PreviewSample(string value, Level level, Theme theme)
+        private static TrayGauge PreviewSample(string value, Level level)
         {
             var pct = value == "context" ? 78 : (value == "fiveHour" ? 46 : 19);
             return new TrayGauge
@@ -297,7 +297,6 @@ namespace CtxTray
                 Fraction = pct / 100.0,
                 Percent = pct,
                 Level = level,
-                Identity = theme.IdentityFor(value),
             };
         }
 
@@ -370,7 +369,8 @@ namespace CtxTray
                 },
             };
 
-            snap.Sessions.Add(SampleRow(japanese ? "認証まわりの整理" : "Refactor auth module", 712000, true, false));
+            // 744K は圧縮点（967K）の 77%。既定の注意（75%）を超え、値の色が黄に替わる例になる。
+            snap.Sessions.Add(SampleRow(japanese ? "認証まわりの整理" : "Refactor auth module", 744000, true, false));
             snap.Sessions.Add(SampleRow(japanese ? "不安定なテストの修正" : "Fix flaky tests", 338000, false, false));
             snap.Sessions.Add(SampleRow("my-project", 221000, false, true));
             return snap;

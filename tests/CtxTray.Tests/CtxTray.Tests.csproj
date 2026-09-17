@@ -35,6 +35,8 @@
     <Compile Include="..\..\src\CtxTray\Notify\*.cs" Link="Product\Notify\%(Filename)%(Extension)" />
     <!-- 自動起動は、画面を使わない判定（ショートカットの指す先の比較）だけを試す。 -->
     <Compile Include="..\..\src\CtxTray\Ui\AutoStart.cs" Link="Product\Ui\AutoStart.cs" />
+    <!-- 配色は、HUD とトレイが共有する色の規則（値の色と、注意・危険の色）だけを試す。 -->
+    <Compile Include="..\..\src\CtxTray\Ui\Theme.cs" Link="Product\Ui\Theme.cs" />
   </ItemGroup>
 
 </Project>

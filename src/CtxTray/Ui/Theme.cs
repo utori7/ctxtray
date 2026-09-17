@@ -38,7 +38,7 @@ namespace CtxTray.Ui
         // --- 値の識別色 -------------------------------------------------------
         //
         // 深刻度の色とは別枠。普段は値ごとにこの色で描き、何の値かを色でも伝える。
-        // 注意・危険になった値だけ、深刻度の色（黄・赤）に置き換える（TrayIconRenderer.ColorFor）。
+        // 注意・危険になった値だけ、深刻度の色（黄・赤）に置き換える（ColorFor）。
         public Color IdContext;
         public Color IdFiveHour;
         public Color IdWeekly;
@@ -60,6 +60,17 @@ namespace CtxTray.Ui
                 case Level.Warn: return Warn;
                 default: return Normal;
             }
+        }
+
+        /// <summary>
+        /// 値を描く色。普段は値ごとの識別色、注意・危険になった値だけ黄・赤。
+        /// HUD とトレイアイコンが同じ規則で塗るよう、ここ 1 か所で決める。
+        /// 以前は HUD だけ深刻度の色（普段は全部青）で、トレイと見分け方が違っていた（2026-09-17）。
+        /// </summary>
+        public Color ColorFor(string value, Level level)
+        {
+            if (level != Level.Normal) return For(level);
+            return IdentityFor(value);
         }
 
         public static Theme Dark()

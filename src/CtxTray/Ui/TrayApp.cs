@@ -28,6 +28,8 @@ namespace CtxTray.Ui
         ///   「タスクバーに出す」設定を 実行ファイル＋uID で覚える。
         ///   条件によって生成をやめると uID がずれ、利用者が出したアイコンの設定が
         ///   別の値に付いてしまう。表示・非表示は Visible で切り替える。
+        ///   なお Windows 11 25H2 では記録は実行ファイルごとに 1 件だけで、1 つをタスクバーへ出すと
+        ///   3 つとも出た（2026-09-17 実測）。他の版は確かめていないので、生成順の固定は続ける。
         /// </summary>
         private readonly NotifyIcon[] _trays;
         private readonly Icon[] _icons;
@@ -106,8 +108,8 @@ namespace CtxTray.Ui
                 tray.Icon = SystemIcons.Application;
                 tray.DoubleClick += (s, e) => ToggleHud();
             }
-            // 最初の描画までは主アイコンだけ出す。
-            _trays[0].Visible = true;
+            // ここではまだどのアイコンも出さない。値ごとに分けるモードでは Windows に登録する順が
+            // 並びを決めるので（RenderMulti）、先に 1 個目だけ出すと並びが崩れる。
 
             _hud = CreateHud();
             if (_config.HudShowAtStartup) _hud.Show();
@@ -123,6 +125,9 @@ namespace CtxTray.Ui
 
             UpdateMenuState();
             Tick(null, null);
+
+            // 最初の描画に失敗しても、アイコンが 1 つも無い（メニューも開けない）状態にはしない。
+            if (VisibleTray() == null) _trays[0].Visible = true;
         }
 
         private HudForm CreateHud()
@@ -349,31 +354,40 @@ namespace CtxTray.Ui
         {
             var gauges = new List<TrayGauge>();
             foreach (var value in _config.OrderedTrayValues())
-                gauges.Add(Gauge(value, snap, worst, theme));
+                gauges.Add(Gauge(value, snap, worst));
 
             Apply(0, TrayIconRenderer.Render(gauges, TrayIconRenderer.BarsStyle, theme));
 
             for (var i = 1; i < _trays.Length; i++) Hide(i);
         }
 
+        /// <summary>
+        /// 値ごとに分けるモード。
+        ///
+        /// ★ Windows に登録する（Visible を立てる）順はスロットの逆（週間枠 → 5時間枠 → コンテキスト）。
+        ///   Windows 11 は登録されたアイコンを順に左端へ入れるので、スロット順に登録すると
+        ///   左から 週間枠・5時間枠・コンテキスト と逆に並んだ。この並びは起動のたびに登録順で決まり、
+        ///   タスクバーでも隠れているインジケーターでも同じだった
+        ///   （2026-09-17、Windows 11 25H2 で実測。ドラッグで並べ替えても再起動で戻った）。
+        ///   uID（NotifyIcon の生成順）は変えない。
+        /// </summary>
         private void RenderMulti(Snapshot snap, SessionRow worst, Theme theme)
         {
-            for (var slot = 0; slot < _trays.Length; slot++)
+            for (var slot = _trays.Length - 1; slot >= 0; slot--)
             {
                 var value = AppConfig.AllTrayValues[slot];
                 if (!ContainsValue(_config.TrayValues, value)) { Hide(slot); continue; }
 
-                Apply(slot, TrayIconRenderer.Render(new List<TrayGauge> { Gauge(value, snap, worst, theme) },
+                Apply(slot, TrayIconRenderer.Render(new List<TrayGauge> { Gauge(value, snap, worst) },
                                                     _config.TrayLabel, theme));
             }
         }
 
-        /// <summary>描画用のゲージ。値の名前（目印を選ぶため）と識別色を添える。</summary>
-        private TrayGauge Gauge(string value, Snapshot snap, SessionRow worst, Theme theme)
+        /// <summary>描画用のゲージ。値の名前（目印と識別色を選ぶため）を添える。</summary>
+        private TrayGauge Gauge(string value, Snapshot snap, SessionRow worst)
         {
             var gauge = BuildGauge(value, snap, worst);
             gauge.Value = value;
-            gauge.Identity = theme.IdentityFor(value);
             return gauge;
         }
 

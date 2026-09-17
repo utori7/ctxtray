@@ -11,7 +11,7 @@ plus bars drawn into the notification-area icon.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ctxtray-hud-en-dark.png">
-  <img alt="The ctxtray panel: 5-hour and weekly limits, then context usage for three sessions" src="docs/images/ctxtray-hud-en-light.png" width="352">
+  <img alt="The ctxtray panel: context usage for three sessions, then the 5-hour and weekly limits" src="docs/images/ctxtray-hud-en-light.png" width="352">
 </picture>
 
 <sub>Sample data. Generated with `ctxtray --hud-preview`.</sub>
@@ -69,13 +69,16 @@ the notifications: their usage cannot grow until they run again.
 
 The tray icon shows amounts as bars, not numbers — hover over it for the exact values.
 Each value has its own colour (context blue, 5-hour green, weekly violet), and a value
-that crosses a threshold turns amber, then red. Two arrangements, switchable in settings:
+that crosses a threshold turns amber, then red. The panel uses the same colours, and
+both list the values in the same order: context, 5-hour, weekly.
+Two arrangements, switchable in settings:
 
 - **One combined icon** (default) — one horizontal bar per value, top to bottom:
   context, 5-hour, weekly.
 - **One icon per value** — a separate icon for each value, with a label above its bar:
   letters (`C`, `5h`, `W`) or symbols (speech bubble, clock, calendar).
-  If any of the icons land in the hidden overflow, drag them onto the taskbar once.
+  The icons are added so that they line up left to right as context, 5-hour, weekly.
+  If they land in the hidden overflow, drag them onto the taskbar once.
 
 You choose which values to show, and the choice applies to both arrangements.
 

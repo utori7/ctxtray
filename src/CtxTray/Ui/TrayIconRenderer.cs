@@ -12,7 +12,7 @@ namespace CtxTray.Ui
     /// <summary>トレイアイコンに描く 1 つの値。</summary>
     internal sealed class TrayGauge
     {
-        /// <summary>値の名前（context / fiveHour / weekly）。目印を選ぶのに使う。</summary>
+        /// <summary>値の名前（context / fiveHour / weekly）。目印と識別色を選ぶのに使う。</summary>
         public string Value;
 
         /// <summary>0〜1。バーの埋まり具合。</summary>
@@ -23,9 +23,6 @@ namespace CtxTray.Ui
 
         /// <summary>%。null なら「値が読めていない」として下地だけ描く。</summary>
         public double? Percent;
-
-        /// <summary>値の識別色（青・緑・紫）。null なら深刻度の通常色で描く。</summary>
-        public Color? Identity;
 
         public bool HasValue { get { return Percent.HasValue; } }
     }
@@ -42,7 +39,7 @@ namespace CtxTray.Ui
     ///   letters … 値ごとに分けるモード。何の値かを英字（C / 5h / W）で示し、下にバー
     ///   glyphs  … 同上。英字の代わりに絵記号（吹き出し / 時計 / カレンダー）
     ///
-    /// 色の規則はすべて共通: 普段は値ごとの色、注意・危険になった値だけ黄・赤。
+    /// 色の規則はすべて共通で、HUD とも同じ（Theme.ColorFor）: 普段は値ごとの色、注意・危険になった値だけ黄・赤。
     /// 以前の「危険時は背景を塗る（反転）」はやめた。1 個にまとめるモードでは
     /// どの値が危ないのかが分からなくなり、両モードで規則を揃えられないため。
     /// </summary>
@@ -124,14 +121,12 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// 目印とバーの色。普段は値ごとの色、注意・危険はその色、値が読めていなければ下地の色。
-        /// 両モードの色の規則をここ 1 か所に置く。
+        /// 目印とバーの色。値が読めていなければ下地の色、読めていれば HUD と同じ規則（Theme.ColorFor）。
         /// </summary>
         private static Color ColorFor(TrayGauge gauge, Theme theme)
         {
             if (gauge == null || !gauge.HasValue) return theme.TrayTrack;
-            if (gauge.Level != Level.Normal) return theme.For(gauge.Level);
-            return gauge.Identity.HasValue ? gauge.Identity.Value : theme.Normal;
+            return theme.ColorFor(gauge.Value, gauge.Level);
         }
 
         // --- bars（1 個にまとめるモード） ---------------------------------------

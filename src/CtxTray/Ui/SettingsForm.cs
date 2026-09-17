@@ -168,14 +168,15 @@ namespace CtxTray.Ui
         {
             BeginPage("set.tabHud");
 
+            // HUD と同じ並び（セッションごとのコンテキスト → レート枠）。
             Section("set.secHudContent");
-            _hudRate = Check("set.hudShowRate");
             _hudSessions = Check("set.hudShowSessions");
+            _hudRate = Check("set.hudShowRate");
             // 両方外すと HUD が空になるので、最後の 1 つは外させない。
             _hudRate.CheckedChanged += (s, e) => { if (!_hudRate.Checked && !_hudSessions.Checked) _hudRate.Checked = true; };
             _hudSessions.CheckedChanged += (s, e) => { if (!_hudRate.Checked && !_hudSessions.Checked) _hudSessions.Checked = true; };
-            Full(_hudRate);
             Full(_hudSessions);
+            Full(_hudRate);
 
             Section("set.secHudSessions");
             _hideIdle = new CheckBox { AutoSize = true, Margin = BareCheckMargin };
@@ -906,24 +907,23 @@ namespace CtxTray.Ui
             {
                 var style = SelectedLabelStyle();
                 foreach (var value in values)
-                    icons.Add(TrayIconRenderer.Render(new List<TrayGauge> { PreviewGauge(value, theme) },
+                    icons.Add(TrayIconRenderer.Render(new List<TrayGauge> { PreviewGauge(value) },
                                                       style, theme, side));
             }
             else
             {
                 var gauges = new List<TrayGauge>();
-                foreach (var value in values) gauges.Add(PreviewGauge(value, theme));
+                foreach (var value in values) gauges.Add(PreviewGauge(value));
                 icons.Add(TrayIconRenderer.Render(gauges, TrayIconRenderer.BarsStyle, theme, side));
             }
 
             return icons;
         }
 
-        private TrayGauge PreviewGauge(string value, Theme theme)
+        private TrayGauge PreviewGauge(string value)
         {
             var gauge = _gaugeFor(value) ?? new TrayGauge();
             gauge.Value = value;
-            gauge.Identity = theme.IdentityFor(value);
             return gauge;
         }
 

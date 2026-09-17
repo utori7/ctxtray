@@ -86,7 +86,10 @@ namespace CtxTray.Config
             get { return string.Equals(TrayMode, "multi", StringComparison.OrdinalIgnoreCase); }
         }
 
-        /// <summary>値の正式な並び順。トレイアイコンのスロット順、バーの上からの順でもある。</summary>
+        /// <summary>
+        /// 値の正式な並び順。トレイアイコンのスロット順（uID）、バーの上からの順でもある。
+        /// HUD・設定画面・ツールチップもこの順に揃える（Claude Desktop の Claude Code の表示に合わせた、2026-09-17）。
+        /// </summary>
         public static readonly string[] AllTrayValues = { "context", "fiveHour", "weekly" };
 
         /// <summary>

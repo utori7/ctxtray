@@ -45,6 +45,7 @@ namespace CtxTray.Tests
                 Run("Notify: same level within the quiet period", NotifyQuiet);
                 Run("Notify: spacing between balloons", NotifySpacing);
                 Run("AutoStart: shortcut target comparison", AutoStartTarget);
+                Run("Colors: value colours, amber/red override", ValueColors);
             }
             finally
             {
@@ -442,6 +443,38 @@ namespace CtxTray.Tests
             Check(!AutoStart.PointsTo(null, exe), "missing target");
             Check(!AutoStart.PointsTo(string.Empty, exe), "empty target");
             Check(!AutoStart.PointsTo("bad" + (char)0 + "path", exe), "an invalid target does not throw");
+        }
+
+        // --- 配色 ----------------------------------------------------------------
+
+        /// <summary>
+        /// HUD とトレイが共有する色の規則（Theme.ColorFor）。
+        /// 普段は値ごとの色、注意・危険はその色で、値の種類によらない。
+        /// </summary>
+        private static void ValueColors()
+        {
+            foreach (var theme in new[] { Theme.Dark(), Theme.Light() })
+            {
+                var name = theme.IsDark ? "dark" : "light";
+                var ids = new Dictionary<string, System.Drawing.Color>
+                {
+                    { "context", theme.IdContext },
+                    { "fiveHour", theme.IdFiveHour },
+                    { "weekly", theme.IdWeekly },
+                };
+
+                foreach (var kv in ids)
+                {
+                    Equal(kv.Value.ToArgb(), theme.ColorFor(kv.Key, Level.Normal).ToArgb(), name + " " + kv.Key + " normal");
+                    Equal(theme.Warn.ToArgb(), theme.ColorFor(kv.Key, Level.Warn).ToArgb(), name + " " + kv.Key + " warn");
+                    Equal(theme.Danger.ToArgb(), theme.ColorFor(kv.Key, Level.Danger).ToArgb(), name + " " + kv.Key + " danger");
+                }
+
+                Check(theme.IdContext != theme.IdFiveHour && theme.IdFiveHour != theme.IdWeekly
+                      && theme.IdContext != theme.IdWeekly, name + " the three values have distinct colours");
+                Equal(theme.IdContext.ToArgb(), theme.ColorFor(null, Level.Normal).ToArgb(),
+                      name + " an unknown value uses the context colour");
+            }
         }
 
         private static void NotifySpacing()

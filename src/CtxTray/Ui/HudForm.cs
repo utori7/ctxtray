@@ -19,6 +19,10 @@ namespace CtxTray.Ui
     /// 数字は固定幅の列に右寄せする（GDI+ からは等幅数字の OpenType 機能を使えないため、
     /// 書体ではなく列で桁を揃える）。
     ///
+    /// 並びは上からコンテキスト（セッション）→ 5時間枠 → 週間枠。Claude Desktop の Claude Code の表示に合わせ、
+    /// トレイアイコン・設定画面と揃えた。色もトレイと同じ規則（Theme.ColorFor）で、
+    /// 普段は値ごとの色、注意・危険の値だけ黄・赤（2026-09-17、利用者の決定）。
+    ///
     /// 推測にもとづく値（残りターン、週間枠リセットの曜日）は出さない。
     /// 検証できていない数字を常に目に入る場所に置くと、確かな値と区別がつかないため
     /// （2026-09-15 に削除。5時間枠のリセット時刻は公式値と照合済みなので残している）。
@@ -370,21 +374,6 @@ namespace CtxTray.Ui
                     return;
                 }
 
-                if (ShowRates)
-                {
-                    DrawCaption(g, cap, capNote, Strings.Get("hud.capLimits"), null, y);
-                    y += CapHeight;
-                    y = DrawRateRows(g, body, bold, y);
-                }
-
-                if (ShowRates && ShowSessions)
-                {
-                    y += SectionGap - RowHeight / 4;
-                    using (var sep = new Pen(_theme.Separator))
-                        g.DrawLine(sep, PadX, y, Width - PadX, y);
-                    y += RowHeight / 4;
-                }
-
                 if (ShowSessions)
                 {
                     // 隠した行があることは見出しに小さく出す。
@@ -395,7 +384,22 @@ namespace CtxTray.Ui
 
                     DrawCaption(g, cap, capNote, Strings.Get("hud.capContext"), hidden, y);
                     y += CapHeight;
-                    DrawSessionRows(g, body, bold, y);
+                    y = DrawSessionRows(g, body, bold, y);
+                }
+
+                if (ShowRates && ShowSessions)
+                {
+                    y += SectionGap - RowHeight / 4;
+                    using (var sep = new Pen(_theme.Separator))
+                        g.DrawLine(sep, PadX, y, Width - PadX, y);
+                    y += RowHeight / 4;
+                }
+
+                if (ShowRates)
+                {
+                    DrawCaption(g, cap, capNote, Strings.Get("hud.capLimits"), null, y);
+                    y += CapHeight;
+                    DrawRateRows(g, body, bold, y);
                 }
             }
         }
@@ -421,20 +425,21 @@ namespace CtxTray.Ui
 
             DrawRow(g, body, bold, y,
                     Strings.Get("hud.fiveHour"), FiveHourResetText(r), false,
-                    r.FiveHourPct / 100.0, Levels.ForFiveHour(r, _config), dimmed,
+                    r.FiveHourPct / 100.0, "fiveHour", Levels.ForFiveHour(r, _config), dimmed,
                     FormatPercent(r.FiveHourPct), null);
             y += RowHeight;
 
             DrawRow(g, body, bold, y,
                     Strings.Get("hud.weekly"), null, false,
-                    r.WeeklyPct / 100.0, Levels.ForWeekly(r, _config), dimmed,
+                    r.WeeklyPct / 100.0, "weekly", Levels.ForWeekly(r, _config), dimmed,
                     FormatPercent(r.WeeklyPct), null);
             y += RowHeight;
 
             return y;
         }
 
-        private void DrawSessionRows(Graphics g, Font body, Font bold, int y)
+        /// <summary>セッションの行を描き、次の行の y を返す（行が無くても案内の 1 行分進める。Relayout と同じ）。</summary>
+        private int DrawSessionRows(Graphics g, Font body, Font bold, int y)
         {
             if (_snapshot.Sessions.Count == 0)
             {
@@ -446,7 +451,7 @@ namespace CtxTray.Ui
                          broken ? _snapshot.Diag.Summary : Strings.Get("hud.noSessions"),
                          broken ? _theme.Danger : _theme.TextSecondary,
                          PadX, y, Width - PadX * 2);
-                return;
+                return y + RowHeight;
             }
 
             foreach (var s in _snapshot.Sessions)
@@ -474,11 +479,13 @@ namespace CtxTray.Ui
                     : null;
 
                 DrawRow(g, body, bold, y, name, null, s.IsActive,
-                        fraction, Levels.ForContext(s, _config), !s.ProcessAlive,
+                        fraction, "context", Levels.ForContext(s, _config), !s.ProcessAlive,
                         pct, tokens);
 
                 y += RowHeight;
             }
+
+            return y;
         }
 
         /// <summary>
@@ -486,12 +493,17 @@ namespace CtxTray.Ui
         ///
         /// note（5時間枠のリセット時刻）は名前の列の右端に寄せる。
         /// 専用の列を足すと、セッションの行まで名前が狭くなるため。
+        ///
+        /// value は値の名前（context / fiveHour / weekly）。バーと % の色を決めるのに使う。
         /// </summary>
         private void DrawRow(Graphics g, Font body, Font bold, int y,
                              string name, string note, bool emphasise,
-                             double fraction, Level level, bool dimmed,
+                             double fraction, string value, Level level, bool dimmed,
                              string pct, string tokens)
         {
+            // 淡く出す行（止まっているセッション、参考値のレート枠）は色で区別しない。
+            var valueColor = dimmed ? _theme.TextSecondary : _theme.ColorFor(value, level);
+
             var nameColor = (dimmed && !emphasise) ? _theme.TextSecondary : _theme.TextPrimary;
             var nameW = NameW;
 
@@ -510,19 +522,18 @@ namespace CtxTray.Ui
             if (BarW > 0)
             {
                 var barH = S(6);
-                DrawBar(g, x, y + (RowHeight - barH) / 2, BarW, barH, fraction, level, dimmed);
+                DrawBar(g, x, y + (RowHeight - barH) / 2, BarW, barH, fraction, valueColor);
                 x += BarW + Gap;
             }
 
-            DrawRight(g, bold, pct, dimmed ? _theme.TextSecondary : _theme.For(level), x, y, PctW);
+            DrawRight(g, bold, pct, valueColor, x, y, PctW);
             x += PctW;
 
             if (TokensW > 0)
                 DrawRight(g, body, tokens, _theme.TextSecondary, x + Gap, y, TokensW);
         }
 
-        private void DrawBar(Graphics g, int x, int y, int w, int h, double fraction,
-                             Level level, bool dimmed)
+        private void DrawBar(Graphics g, int x, int y, int w, int h, double fraction, Color color)
         {
             using (var track = new SolidBrush(_theme.BarTrack))
             using (var path = RoundedRect(x, y, w, h))
@@ -535,7 +546,6 @@ namespace CtxTray.Ui
             // 丸端がつぶれない最小幅を確保する。
             if (filled < h) filled = h;
 
-            var color = dimmed ? _theme.TextSecondary : _theme.For(level);
             using (var brush = new SolidBrush(color))
             using (var path = RoundedRect(x, y, filled, h))
                 g.FillPath(brush, path);

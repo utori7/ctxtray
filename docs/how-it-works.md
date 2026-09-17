@@ -154,6 +154,11 @@ path is implemented from the file format but not yet tested.
 Short-lived "ghost" sessions exist (they start and end within a second, with no
 transcript). Requiring a transcript file to exist filters them out.
 
+A tab without a live process is still shown in the panel, greyed out, because it can be
+resumed with the same context. It is not used for the tray icon, the tooltip or the
+notifications: its usage cannot grow while it is stopped, and earlier builds re-announced
+such sessions every time ctxtray started. Once the tab runs again, it counts again.
+
 ## 4. Context
 
 `~/.claude/projects/<cwd slug>/<cliSessionId>.jsonl`, read from the end.
@@ -197,17 +202,28 @@ all; `modelLimits` in the config adds entries and takes precedence over the tabl
 
 Earlier builds estimated "turns until compaction" from the median token growth per turn.
 It was removed before release: the estimate was never checked against an actual
-compaction, and it rested on the placeholder described next.
+compaction, and it rested on a placeholder compaction point.
 
-The compaction point itself is **not known**. No compaction was observed during
-development — one session grew monotonically from 37k to 564k tokens with no drop — so
-0.92 ships as a placeholder. The intended design is to treat a drop of 30% or more as a
-compaction, record the pre-drop peak over the window, and use the observed ratio instead —
-**that calibration is not implemented yet**, so the placeholder is always used.
+The compaction point is **0.967 of the window**, taken from the Claude Code documentation
+([Default auto-compact thresholds](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)):
+models running with a native 1M window compact "at about 967K tokens by default", which is
+also what Claude Desktop shows (97%). The same page says other sessions (for example 200K
+models) compact at the model's context limit, so for those ctxtray reaches 100% about
+3 points early. One value is used for every model; a window changed with `/autocompact`,
+`autoCompactWindow` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is not picked up, because ctxtray
+does not read Claude Code's settings — set `compactThreshold` in the config to match.
 
-Because that point moves, context thresholds are expressed as progress toward it rather
+Versions up to 0.1.1 used 0.92 as a placeholder, because no compaction was observed during
+development (one session grew monotonically from 37k to 564k tokens with no drop), and
+wrote it to the config file on every save although the dialog could not change it. A
+stored 0.92 is therefore read as "not set" and replaced with the documented value.
+
+Detecting compactions (a drop of 30% or more) and recording the pre-drop peak is still
+designed but not implemented; it would only matter for a changed window.
+
+Because that point can move, context thresholds are expressed as progress toward it rather
 than as a fixed percentage of the window. A hardcoded "85% is dangerous" would fire
-*after* compaction if the real point turned out to be 80%.
+*after* compaction if the point were moved to 80%.
 
 ## 5. Terms compliance
 

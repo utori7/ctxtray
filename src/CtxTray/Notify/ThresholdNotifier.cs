@@ -118,6 +118,11 @@ namespace CtxTray.Notify
             {
                 foreach (var s in snap.Sessions)
                 {
+                    // プロセスが止まっているセッションは知らせない。止まっている間は値が増えず、
+                    // 以前は ctxtray を起動するたびに、そうした行の通知が出ていた。
+                    // 高いまま再開すれば、動き出した時点でここを通って知らせる。
+                    if (!SessionFilter.IsRunning(s)) continue;
+
                     var reach = Levels.ContextReach(s, config);
                     if (!reach.HasValue) continue;
 

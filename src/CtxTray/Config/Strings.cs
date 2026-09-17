@@ -63,6 +63,7 @@ namespace CtxTray.Config
             { "tip.fiveHour",     new[] { "5時間 {0}",          "5h {0}" } },
             { "tip.weekly",       new[] { "週間 {0}",           "Week {0}" } },
             { "tip.noSessions",   new[] { "セッションなし",      "No sessions" } },
+            { "tip.noRunning",    new[] { "動いているセッションなし", "No running sessions" } },
             { "tip.rateUnknown",  new[] { "レート不明",         "Rate unknown" } },
             { "tip.error",        new[] { "エラー: {0}",        "error: {0}" } },
 
@@ -171,8 +172,8 @@ namespace CtxTray.Config
             { "set.modeSingle",    new[] { "1 個にまとめる（横のバー）", "One combined icon (horizontal bars)" } },
 
             { "set.secTrayValues", new[] { "表示する値",            "Values to show" } },
-            { "set.valContext",    new[] { "コンテキスト（いちばん圧縮に近いセッション）",
-                                           "Context (the session closest to compaction)" } },
+            { "set.valContext",    new[] { "コンテキスト（動いている中でいちばん圧縮に近いセッション）",
+                                           "Context (the running session closest to compaction)" } },
             { "set.valFiveHour",   new[] { "5時間枠",              "5-hour limit" } },
             { "set.valWeekly",     new[] { "週間枠",               "Weekly limit" } },
 
@@ -222,9 +223,10 @@ namespace CtxTray.Config
             { "set.langAuto",      new[] { "自動（Windows に合わせる）", "Automatic (follow Windows)" } },
             { "set.poll",          new[] { "更新間隔",             "Refresh interval" } },
             { "set.compactPoint",  new[] { "圧縮点",               "Compaction point" } },
-            { "set.provisional",   new[] { "{0:P0}（仮の値。まだ観測していません）", "{0:P0} (provisional, not yet observed)" } },
-            { "set.compactHint",   new[] { "実際の圧縮から自動で直す仕組みは未実装のため、ここでは変えられません。",
-                                           "Calibration from observed compactions isn't implemented yet, so this can't be changed here." } },
+            { "set.compactValue",  new[] { "{0:P0}（Claude Code の既定値）", "{0:P0} (Claude Code's default)" } },
+            { "set.compactCustom", new[] { "{0:P0}（設定ファイルの値）", "{0:P0} (from the config file)" } },
+            { "set.compactHint",   new[] { "1M のモデルは約 967K トークンで自動圧縮されます（公式ドキュメント）。/autocompact で変えた場合は、設定ファイルの compactThreshold を合わせてください。",
+                                           "1M-context models auto-compact at about 967K tokens (per the official docs). If you changed this with /autocompact, set compactThreshold in the config file to match." } },
             { "set.configFile",    new[] { "設定ファイル",          "Config file" } },
             { "set.open",          new[] { "開く",                 "Open" } },
 

@@ -238,25 +238,6 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// 最も圧縮に近いセッション。
-        ///
-        /// 選ぶ基準は % ではなく圧縮点への到達率。分母の違うモデル (1M と 200k) が
-        /// 混ざると、% が大きい方が圧縮に近いとは限らない。
-        /// </summary>
-        private SessionRow MostPressed(Snapshot snap)
-        {
-            SessionRow worst = null;
-            var worstReach = double.MinValue;
-            foreach (var s in snap.Sessions)
-            {
-                var reach = Levels.ContextReach(s, _config);
-                if (!reach.HasValue) continue;
-                if (reach.Value > worstReach) { worstReach = reach.Value; worst = s; }
-            }
-            return worst;
-        }
-
-        /// <summary>
         /// ツールチップ。何の値かをラベルで明示する。
         ///
         /// NotifyIcon.Text は 63 文字が上限。行の途中で切れたものを見せたくないので、
@@ -283,9 +264,14 @@ namespace CtxTray.Ui
                 tail.Add(Strings.Format("tip.weekly", r.WeeklyPct + "%"));
             }
 
-            var worst = MostPressed(snap);
+            var worst = SessionFilter.MostPressed(snap, _config);
             if (worst == null || !worst.ContextPct.HasValue)
-                return Join(new List<string> { Strings.Get("tip.noSessions") }, tail);
+            {
+                // 行はあるが全部止まっている（HUD では淡い行だけ）ときは、そう書く。
+                // 「セッションなし」だと HUD の表示と食い違って見える。
+                var none = snap.Sessions.Count > 0 ? "tip.noRunning" : "tip.noSessions";
+                return Join(new List<string> { Strings.Get(none) }, tail);
+            }
 
             var pct = (int)Math.Round(worst.ContextPct.Value);
             var head = Strings.Format("tip.context", pct, string.Empty).TrimEnd();
@@ -352,7 +338,8 @@ namespace CtxTray.Ui
         private void SetTrayIcon(Snapshot snap)
         {
             var theme = Theme.ResolveForTray(_config.Theme);
-            var worst = MostPressed(snap);
+            // 動いているセッションが無ければ null になり、コンテキストのバーは空で描かれる。
+            var worst = SessionFilter.MostPressed(snap, _config);
 
             if (_config.TrayMultiMode) RenderMulti(snap, worst, theme);
             else RenderSingle(snap, worst, theme);
@@ -454,7 +441,7 @@ namespace CtxTray.Ui
         private TrayGauge PreviewGauge(string value)
         {
             if (_lastSnapshot == null) return new TrayGauge();
-            return BuildGauge(value, _lastSnapshot, MostPressed(_lastSnapshot));
+            return BuildGauge(value, _lastSnapshot, SessionFilter.MostPressed(_lastSnapshot, _config));
         }
 
         // --- 監視 ---------------------------------------------------------------

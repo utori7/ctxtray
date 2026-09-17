@@ -330,7 +330,11 @@ namespace CtxTray.Ui
             {
                 AutoSize = true,
                 Padding = P(0, 7, 0, 0),
-                Text = Strings.Format("set.provisional", _config.CompactThreshold),
+                // 設定ファイルで変えた値を「既定値」と書かない。
+                Text = Strings.Format(
+                    Math.Abs(_config.CompactThreshold - AppConfig.DefaultCompactThreshold) < 1e-9
+                        ? "set.compactValue" : "set.compactCustom",
+                    _config.CompactThreshold),
             });
             Hint("set.compactHint");
 

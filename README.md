@@ -62,7 +62,8 @@ on the release page. If you would rather not trust a prebuilt binary,
 | right-click the tray icon | show / hide panel, start at sign-in, settings, refresh now, open config file, uptime, exit |
 
 A session name in grey means its Claude Code process is not running right now
-(for example, a tab that has been idle).
+(for example, a tab that has been idle). Grey sessions are left out of the tray icon and
+the notifications: their usage cannot grow until they run again.
 
 ### The tray icon
 
@@ -78,9 +79,10 @@ that crosses a threshold turns amber, then red. Two arrangements, switchable in 
 
 You choose which values to show, and the choice applies to both arrangements.
 
-Where an icon shows context, it uses the session **closest to compaction** — chosen by
-how close it is to its own compaction point, not by raw percentage, because models have
-different context windows. Hidden sessions are not considered.
+Where an icon shows context, it uses the **running** session **closest to compaction** —
+chosen by how close it is to its own compaction point, not by raw percentage, because
+models have different context windows. Hidden and grey sessions are not considered; if
+no session is running, the context bar is empty.
 
 ### Reading the rate limits
 
@@ -120,9 +122,8 @@ notifications together. There is no separate set of numbers for each.
 {
   "thresholds": {
     // Context is expressed as progress toward the compaction point, not as a
-    // raw percentage of the window — the compaction point is meant to be
-    // calibrated from observation, and a fixed "85% = red" would turn red
-    // *after* compaction if the real point turned out to be 80%.
+    // raw percentage of the window — the compaction point can change, and a
+    // fixed "85% = red" would turn red *after* compaction if you moved it to 80%.
     "context":  { "warn": 0.75, "danger": 0.90 },
     "fiveHour": { "warn": 80,   "danger": 95 },
     "weekly":   { "warn": 80,   "danger": 95 }
@@ -157,6 +158,9 @@ notifications together. There is no separate set of numbers for each.
     "showAtStartup": true
   },
   "language": "auto",            // "ja" | "en"
+  // Where auto-compaction happens, as a share of the context window.
+  // 0.967 is Claude Code's default; change it if you changed /autocompact.
+  "compactThreshold": 0.967,
   // Context window for models ctxtray does not know yet (tokens).
   // Entries here take precedence over the built-in table.
   "modelLimits": { "claude-example-6": 1000000 }
@@ -234,8 +238,13 @@ It writes only its own files:
 - **These file formats are internal to Claude.** They can change in any update. ctxtray
   degrades to "unknown" instead of crashing or guessing, but a future release may need a fix.
 - **Context is one turn behind.** Token counts are written when a response completes.
-- **The compaction point is a placeholder (0.92).** Calibrating it from observed compactions
-  is designed but not implemented yet. The context colours and notifications depend on it.
+- **The compaction point is Claude Code's documented default (0.967).** Models with a 1M
+  context window auto-compact at about 967K tokens
+  ([Claude Code docs](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)).
+  Models that compact only at the full window (such as 200K models) therefore reach 100%
+  slightly early. If you changed the point with `/autocompact`, set `compactThreshold` to
+  match — ctxtray does not read Claude Code's settings. The context colours and
+  notifications depend on this value.
 - **Unknown models show no percentage.** A wrong denominator is worse than an honest blank;
   add the model to `modelLimits` to fix it.
 - **Terminal and VS Code sessions are untested** (see [What it does](#what-it-does)).

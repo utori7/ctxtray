@@ -21,9 +21,9 @@ namespace CtxTray.Config
         // --- 閾値 -----------------------------------------------------------
         //
         // コンテキストだけ絶対 % ではなく「圧縮点までの到達率」で持つ。
-        // 圧縮点 (CompactThreshold) は観測で較正されて動く前提の値なので、
-        // 「85% で赤」と絶対値で固定すると、実際の圧縮点が 80% だと判明したときに
-        // 「圧縮された後に赤くなる」ことになる。到達率なら較正が動いても意味が保たれる。
+        // 圧縮点 (CompactThreshold) は /autocompact などで変わりうる値なので、
+        // 「85% で赤」と絶対値で固定すると、圧縮点を 80% に下げたときに
+        // 「圧縮された後に赤くなる」ことになる。到達率なら圧縮点が動いても意味が保たれる。
         public double ContextWarn = 0.75;
         public double ContextDanger = 0.90;
 
@@ -42,9 +42,17 @@ namespace CtxTray.Config
 
         // --- 圧縮点 ---------------------------------------------------------
         //
-        // auto-compact の発火点。調査中に圧縮を一度も観測できなかったため暫定値。
-        // 観測値で置き換える仕組み（calibration.json）は設計のみで未実装。docs/status.md 参照。
-        public double CompactThreshold = 0.92;
+        // auto-compact の発火点（ウィンドウに対する割合）。Claude Code の公式ドキュメントの既定値で、
+        // 1M のモデルは約 967K トークンで圧縮する（Desktop の表示も 97%）。
+        // https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds
+        // 上限（100%）で圧縮するモデル（200K など）では、少し早めに 100% に達する（安全側）。
+        // /autocompact で変えた場合は、利用者が設定ファイルで合わせる。
+        public const double DefaultCompactThreshold = 0.967;
+
+        // v0.1.1 までの仮の値。調査中に圧縮を観測できなかったので置いていた。
+        private const double OldPlaceholderCompactThreshold = 0.92;
+
+        public double CompactThreshold = DefaultCompactThreshold;
 
         // --- 動作 -----------------------------------------------------------
         public int PollSeconds = 5;
@@ -70,7 +78,7 @@ namespace CtxTray.Config
         public string TrayLabel = "letters";
 
         // 表示する値（両モード共通）。部分集合でよい。並びは描画時に正式な順へ揃える。
-        // 値: context（最も圧縮に近いセッション）/ fiveHour / weekly
+        // 値: context（動いている中で最も圧縮に近いセッション）/ fiveHour / weekly
         public List<string> TrayValues = new List<string> { "context", "fiveHour", "weekly" };
 
         public bool TrayMultiMode
@@ -289,6 +297,11 @@ namespace CtxTray.Config
             }
 
             CompactThreshold = Dbl(o, "compactThreshold", CompactThreshold);
+            // 旧版は、設定画面で変えられない仮の値 0.92 を保存のたびに書き込んでいた。
+            // この値は利用者が選んだものではないので「未設定」とみなし、公式の値に置き換える。
+            // 次に保存したときにファイルも新しい値になる。
+            if (Math.Abs(CompactThreshold - OldPlaceholderCompactThreshold) < 1e-9)
+                CompactThreshold = DefaultCompactThreshold;
             PollSeconds = Math.Max(1, (int)Json.Long(o, "pollSeconds", PollSeconds));
             Hotkey = Json.Str(o, "hotkey") ?? Hotkey;
             Language = Json.Str(o, "language") ?? Language;

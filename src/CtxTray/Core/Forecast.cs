@@ -13,6 +13,7 @@ namespace CtxTray.Core
     /// 「推測で埋めない」という設計原則に合わせた。
     ///
     /// DetectCompactions は圧縮点の較正（calibration.json、未実装）で使うために残している。
+    /// 圧縮点は、0.1.2 で公式ドキュメントの値に置き換えた。
     /// </summary>
     internal static class Forecast
     {
@@ -22,10 +23,9 @@ namespace CtxTray.Core
         /// <summary>
         /// 圧縮が起きた形跡を探す。
         ///
-        /// 圧縮点 (CompactThreshold) は調査中に一度も観測できなかったため、
-        /// 出荷時の 0.92 はあくまで仮置き。実際に圧縮を観測したら、
-        /// その直前のピーク ÷ 分母 を記録して置き換える。
-        /// 「まだ観測していない」ことを暫定値で覆い隠さないための仕組み。
+        /// 圧縮点 (CompactThreshold) の既定値は、0.1.2 から公式ドキュメントの値（0.967）になった。
+        /// これは /autocompact で変えた場合などに、実際の圧縮から
+        /// 「直前のピーク ÷ 分母」を記録して合わせるための仕組み（未使用）。
         /// </summary>
         public static List<CompactionEvent> DetectCompactions(List<UsagePoint> series, int limit)
         {

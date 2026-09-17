@@ -31,12 +31,15 @@ namespace CtxTray.Tests
             {
                 Run("StripComments", StripComments);
                 Run("Config with comments and modelLimits", ConfigLoad);
+                Run("Compaction point: documented default, old placeholder migrated", CompactThresholdMigration);
                 Run("Broken config", BrokenConfig);
                 Run("ModelLimits lookup", ModelLimitsLookup);
                 Run("Rate samples: latest org only, incomplete samples skipped", RateSamples);
                 Run("JSON writer: ASCII-only output", AsciiJson);
                 Run("Transcript: latest usage", TranscriptLatest);
                 Run("Levels with slack", LevelsSlack);
+                Run("Tray: running sessions only", TrayPicksRunning);
+                Run("Notify: stopped sessions are not reported", NotifySkipsStopped);
                 Run("Notify: warn then danger within the quiet period", NotifyEscalation);
                 Run("Notify: hysteresis", NotifyHysteresis);
                 Run("Notify: same level within the quiet period", NotifyQuiet);
@@ -124,6 +127,37 @@ namespace CtxTray.Tests
             Check(!failed2, "the saved file loads again");
             Equal(123456, again.ModelLimits["claude-example-6"], "modelLimits survives a save");
             Check(!File.Exists(path + ".tmp"), "temporary file is gone after save");
+        }
+
+        private static void CompactThresholdMigration()
+        {
+            Equal(0.967, new AppConfig().CompactThreshold, "default is the documented value");
+
+            // 旧版が保存していた仮の値だけを置き換え、利用者が書いた値は残す。
+            var cases = new[]
+            {
+                new { Name = "compact-old", Json = "{ \"compactThreshold\": 0.92 }", Expected = 0.967 },
+                new { Name = "compact-own", Json = "{ \"compactThreshold\": 0.8 }", Expected = 0.8 },
+                new { Name = "compact-none", Json = "{ \"language\": \"en\" }", Expected = 0.967 },
+            };
+            foreach (var c in cases)
+            {
+                var path = UseConfigDir(c.Name);
+                File.WriteAllText(path, c.Json, new UTF8Encoding(false));
+                string problem;
+                bool failed;
+                var loaded = AppConfig.Load(out problem, out failed);
+                Check(!failed, c.Name + " loads");
+                Equal(c.Expected, loaded.CompactThreshold, c.Name);
+            }
+
+            // 置き換えた値は保存で書き戻される。
+            var saved = UseConfigDir("compact-old-saved");
+            File.WriteAllText(saved, "{ \"compactThreshold\": 0.92 }", new UTF8Encoding(false));
+            string p;
+            bool f;
+            Check(AppConfig.Load(out p, out f).Save(), "save succeeds");
+            Check(File.ReadAllText(saved).Contains("\"compactThreshold\": 0.967"), "the new value is written back");
         }
 
         private static void BrokenConfig()
@@ -288,6 +322,72 @@ namespace CtxTray.Tests
                 Notifier.Check(snap, Config);
                 Notifier.Pump();
             }
+        }
+
+        private static SessionRow Row(string id, int tokens, int? limit, bool running)
+        {
+            return new SessionRow
+            {
+                CliSessionId = id,
+                Title = id,
+                ContextTokens = tokens,
+                ContextLimit = limit,
+                ContextPct = limit.HasValue ? 100.0 * tokens / limit.Value : (double?)null,
+                ModelKnown = limit.HasValue,
+                ProcessAlive = running,
+            };
+        }
+
+        private static void TrayPicksRunning()
+        {
+            var cfg = new AppConfig();
+            var snap = new Snapshot();
+            snap.Sessions.Add(Row("stopped-90", 900000, 1000000, false));
+            snap.Sessions.Add(Row("running-50", 500000, 1000000, true));
+            snap.Sessions.Add(Row("running-unknown", 950000, null, true));
+            snap.Sessions.Add(Row("running-30", 300000, 1000000, true));
+
+            var picked = SessionFilter.MostPressed(snap, cfg);
+            Equal("running-50", picked == null ? null : picked.CliSessionId,
+                  "the highest running session, not the stopped one");
+
+            // 分母が違っても、圧縮点に近い方を選ぶ（200K の 60% は 1M の 50% より近い）。
+            snap.Sessions.Add(Row("running-200k-60", 120000, 200000, true));
+            picked = SessionFilter.MostPressed(snap, cfg);
+            Equal("running-200k-60", picked == null ? null : picked.CliSessionId, "compared by reach");
+
+            var allStopped = new Snapshot();
+            allStopped.Sessions.Add(Row("stopped-a", 900000, 1000000, false));
+            allStopped.Sessions.Add(Row("stopped-b", 400000, 1000000, false));
+            Check(SessionFilter.MostPressed(allStopped, cfg) == null, "nothing when every session is stopped");
+
+            Check(SessionFilter.MostPressed(new Snapshot(), cfg) == null, "nothing when there are no sessions");
+            Check(!SessionFilter.IsRunning(null), "null is not running");
+        }
+
+        private static void NotifySkipsStopped()
+        {
+            var h = new Harness(30);
+            h.Config.NotifyContext = true;
+            h.Config.NotifyFiveHour = false;
+            h.Config.ContextWarn = 0.75;
+            h.Config.ContextDanger = 0.90;
+            h.Config.CompactThreshold = 0.967;
+
+            var snap = new Snapshot();
+            var row = Row("s", 950000, 1000000, false);
+            snap.Sessions.Add(row);
+
+            h.Notifier.Check(snap, h.Config);
+            h.Notifier.Pump();
+            Equal(0, h.Shown.Count, "a stopped session over danger is not reported");
+
+            row.ProcessAlive = true;
+            h.Now = h.Now.AddSeconds(10);
+            h.Notifier.Check(snap, h.Config);
+            h.Notifier.Pump();
+            Equal(1, h.Shown.Count, "reported once it runs again");
+            if (h.Shown.Count == 1) Check(h.Shown[0].StartsWith("Warning"), "as danger");
         }
 
         private static void NotifyEscalation()

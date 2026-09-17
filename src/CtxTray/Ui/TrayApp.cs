@@ -85,6 +85,9 @@ namespace CtxTray.Ui
             _autoStartItem = MenuItem("menu.autoStart", ToggleAutoStart);
 
             _menu = new ContextMenuStrip();
+            // 開くたびにチェックを付け直す。ショートカットを利用者が消したり、exe を移したりしても
+            // 古い表示のままにならないように。
+            _menu.Opening += (s, e) => UpdateMenuState();
             _menu.Items.Add(_hudItem);
             _menu.Items.Add(_autoStartItem);
             _menu.Items.Add(new ToolStripSeparator());

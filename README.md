@@ -41,6 +41,8 @@ until compaction, the weekly reset day — are deliberately left out.
    The sign-in shortcut (step 4) points at this location.
 3. Run it. There is no installer and no runtime to install.
 4. Right-click the tray icon → **Start at sign-in** if you want it to run every time you sign in.
+   If you move `ctxtray.exe` later, start it from the new place: **Start at sign-in** then shows
+   unchecked (the shortcut still points at the old place), and turning it on again fixes it.
 
 Requirements: Windows 10 version 1903 or later, or Windows 11.
 (.NET Framework 4.8 is part of the OS on those versions.)

@@ -33,6 +33,8 @@
     <Compile Include="..\..\src\CtxTray\Core\*.cs" Link="Product\Core\%(Filename)%(Extension)" />
     <Compile Include="..\..\src\CtxTray\Native\NativeMethods.cs" Link="Product\Native\NativeMethods.cs" />
     <Compile Include="..\..\src\CtxTray\Notify\*.cs" Link="Product\Notify\%(Filename)%(Extension)" />
+    <!-- 自動起動は、画面を使わない判定（ショートカットの指す先の比較）だけを試す。 -->
+    <Compile Include="..\..\src\CtxTray\Ui\AutoStart.cs" Link="Product\Ui\AutoStart.cs" />
   </ItemGroup>
 
 </Project>

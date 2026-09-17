@@ -7,6 +7,7 @@ using CtxTray.Collect;
 using CtxTray.Config;
 using CtxTray.Core;
 using CtxTray.Notify;
+using CtxTray.Ui;
 
 namespace CtxTray.Tests
 {
@@ -40,6 +41,7 @@ namespace CtxTray.Tests
                 Run("Notify: hysteresis", NotifyHysteresis);
                 Run("Notify: same level within the quiet period", NotifyQuiet);
                 Run("Notify: spacing between balloons", NotifySpacing);
+                Run("AutoStart: shortcut target comparison", AutoStartTarget);
             }
             finally
             {
@@ -326,6 +328,20 @@ namespace CtxTray.Tests
             h.FiveHour(50);
             h.FiveHour(94, 31 * 60);
             Equal(2, h.Shown.Count, "after 30 minutes it is reported again");
+        }
+
+        // --- 自動起動 ----------------------------------------------------------
+
+        private static void AutoStartTarget()
+        {
+            var exe = Path.Combine(_temp, "app", "ctxtray.exe");
+            Check(AutoStart.PointsTo(exe, exe), "same path");
+            Check(AutoStart.PointsTo(exe.ToUpperInvariant(), exe), "case is ignored");
+            Check(AutoStart.PointsTo(Path.Combine(_temp, "app", "..", "app", "ctxtray.exe"), exe), "'..' is resolved");
+            Check(!AutoStart.PointsTo(Path.Combine(_temp, "old", "ctxtray.exe"), exe), "a moved exe does not match");
+            Check(!AutoStart.PointsTo(null, exe), "missing target");
+            Check(!AutoStart.PointsTo(string.Empty, exe), "empty target");
+            Check(!AutoStart.PointsTo("bad" + (char)0 + "path", exe), "an invalid target does not throw");
         }
 
         private static void NotifySpacing()

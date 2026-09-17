@@ -1,0 +1,3 @@
+# Store text files with LF in the repository; Git converts them on checkout.
+* text=auto
+*.png binary

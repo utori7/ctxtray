@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net48 = Windows 10 1903+ / Windows 11 に標準搭載。利用者は何もインストールしなくてよい。 -->
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>ctxtray</AssemblyName>
+    <RootNamespace>CtxTray</RootNamespace>
+    <Version>0.1.0</Version>
+
+    <!-- 常駐 GUI なのでコンソール窓を出さない。
+         ターミナルから引数付きで叩いたときだけ、
+         AttachConsole で親のコンソールに書く（Program.RunConsole）。 -->
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- 日本語コメントを含むソースを UTF-8 として読ませる。
+         これを指定しないと日本語環境の既定コードページ (cp932) で解釈され、
+         コメントや文字列リテラルが壊れる。調査フェーズで .ps1 が同じ罠を踏んでいる。 -->
+    <CodePage>65001</CodePage>
+
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Product>ctxtray</Product>
+    <Company />
+    <Copyright />
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- .NET Framework の参照アセンブリ。ビルド時のみ必要で、成果物には含まれない。 -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- JavaScriptSerializer。.NET Framework 同梱なので追加の DLL を配らずに済む。 -->
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+</Project>

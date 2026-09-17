@@ -1,0 +1,22 @@
+# Build output
+bin/
+obj/
+
+# Release packaging (made by CI)
+dist/
+*.zip
+*.sha256
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# Local scratch
+*.log
+*-icons.png
+
+# Private working notes (kept locally, not published)
+/CLAUDE.md
+/docs/status.md

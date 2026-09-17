@@ -1,0 +1,46 @@
+name: CI
+
+# push と pull request のたびに、ビルド・試験・起動確認だけを行う（Release は作らない）。
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          dotnet build src/CtxTray/CtxTray.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw "build failed" }
+
+      - name: Tests
+        shell: pwsh
+        run: |
+          dotnet build tests/CtxTray.Tests/CtxTray.Tests.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw "test build failed" }
+          & tests/CtxTray.Tests/bin/Release/ctxtray-tests.exe
+          if ($LASTEXITCODE -ne 0) { throw "tests failed" }
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $out = & src/CtxTray/bin/Release/ctxtray.exe --json | Out-String
+          if ([string]::IsNullOrWhiteSpace($out)) { throw "no output from --json" }
+          $json = $out | ConvertFrom-Json
+          if ($null -eq $json.generated_at) { throw "unexpected JSON shape" }
+          Write-Host "diag: $($json.diag)"

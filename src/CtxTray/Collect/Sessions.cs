@@ -144,6 +144,39 @@ namespace CtxTray.Collect
             return result;
         }
 
+        /// <summary>
+        /// sessionId → 生きているプロセス。Desktop のタブにどのプロセスを付けるかを決める。
+        ///
+        /// ★ 同じ会話に生きているプロセスが 2 つあることがある。
+        ///   VS Code の拡張は起動時に、そのフォルダで最後に使われた会話を再開するので、
+        ///   Desktop で開いている会話と重なる（実測）。以前は読んだ順で後の方が入り、
+        ///   Desktop のタブなのに --json の pid と entrypoint が VS Code 側になっていた。
+        ///   タブに付けるので Desktop のプロセスを優先し、同じ種類どうしなら後から起動した方を選ぶ
+        ///   （ファイルを読む順に左右されないように）。
+        /// </summary>
+        public static Dictionary<string, LiveProcess> AliveBySession(IEnumerable<LiveProcess> procs)
+        {
+            var result = new Dictionary<string, LiveProcess>(StringComparer.OrdinalIgnoreCase);
+            if (procs == null) return result;
+
+            foreach (var p in procs)
+            {
+                if (p == null || !p.Alive || string.IsNullOrEmpty(p.SessionId)) continue;
+
+                LiveProcess current;
+                if (result.TryGetValue(p.SessionId, out current) && !Prefer(p, current)) continue;
+                result[p.SessionId] = p;
+            }
+            return result;
+        }
+
+        private static bool Prefer(LiveProcess candidate, LiveProcess current)
+        {
+            if (candidate.IsDesktop != current.IsDesktop) return candidate.IsDesktop;
+            if (candidate.StartedAtMs != current.StartedAtMs) return candidate.StartedAtMs > current.StartedAtMs;
+            return candidate.Pid > current.Pid;
+        }
+
         private static void ReadOneProcess(string path, List<LiveProcess> result)
         {
             Dictionary<string, object> o = null;

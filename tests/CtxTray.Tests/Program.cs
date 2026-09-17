@@ -37,6 +37,7 @@ namespace CtxTray.Tests
                 Run("Rate samples: latest org only, incomplete samples skipped", RateSamples);
                 Run("JSON writer: ASCII-only output", AsciiJson);
                 Run("Transcript: latest usage", TranscriptLatest);
+                Run("Sessions: a Desktop tab keeps its Desktop process", TabProcessChoice);
                 Run("Levels with slack", LevelsSlack);
                 Run("Tray: running sessions only", TrayPicksRunning);
                 Run("Notify: stopped sessions are not reported", NotifySkipsStopped);
@@ -275,6 +276,52 @@ namespace CtxTray.Tests
             return "{\"type\":\"assistant\",\"timestamp\":\"" + at + "\",\"message\":{\"model\":\"" + model
                  + "\",\"usage\":{\"input_tokens\":" + input + ",\"cache_creation_input_tokens\":" + creation
                  + ",\"cache_read_input_tokens\":" + read + ",\"output_tokens\":" + output + "}}}";
+        }
+
+        // --- プロセス ----------------------------------------------------------
+
+        private static LiveProcess Proc(int pid, string session, string entrypoint, long startedAt, bool alive = true)
+        {
+            return new LiveProcess
+            {
+                Pid = pid,
+                SessionId = session,
+                Entrypoint = entrypoint,
+                StartedAtMs = startedAt,
+                Alive = alive,
+            };
+        }
+
+        private static void TabProcessChoice()
+        {
+            // 実際に起きた並び: Desktop のプロセスの後に、同じ会話を再開した VS Code のプロセスを読む。
+            var procs = new List<LiveProcess>
+            {
+                Proc(14832, "shared", "claude-desktop", 100),
+                Proc(7108, "shared", "claude-vscode", 200),
+                Proc(13280, "vscode-only", "claude-vscode", 300),
+                Proc(500, "exited", "claude-desktop", 50, false),
+                Proc(600, null, "cli", 60),
+            };
+            var map = Sessions.AliveBySession(procs);
+            Equal(14832, map.ContainsKey("shared") ? map["shared"].Pid : 0,
+                  "the Desktop process wins over a later VS Code one");
+            Equal(13280, map.ContainsKey("vscode-only") ? map["vscode-only"].Pid : 0,
+                  "a session with only a VS Code process keeps it");
+            Check(!map.ContainsKey("exited"), "exited processes are left out");
+            Equal(2, map.Count, "processes without a session id are left out");
+
+            procs.Reverse();
+            var reversed = Sessions.AliveBySession(procs);
+            Equal(14832, reversed.ContainsKey("shared") ? reversed["shared"].Pid : 0,
+                  "the same choice when the files are read in the other order");
+
+            var twoCli = new List<LiveProcess> { Proc(2, "s", "cli", 200), Proc(1, "s", "cli", 100) };
+            Equal(2, Sessions.AliveBySession(twoCli)["s"].Pid, "same kind: the later start wins");
+            twoCli.Reverse();
+            Equal(2, Sessions.AliveBySession(twoCli)["s"].Pid, "same kind, other order");
+
+            Equal(0, Sessions.AliveBySession(null).Count, "null gives an empty map");
         }
 
         // --- 判定と通知 --------------------------------------------------------

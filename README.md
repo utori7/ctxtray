@@ -26,10 +26,12 @@ plus bars drawn into the notification-area icon.
 - **5-hour and weekly rate limits**, plus the 5-hour reset time.
 - **Notifications** when any of those crosses a threshold you set.
 
-Claude Code sessions started from a terminal or VS Code are also listed, marked `>_`, when
-Claude Code registers them as running processes. **That path has not been tested yet**
-(the development machine only runs Claude Code inside Claude Desktop), so treat it as
-experimental.
+Claude Code sessions started from a terminal or VS Code are also listed, marked `>_`,
+while their Claude Code process is running. The row disappears when that process exits
+(a Claude Desktop tab stays, greyed out), and a conversation that has not been sent
+anything yet is not listed. The name is the one Claude Code gives the process, so it can
+change when you restart or resume the session. A conversation open in both Claude
+Desktop and VS Code is listed once, as the Claude Desktop tab.
 
 It only shows numbers it can back up. Estimates that could not be verified — turns left
 until compaction, the weekly reset day — are deliberately left out.
@@ -95,7 +97,9 @@ growth reaches 2.8 %/min, so a 7-minute-old sample can understate the 5-hour win
 ~20 points. `ctxtray --json` reports this as `"freshness": "behind"`.
 
 **Greyed out means "for reference only"** — Claude Desktop is not running, or nothing has
-been sampled for over 24 hours.
+been sampled for over 24 hours. Only Claude Desktop records rate limits, so while you use
+Claude Code in a terminal or VS Code with Claude Desktop closed, the rate limits stay at
+Claude Desktop's last sample and are greyed out; those sessions' context keeps updating.
 
 ### Reset times
 
@@ -250,7 +254,6 @@ It writes only its own files:
   notifications depend on this value.
 - **Unknown models show no percentage.** A wrong denominator is worse than an honest blank;
   add the model to `modelLimits` to fix it.
-- **Terminal and VS Code sessions are untested** (see [What it does](#what-it-does)).
 - Notifications use balloon tips, so they do not persist in the Action Center and are
   suppressed by Focus Assist.
 

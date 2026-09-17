@@ -120,13 +120,8 @@ namespace CtxTray.Collect
             var tabs = Sessions.ReadDesktopTabs(dataRoot, includeArchived, diag);
             var procs = Sessions.ReadProcesses(configDir, diag);
 
-            // sessionId -> 生きているプロセス
-            var aliveBySession = new Dictionary<string, LiveProcess>(StringComparer.OrdinalIgnoreCase);
-            foreach (var p in procs)
-            {
-                if (!p.Alive || string.IsNullOrEmpty(p.SessionId)) continue;
-                aliveBySession[p.SessionId] = p;
-            }
+            // sessionId -> 生きているプロセス（同じ会話に 2 つあれば Desktop 側）
+            var aliveBySession = Sessions.AliveBySession(procs);
 
             var latestTranscriptWriteUtc = DateTime.MinValue;
 

@@ -53,11 +53,15 @@ namespace CtxTray.Config
             { "menu.hideHud",     new[] { "HUD を隠す",        "Hide HUD" } },
             // 透過中は HUD をドラッグできず右クリックも届かないので、メニューからも切り替えられるようにする。
             { "menu.clickThrough",new[] { "クリックを後ろに通す", "Pass clicks through" } },
+            // 透過中に何が効かなくなるかは、押す前に分かる場所にも置く（設定画面の補足と同じ内容）。
+            { "menu.clickThroughTip", new[] { "オンの間は、HUD のドラッグ・行の詳細・右クリックが効きません。戻すのはこのメニューから。",
+                                              "While on, the HUD can't be dragged or hovered and won't take right-clicks. Turn it back off here." } },
             { "menu.autoStart",   new[] { "ログオン時に起動",   "Start at sign-in" } },
             { "menu.settings",    new[] { "設定…",              "Settings…" } },
             { "menu.refresh",     new[] { "今すぐ更新",         "Refresh now" } },
             { "menu.openConfig",  new[] { "設定ファイルを開く", "Open config file" } },
-            { "menu.uptime",      new[] { "稼働状況…",          "Uptime…" } },
+            // 「稼働状況」では版や設定ファイルの場所を探しにいく先として思い付けない（2026-09-20）。
+            { "menu.about",       new[] { "ctxtray について…",  "About ctxtray…" } },
             { "menu.exit",        new[] { "終了",               "Exit" } },
 
             // ツールチップ（Windows の制限で 63 文字まで。ラベルを付けて何の値か分かるようにする）
@@ -103,8 +107,12 @@ namespace CtxTray.Config
             // 通知
             { "notify.compactSoon",   new[] { "まもなく圧縮されます",             "Compaction is close" } },
             { "notify.contextRising", new[] { "コンテキストが増えています",       "Context is growing" } },
-            { "notify.contextBody",   new[] { "{0}\nコンテキスト {1:0.0}%（圧縮まで残り {2:0}%）",
-                                              "{0}\nContext {1:0.0}% ({2:0}% left before compaction)" } },
+            // ★ 残りを % で書かない。表示する % は「ウィンドウに対する消費率」、
+            //   圧縮までの残りは「圧縮点までの到達率」で分母が違うため、
+            //   「74.0%（圧縮まで残り 23%）」のように足して 100 にならない数が並び、
+            //   丸め誤差か不具合に見えた（2026-09-20）。HUD の行の詳細と同じくトークン数で書く。
+            { "notify.contextBody",   new[] { "{0}\nコンテキスト {1:0}%（自動圧縮まで {2} トークン）",
+                                              "{0}\nContext {1:0}% ({2} tokens until auto-compaction)" } },
             { "notify.fiveHour",      new[] { "5時間枠が残り少なくなっています",  "5-hour limit is running low" } },
             { "notify.weekly",        new[] { "週間枠が残り少なくなっています",    "Weekly limit is running low" } },
             { "notify.fiveHourBody",  new[] { "5時間枠 {0}%",                     "5-hour {0}%" } },
@@ -120,10 +128,10 @@ namespace CtxTray.Config
             { "config.openFailed", new[] { "設定ファイルを開けませんでした: {0}",
                                            "Could not open the config file: {0}" } },
 
-            { "uptime.body",   new[] { "版: {4}\n起動してから: {0:0} 時間 {1:00} 分\n更新間隔: {2} 秒\n設定: {3}",
-                                       "Version: {4}\nRunning for: {0:0} h {1:00} m\nRefresh interval: {2} s\nConfig: {3}" } },
-            { "uptime.lastError", new[] { "\n最後に起きた問題: {0}（{1}）",
-                                          "\nLast problem: {0} ({1})" } },
+            { "about.body",   new[] { "版: {4}\n起動してから: {0:0} 時間 {1:00} 分\n更新間隔: {2} 秒\n設定: {3}",
+                                      "Version: {4}\nRunning for: {0:0} h {1:00} m\nRefresh interval: {2} s\nConfig: {3}" } },
+            { "about.lastError", new[] { "\n最後に起きた問題: {0}（{1}）",
+                                         "\nLast problem: {0} ({1})" } },
             { "app.crashed",   new[] { "ctxtray が停止しました。\n\n{0}",
                                        "ctxtray stopped unexpectedly.\n\n{0}" } },
             { "app.error",     new[] { "表示の更新中に問題が起きました。動作は続けます。\n{0}",
@@ -186,8 +194,10 @@ namespace CtxTray.Config
                                            "At 100%, nothing shows through." } },
             { "set.clickThrough",  new[] { "クリックを後ろのウィンドウに通す",
                                            "Let clicks pass through to the window behind" } },
-            { "set.clickThroughHint", new[] { "オンの間は HUD をドラッグで動かせません。",
-                                              "While this is on, the HUD can't be dragged." } },
+            // 透過中は窓がマウスを一切受け取らないので、ドラッグだけでなく行の詳細も右クリックも死ぬ。
+            // 「ドラッグできない」としか書いていなかった頃は、残りの 2 つが壊れたように見えた（2026-09-20）。
+            { "set.clickThroughHint", new[] { "オンの間は、HUD のドラッグ・行の詳細・右クリックメニューが効きません。トレイアイコンの右クリックから戻せます。",
+                                              "While this is on, the HUD can't be dragged or hovered for details, and right-clicking it does nothing. Turn it back off from the tray icon's menu." } },
 
             { "set.secHudPlace",   new[] { "表示と位置",           "Showing and position" } },
             { "set.hotkey",        new[] { "表示／非表示のキー",    "Show/hide shortcut" } },
@@ -235,10 +245,16 @@ namespace CtxTray.Config
             { "set.warn",          new[] { "注意",                 "Warn" } },
             { "set.danger",        new[] { "危険",                 "Danger" } },
             { "set.ctxThreshold",  new[] { "コンテキスト",          "Context" } },
-            { "set.ctxHint",       new[] { "圧縮が起きる点を 100% とした割合です。1M のモデルなら 注意 {0:N0} ／ 危険 {1:N0} トークン。",
-                                           "Measured against the point where compaction happens (100%). On a 1M model: warn at {0:N0}, danger at {1:N0} tokens." } },
+            // 画面に出る % はウィンドウに対する消費率で、ここで入れる % とは分母が違う。
+            // 「75 にしたのに 73% で色が変わる」と見えるので、画面側の値も一緒に書く（2026-09-20）。
+            { "set.ctxHint",       new[] { "圧縮が起きる点を 100% とした割合です。1M のモデルなら 注意 {0:N0} ／ 危険 {1:N0} トークンで、パネルの表示では {2:0} % ／ {3:0} % にあたります。",
+                                           "Measured against the point where compaction happens (100%). On a 1M model: warn at {0:N0}, danger at {1:N0} tokens, which the panel shows as {2:0}% and {3:0}%." } },
             { "set.fhThreshold",   new[] { "5時間枠",              "5-hour limit" } },
             { "set.wkThreshold",   new[] { "週間枠",               "Weekly limit" } },
+            // 判定は危険から先に見るので、注意を危険より大きくすると注意が一度も起きない。
+            // 値は勝手に直さず、その場で知らせる（2026-09-20）。
+            { "set.thresholdOrder",new[] { "「注意」は「危険」より小さい値にしてください。大きいままだと、注意の色も通知も出ません。",
+                                           "Set the warn value below the danger value. While it is higher, the warn colour and its notification never appear." } },
 
             { "set.secNotify",     new[] { "通知を出す",           "Send notifications for" } },
             { "set.notifyContext", new[] { "コンテキスト",          "Context" } },
@@ -271,6 +287,8 @@ namespace CtxTray.Config
 
             { "set.ok",            new[] { "OK",                   "OK" } },
             { "set.cancel",        new[] { "キャンセル",           "Cancel" } },
+            // 閉じずに保存する。見ながら合わせる項目（幅・文字の大きさ・不透明度）のため。
+            { "set.apply",         new[] { "適用",                 "Apply" } },
             { "set.reset",         new[] { "既定に戻す",           "Reset to defaults" } },
             { "set.saveFailed",    new[] { "設定を保存できませんでした。\n{0}",
                                            "Could not save the settings.\n{0}" } },

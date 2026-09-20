@@ -41,6 +41,34 @@ namespace CtxTray.Ui
             return SystemScale;
         }
 
+        /// <summary>
+        /// その画面座標が載っているモニタの倍率。
+        ///
+        /// 窓を作る前に倍率が要る画面（設定画面）で使う。ハンドルがまだ無いので
+        /// ScaleFor は使えず、SystemScale ではプライマリモニタの倍率になってしまう
+        /// （倍率の違う 2 枚目で開くと大きさが合わなかった。2026-09-20）。
+        /// </summary>
+        public static float ScaleForPoint(Point screenPoint)
+        {
+            try
+            {
+                var pt = new Native.NativeMethods.POINT { X = screenPoint.X, Y = screenPoint.Y };
+                var monitor = Native.NativeMethods.MonitorFromPoint(
+                    pt, Native.NativeMethods.MONITOR_DEFAULTTONEAREST);
+                if (monitor != IntPtr.Zero)
+                {
+                    uint dpiX, dpiY;
+                    if (Native.NativeMethods.GetDpiForMonitor(
+                            monitor, Native.NativeMethods.MDT_EFFECTIVE_DPI, out dpiX, out dpiY) == 0
+                        && dpiX >= 48)
+                        return dpiX / 96f;
+                }
+            }
+            catch { }
+
+            return SystemScale;
+        }
+
         /// <summary>ウィンドウがまだ無いときの既定。プライマリモニタの倍率。</summary>
         public static float SystemScale
         {

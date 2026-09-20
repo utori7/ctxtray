@@ -34,8 +34,12 @@ namespace CtxTray.Ui
         /// <summary>補助説明のラベルに付ける印。配色で淡くするものを見分ける。</summary>
         private const string HintTag = "hint";
 
-        /// <summary>開いた時点の設定の複製。画面に入れる値と、表示だけの値（圧縮点など）に使う。</summary>
-        private readonly AppConfig _config;
+        /// <summary>
+        /// この画面が基準にしている設定の複製。画面に入れる値と、表示だけの値（圧縮点など）に使う。
+        /// 最初は開いた時点のもので、「適用」で保存するたび、保存したもので置き換える
+        /// （言語・配色が変わったかの判定を、実際に反映済みの値と比べるため）。
+        /// </summary>
+        private AppConfig _config;
 
         /// <summary>実行中の最新の設定。OK の時点でこれを複製して保存する。</summary>
         private readonly Func<AppConfig> _current;
@@ -45,7 +49,17 @@ namespace CtxTray.Ui
         private readonly Func<string, bool> _hotkeyAvailable;
         /// <summary>Windows のライト/ダークが切り替わると入れ替わるので readonly にしない。</summary>
         private Theme _theme;
-        private readonly float _s = Dpi.SystemScale;
+
+        /// <summary>
+        /// 部品の大きさに掛ける倍率。窓を作る前に決まっている必要があるので、
+        /// 開く場所（マウスのあるモニタ）から引く。プライマリの倍率で固定していた頃は、
+        /// 倍率の違う 2 枚目で開くと大きさが合わなかった（2026-09-20）。
+        /// 開いたあとに別のモニタへ動かしたときは作り直さない（利用者の決定）。
+        /// </summary>
+        private readonly float _s;
+
+        /// <summary>開いたモニタ。大きさを決めたあとの中央寄せも、この画面の中で行う。</summary>
+        private readonly Screen _screen;
 
         /// <summary>「右下の隅に戻す」が押された。</summary>
         public event EventHandler ResetHudPositionRequested;
@@ -54,6 +68,8 @@ namespace CtxTray.Ui
         private Padding P(int l, int t, int r, int b) { return new Padding(S(l), S(t), S(r), S(b)); }
 
         // --- タブ ---
+        /// <summary>組み立ての根。言語を切り替えたときは、これごと捨てて組み直す。</summary>
+        private TableLayoutPanel _root;
         private FlowLayoutPanel _tabStrip;
         private Panel _pageHost;
         private Control _buttons;
@@ -91,6 +107,7 @@ namespace CtxTray.Ui
         private NumericUpDown _ctxWarn, _ctxDanger, _fhWarn, _fhDanger, _wkWarn, _wkDanger;
         private NumericUpDown _hysteresis, _minRepeat;
         private Label _ctxHint;
+        private Label _thresholdOrderWarning;
         private CheckBox _notifyContext, _notifyFh, _notifyWk;
 
         // --- 全般 ---
@@ -106,12 +123,18 @@ namespace CtxTray.Ui
             _hotkeyAvailable = hotkeyAvailable;
             _theme = Theme.Resolve(_config.Theme);
 
+            // 倍率と置き場所は、窓を作る前にマウスのあるモニタから決める。
+            var origin = Cursor.Position;
+            _s = Dpi.ScaleForPoint(origin);
+            _screen = Screen.FromPoint(origin);
+
             // 題名に版を出す。不具合の報告でどの版か分かるように（2026-09-18）。
             Text = Strings.Get("set.title") + " — " + AppVersion.Display;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterScreen;
+            // 中央寄せは自分で行う（CenterScreen だと開くモニタを選べない）。
+            StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = true;
             // タスクバー・Alt+Tab に出るアイコン。指定しないと WinForms 内蔵の
             // 古い既定アイコンになる（利用者の指摘、2026-09-20）。
@@ -123,6 +146,8 @@ namespace CtxTray.Ui
             Font = new Font(Theme.FontFamily, 9f * _s);
             // 幅 560 では英語のラベルや「注意／危険」の行が右端で切れたので広げた。
             ClientSize = new Size(S(600), S(600));
+            // 作った時点から開くモニタの上に置く（あとで FitToContent が高さを決めて置き直す）。
+            CenterOnScreen();
 
             Build();
             Load_(_config);
@@ -189,26 +214,39 @@ namespace CtxTray.Ui
                 tallest = Math.Max(tallest, grid.GetPreferredSize(new Size(inner, 0)).Height);
 
             var wanted = _tabStrip.Height + _buttons.Height + tallest + S(4 + 12) + S(8);
-            var limit = (int)(Screen.FromControl(this).WorkingArea.Height * 0.9);
+            var limit = (int)(_screen.WorkingArea.Height * 0.9);
             ClientSize = new Size(ClientSize.Width, Math.Min(wanted, limit));
-            CenterToScreen();
+            CenterOnScreen();
 
             // 高さが決まってから、ページと自前のスクロールバーを合わせる。
             PerformLayout();
             LayoutPages();
         }
 
+        /// <summary>
+        /// 開いたモニタの作業領域の中央へ置く。
+        /// CenterToScreen はいま窓が載っているモニタを見るので、
+        /// 別のモニタで開いた直後に呼ぶと意図しない画面へ寄る。
+        /// </summary>
+        private void CenterOnScreen()
+        {
+            var work = _screen.WorkingArea;
+            Location = new Point(work.Left + (work.Width - Width) / 2,
+                                 work.Top + Math.Max(0, (work.Height - Height) / 2));
+        }
+
         // --- 組み立て -----------------------------------------------------------
 
         private void Build()
         {
-            var root = new TableLayoutPanel
+            _root = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
                 RowCount = 3,
                 Padding = new Padding(0),
             };
+            var root = _root;
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -388,6 +426,12 @@ namespace CtxTray.Ui
             _wkDanger = Percent();
             Row("set.wkThreshold", WarnDanger(_wkWarn, _wkDanger));
 
+            // 注意が危険より大きいと、判定が危険を先に見るので注意が一度も起きない。
+            // ホットキーの赤字と同じ作りで、その場で知らせる（値は勝手に直さない）。
+            _thresholdOrderWarning = Hint("set.thresholdOrder");
+            foreach (var box in new[] { _ctxWarn, _ctxDanger, _fhWarn, _fhDanger, _wkWarn, _wkDanger })
+                box.ValueChanged += (s, e) => UpdateThresholdOrderWarning();
+
             Section("set.secNotify");
             _notifyContext = Check("set.notifyContext");
             Full(_notifyContext);
@@ -435,14 +479,13 @@ namespace CtxTray.Ui
 
         private Control BuildButtons()
         {
-            var ok = Button("set.ok", (s, e) =>
-            {
-                // 保存できなかったのに閉じると、変更が消えたことに気づけない。
-                if (Save()) { Close(); return; }
-                MessageBox.Show(this, Strings.Format("set.saveFailed", AppConfig.FilePath), Text,
-                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            });
+            // 保存できなかったのに閉じると、変更が消えたことに気づけない。
+            var ok = Button("set.ok", (s, e) => { if (ApplyOrReport(false)) Close(); });
             var cancel = Button("set.cancel", (s, e) => Close());
+            // 幅・文字の大きさ・不透明度は、出して見ながら決めるもの。
+            // 「適用」が無いと、OK → 閉じる → 見る → 開き直す、の往復が要った（2026-09-20）。
+            // Windows の慣例どおり、適用した分は「キャンセル」では戻らない。
+            var apply = Button("set.apply", (s, e) => ApplyOrReport(true));
             var reset = Button("set.reset", (s, e) => ResetToDefaults());
 
             // WrapContents を切らないと、高さを測るときにボタンを縦に積んだ前提で計算され、
@@ -452,8 +495,11 @@ namespace CtxTray.Ui
                 FlowDirection = FlowDirection.RightToLeft, WrapContents = false,
                 Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(0),
             };
-            right.Controls.Add(ok);
+            // 右寄せの流し込みなので、先に足したものほど右端に来る。
+            // 左から読んで OK・キャンセル・適用（Windows の並び）になるよう、適用から足す。
+            right.Controls.Add(apply);
             right.Controls.Add(cancel);
+            right.Controls.Add(ok);
 
             var left = new FlowLayoutPanel
             {
@@ -838,6 +884,7 @@ namespace CtxTray.Ui
             _wkWarn.Value = Clamp(c.WeeklyWarn, 0, 100);
             _wkDanger.Value = Clamp(c.WeeklyDanger, 0, 100);
             UpdateContextHint();
+            UpdateThresholdOrderWarning();
 
             _notifyContext.Checked = c.NotifyContext;
             _notifyFh.Checked = c.NotifyFiveHour;
@@ -851,13 +898,13 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// 画面の値を設定に入れて保存する。書けなかったら false。
+        /// 画面の値を載せた設定を組む。保存はしない。
         ///
-        /// OK の時点の最新の設定を複製し、この画面が受け持つ値だけを載せる。
+        /// 呼ばれた時点の最新の設定を複製し、この画面が受け持つ値だけを載せる。
         /// 実行中の設定は書き換えないので、保存に失敗しても半端に反映されない。
         /// パネルの位置など、この画面が受け持たない値は最新のものがそのまま残る。
         /// </summary>
-        private bool Save()
+        private AppConfig FromScreen()
         {
             var c = _current().Clone();
 
@@ -905,7 +952,105 @@ namespace CtxTray.Ui
             c.Language = Pick(_language.SelectedIndex, "auto", "ja", "en");
             c.PollSeconds = (int)_poll.Value;
 
-            return c.Save();
+            return c;
+        }
+
+        /// <summary>
+        /// 画面の値を保存し、この画面自身にも反映する。書けなかったら false。
+        ///
+        /// 保存するだけなら反映は設定ファイルの監視に任せられるが、
+        /// 「適用」で閉じずに続けるときは、この画面だけが古い言語・配色のまま残る。
+        /// そこで保存できたときだけ、ここで配色を読み直し、言語が変わっていれば組み直す（2026-09-20）。
+        /// </summary>
+        /// <param name="refreshUi">
+        /// この画面を作り直す・塗り直す。OK はこの直後に閉じるので false
+        /// （閉じる直前に組み直すと、一瞬ちらつくだけで意味がない）。
+        /// </param>
+        private bool Apply(bool refreshUi)
+        {
+            var next = FromScreen();
+            if (!next.Save()) return false;
+
+            var languageChanged = refreshUi && !string.Equals(_config.Language, next.Language,
+                                                              StringComparison.OrdinalIgnoreCase);
+            var themeChanged = refreshUi && !string.Equals(_config.Theme, next.Theme,
+                                                           StringComparison.OrdinalIgnoreCase);
+
+            // 以後の「変わったか」の比較と、表示だけの値（圧縮点）は、いま保存したものを基準にする。
+            _config = next;
+
+            if (languageChanged)
+            {
+                // Strings は全体で 1 つ。常駐側も次の再読込で同じ値にする。
+                Strings.Apply(next.Language);
+                Rebuild();
+            }
+            else if (themeChanged)
+            {
+                ReloadTheme();
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 保存し、書けなかったらその場で知らせる。OK と「適用」で同じ扱いにする。
+        /// 保存できなかったのに閉じると、変更が消えたことに気づけない。
+        /// </summary>
+        private bool ApplyOrReport(bool refreshUi)
+        {
+            if (Apply(refreshUi)) return true;
+
+            MessageBox.Show(this, Strings.Format("set.saveFailed", AppConfig.FilePath), Text,
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        /// <summary>
+        /// 言語が変わったときに画面を組み直す。
+        ///
+        /// 文言は部品を作るときに埋め込まれるので、1 つずつ入れ替えるより作り直す方が
+        /// 取りこぼしが無い（ドロップダウンの項目や、数値の前後に置く短い文字まで含むため）。
+        /// 値は保存済みの設定から入れ直すので、画面の内容は変わらない。
+        /// </summary>
+        private void Rebuild()
+        {
+            var tab = SelectedTab();
+
+            SuspendLayout();
+            try
+            {
+                Controls.Remove(_root);
+                _root.Dispose();
+
+                _tabs.Clear();
+                _pages.Clear();
+                _bars.Clear();
+                _grids.Clear();
+                _frames.Clear();
+                _swatches.Clear();
+
+                Text = Strings.Get("set.title") + " — " + AppVersion.Display;
+                Build();
+                Load_(_config);
+                // 言語と配色を一度に変えた場合もあるので、配色と窓枠はここで付け直す。
+                ReloadTheme();
+                SelectTab(tab);
+            }
+            finally
+            {
+                ResumeLayout(true);
+            }
+
+            FitToContent();
+        }
+
+        /// <summary>いま選ばれているタブ。組み直したあとも同じタブを開いたままにする。</summary>
+        private int SelectedTab()
+        {
+            for (var i = 0; i < _tabs.Count; i++)
+                if (_tabs[i].Checked) return i;
+            return 0;
         }
 
         /// <summary>
@@ -979,13 +1124,35 @@ namespace CtxTray.Ui
 
         /// <summary>
         /// 圧縮点への到達率は分かりにくいので、1M モデルでの実トークン数を添える。
+        ///
+        /// あわせて、パネルに出る % も書く。パネルの % は「ウィンドウに対する消費率」で
+        /// ここで入れる % と分母が違うため、「75 にしたのに 73% で色が変わった」と見えていた（2026-09-20）。
         /// </summary>
         private void UpdateContextHint()
         {
             var point = _config.CompactThreshold * 1000000.0;
             _ctxHint.Text = Strings.Format("set.ctxHint",
                 point * (double)_ctxWarn.Value / 100.0,
-                point * (double)_ctxDanger.Value / 100.0);
+                point * (double)_ctxDanger.Value / 100.0,
+                (double)_ctxWarn.Value * _config.CompactThreshold,
+                (double)_ctxDanger.Value * _config.CompactThreshold);
+        }
+
+        /// <summary>
+        /// 「注意」が「危険」より大きい組があれば赤字で知らせる。
+        /// Levels.ForPct は危険から先に判定するので、その状態では注意が一度も起きない。
+        /// Paint_ がラベルの色を塗り直すので、配色を適用した後にも呼ぶ。
+        /// </summary>
+        private void UpdateThresholdOrderWarning()
+        {
+            if (_thresholdOrderWarning == null || _ctxWarn == null) return;
+
+            var inverted = _ctxWarn.Value > _ctxDanger.Value
+                        || _fhWarn.Value > _fhDanger.Value
+                        || _wkWarn.Value > _wkDanger.Value;
+
+            _thresholdOrderWarning.Visible = inverted;
+            if (inverted) _thresholdOrderWarning.ForeColor = _theme.Danger;
         }
 
         /// <summary>
@@ -1153,6 +1320,7 @@ namespace CtxTray.Ui
             // Paint_ が全ラベルの色を塗り直すので、淡色と赤字の指定をやり直す。
             UpdateTrayEnabled();
             UpdateHotkeyWarning();
+            UpdateThresholdOrderWarning();
         }
 
         private void UpdateSwatches()

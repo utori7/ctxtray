@@ -113,6 +113,29 @@ namespace CtxTray.Native
         public const int WM_SETTINGCHANGE = 0x001A;
         public const int WM_DPICHANGED = 0x02E0;
 
+        // --- 座標からモニタの倍率を取る ---------------------------------------
+        //
+        // 設定画面は窓を作る前に倍率が要る（部品の大きさを自分で掛けて組むため）。
+        // GetDpiForWindow はハンドルが要るので、開く場所（マウスの位置）のモニタから直接引く。
+        public const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+        /// <summary>GetDpiForMonitor の種類。実際の表示倍率は MDT_EFFECTIVE_DPI。</summary>
+        public const int MDT_EFFECTIVE_DPI = 0;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+
+        // Windows 8.1 以降。対象は Windows 10 1903+ なので必ずあるが、念のため呼び出し側で try する。
+        [DllImport("shcore.dll")]
+        public static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
+
         // --- 全画面のアプリの検出 ---------------------------------------------
         //
         // 最前面の HUD は、動画・発表・ゲームの全画面表示の上にも残る。

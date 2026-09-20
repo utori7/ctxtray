@@ -128,10 +128,18 @@ namespace CtxTray.Notify
 
                     var level = Levels.ForContext(s, config);
                     var title = string.IsNullOrEmpty(s.Title) ? Strings.Get("hud.untitled") : s.Title;
+
+                    // ★ 残りは % ではなくトークン数で書く。
+                    //   画面に出る % は「ウィンドウに対する消費率」、到達率は「圧縮点に対する割合」で
+                    //   分母が違うので、並べると足して 100 にならず、丸め誤差か不具合に見えた（2026-09-20）。
+                    //   計算の根拠は HUD の行の詳細（hud.tipToCompact）と同じ。
+                    var toCompact = Math.Max(0, (int)Math.Round(
+                        (s.ContextLimit ?? 0) * config.CompactThreshold - (s.ContextTokens ?? 0)));
+
                     var body = Strings.Format("notify.contextBody",
                         title,
                         s.ContextPct.HasValue ? s.ContextPct.Value : 0,
-                        Math.Max(0, (1.0 - reach.Value) * 100));
+                        toCompact.ToString("N0", System.Globalization.CultureInfo.InvariantCulture));
 
                     Evaluate("ctx:" + s.CliSessionId, level, Levels.ForContext(s, config, slack), config, now,
                              Strings.Get(level == Level.Danger ? "notify.compactSoon" : "notify.contextRising"),

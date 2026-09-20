@@ -54,6 +54,9 @@ The binary is not code-signed, so SmartScreen will warn on first run:
 on the release page. If you would rather not trust a prebuilt binary,
 [build it yourself](#building).
 
+ctxtray never talks to the network, so it cannot tell you about new versions.
+To hear about them, use **Watch → Custom → Releases** at the top of this repository.
+
 ## Using it
 
 | | |
@@ -62,7 +65,11 @@ on the release page. If you would rather not trust a prebuilt binary,
 | drag | move the panel |
 | hover over a row | details: the full name, the model, token counts, how much is left before auto-compaction, and when the value was recorded |
 | click the tray icon | show / hide the panel |
-| right-click the tray icon or the panel | show / hide panel, pass clicks through, start at sign-in, settings, refresh now, open config file, uptime, exit |
+| right-click the tray icon or the panel | show / hide panel, pass clicks through, start at sign-in, settings, refresh now, open config file, about, exit |
+
+**Pass clicks through** makes the panel ignore the mouse entirely: you can click what is
+behind it, but you can no longer drag it, hover a row for details, or right-click it.
+Turn it back off from the tray icon's menu.
 
 A session name in grey means its Claude Code process is not running right now
 (for example, a tab that has been idle). Grey sessions are left out of the tray icon and

@@ -100,6 +100,9 @@ namespace CtxTray.Ui
             _autoStartItem = MenuItem("menu.autoStart", ToggleAutoStart);
 
             _menu = new ContextMenuStrip();
+            // 透過をオンにすると HUD がマウスを一切受け取らなくなる。押す前に分かるよう、
+            // この項目にだけ説明を出す（ToolStripDropDownMenu は既定で説明を出さない）。
+            _menu.ShowItemToolTips = true;
             // 開くたびにチェックを付け直す。ショートカットを利用者が消したり、exe を移したりしても
             // 古い表示のままにならないように。
             _menu.Opening += (s, e) => UpdateMenuState();
@@ -110,7 +113,7 @@ namespace CtxTray.Ui
             _menu.Items.Add(MenuItem("menu.settings", OpenSettings));
             _menu.Items.Add(MenuItem("menu.refresh", () => { _dirty = true; Tick(null, null); }));
             _menu.Items.Add(MenuItem("menu.openConfig", OpenConfig));
-            _menu.Items.Add(MenuItem("menu.uptime", ShowUptime));
+            _menu.Items.Add(MenuItem("menu.about", ShowAbout));
             _menu.Items.Add(new ToolStripSeparator());
             _menu.Items.Add(MenuItem("menu.exit", ExitApp));
 
@@ -363,7 +366,7 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// 想定外の例外を記録する。ツールチップに理由を出し、稼働状況の画面で最後の 1 件を見られるようにする。
+        /// 想定外の例外を記録する。ツールチップに理由を出し、「ctxtray について」の画面で最後の 1 件を見られるようにする。
         /// 通知は、同じ失敗が続いたときに連投しないよう 30 分に 1 回まで。
         /// </summary>
         private void ReportError(Exception ex)
@@ -787,6 +790,8 @@ namespace CtxTray.Ui
             _hudItem.Text = Strings.Get((_hud != null && _hud.Visible) ? "menu.hideHud" : "menu.showHud");
             _hudItem.Checked = _hud != null && _hud.Visible;
             _clickThroughItem.Checked = _config.ClickThrough;
+            // 言語を変えても付け直されるよう、メニューを開くたびに入れる。
+            _clickThroughItem.ToolTipText = Strings.Get("menu.clickThroughTip");
             _autoStartItem.Checked = AutoStart.IsEnabled;
         }
 
@@ -829,14 +834,20 @@ namespace CtxTray.Ui
             }
         }
 
-        private void ShowUptime()
+        /// <summary>
+        /// 版・稼働時間・更新間隔・設定ファイルの場所・最後に起きた問題。
+        ///
+        /// 以前の題は「稼働状況」だったが、版や設定ファイルの場所を探す人がここを開く発想にならない。
+        /// 中身は同じで、題だけ「ctxtray について」にした（2026-09-20）。
+        /// </summary>
+        private void ShowAbout()
         {
             var up = DateTime.UtcNow - _startedUtc;
             // 時間は切り捨てる（TotalHours をそのまま "0" で書式化すると 1.6 時間が「2 時間 36 分」になる）。
-            var text = Strings.Format("uptime.body", (int)up.TotalHours, up.Minutes, _config.PollSeconds,
+            var text = Strings.Format("about.body", (int)up.TotalHours, up.Minutes, _config.PollSeconds,
                                       AppConfig.FilePath, AppVersion.Display);
             if (_lastError != null)
-                text += Strings.Format("uptime.lastError", _lastError,
+                text += Strings.Format("about.lastError", _lastError,
                     _lastErrorUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture));
 
             MessageBox.Show(text, "ctxtray", MessageBoxButtons.OK, MessageBoxIcon.Information);

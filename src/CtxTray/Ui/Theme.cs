@@ -31,6 +31,23 @@ namespace CtxTray.Ui
         /// </summary>
         public Color TrayTrack;
 
+        /// <summary>
+        /// 自前のスクロールバーのつまみ（Ui/ThinScrollBar.cs）。
+        /// 背景に対して控えめだが、つまめる物だと分かる程度の差は付ける。
+        /// Hot はマウスを乗せたときとドラッグ中。
+        /// </summary>
+        public Color ScrollThumb;
+        public Color ScrollThumbHot;
+
+        /// <summary>
+        /// 入力欄（数値・ドロップダウン・キーの欄）の地と枠。
+        /// 枠は Border より一段はっきりさせる。地が背景に近いので、
+        /// Border と同じ濃さだと「押せる欄」に見えない。
+        /// マウスを乗せたときは TextSecondary、入力中は Normal（青）にする。
+        /// </summary>
+        public Color Field;
+        public Color FieldBorder;
+
         public Color Normal;
         public Color Warn;
         public Color Danger;
@@ -85,6 +102,10 @@ namespace CtxTray.Ui
                 TextSecondary = Color.FromArgb(141, 148, 164),
                 BarTrack = Color.FromArgb(42, 46, 56),
                 TrayTrack = Color.FromArgb(62, 68, 82),
+                ScrollThumb = Color.FromArgb(62, 68, 82),
+                ScrollThumbHot = Color.FromArgb(96, 104, 122),
+                Field = Color.FromArgb(38, 42, 51),
+                FieldBorder = Color.FromArgb(62, 68, 82),
                 Normal = Color.FromArgb(127, 178, 255),
                 Warn = Color.FromArgb(245, 196, 81),
                 Danger = Color.FromArgb(255, 107, 107),
@@ -106,6 +127,10 @@ namespace CtxTray.Ui
                 TextSecondary = Color.FromArgb(98, 107, 123),
                 BarTrack = Color.FromArgb(228, 232, 238),
                 TrayTrack = Color.FromArgb(198, 205, 216),
+                ScrollThumb = Color.FromArgb(198, 205, 216),
+                ScrollThumbHot = Color.FromArgb(160, 170, 184),
+                Field = Color.White,
+                FieldBorder = Color.FromArgb(198, 205, 216),
                 // ライト背景では明度を落とさないと読めない。
                 Normal = Color.FromArgb(47, 111, 224),
                 Warn = Color.FromArgb(184, 116, 6),

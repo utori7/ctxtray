@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using CtxTray.Config;
+using CtxTray.Native;
 
 namespace CtxTray.Ui
 {
@@ -18,6 +20,10 @@ namespace CtxTray.Ui
     /// 反映するので、反映経路を二重に持たない。
     /// 例外は「右下の隅に戻す」で、設定というより操作なので押した時点で動かす。
     ///
+    /// ★ 実行中の設定オブジェクトは書き換えない。OK の時点の最新の設定を複製し、
+    ///   この画面が受け持つ値だけを載せて保存する（AppConfig.Clone の説明を参照）。
+    ///   開いている間にパネルを動かしたりメニューで透過を切り替えたりしても、古い値で上書きしない。
+    ///
     /// 圧縮点は観測で較正される値なので編集させず、現在値だけを見せる。
     /// </summary>
     internal sealed class SettingsForm : Form
@@ -28,9 +34,17 @@ namespace CtxTray.Ui
         /// <summary>補助説明のラベルに付ける印。配色で淡くするものを見分ける。</summary>
         private const string HintTag = "hint";
 
+        /// <summary>開いた時点の設定の複製。画面に入れる値と、表示だけの値（圧縮点など）に使う。</summary>
         private readonly AppConfig _config;
+
+        /// <summary>実行中の最新の設定。OK の時点でこれを複製して保存する。</summary>
+        private readonly Func<AppConfig> _current;
+
         private readonly Func<string, TrayGauge> _gaugeFor;
-        private readonly Theme _theme;
+        /// <summary>そのホットキーが空いているかを確かめる（HudForm.IsHotkeyAvailable）。</summary>
+        private readonly Func<string, bool> _hotkeyAvailable;
+        /// <summary>Windows のライト/ダークが切り替わると入れ替わるので readonly にしない。</summary>
+        private Theme _theme;
         private readonly float _s = Dpi.SystemScale;
 
         /// <summary>「右下の隅に戻す」が押された。</summary>
@@ -44,18 +58,26 @@ namespace CtxTray.Ui
         private Panel _pageHost;
         private Control _buttons;
         private readonly List<RadioButton> _tabs = new List<RadioButton>();
-        private readonly List<Panel> _pages = new List<Panel>();
+        private readonly List<ScrollPage> _pages = new List<ScrollPage>();
+        private readonly List<ThinScrollBar> _bars = new List<ThinScrollBar>();
         private readonly List<TableLayoutPanel> _grids = new List<TableLayoutPanel>();
+
+        /// <summary>
+        /// 入力欄とその角丸の枠の対応。値の出し入れは部品に対して行い、
+        /// 画面に置くときだけ枠に差し替える（Place）。
+        /// </summary>
+        private readonly Dictionary<Control, FieldFrame> _frames = new Dictionary<Control, FieldFrame>();
         private TableLayoutPanel _grid;   // 組み立て中のタブの格子
 
         // --- HUD ---
-        private CheckBox _hudRate, _hudSessions, _hideIdle, _external;
-        private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup;
+        private CheckBox _hudRate, _hudSessions, _hideIdle, _hideStopped, _external;
+        private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen;
         private NumericUpDown _idleHours, _externalMax, _hudWidth;
         private ComboBox _showResets, _textSize;
         private TrackBar _opacity;
         private Label _opacityValue;
         private TextBox _hotkey;
+        private Label _hotkeyWarning;
 
         // --- トレイアイコン ---
         private RadioButton _modeMulti, _modeSingle;
@@ -75,18 +97,25 @@ namespace CtxTray.Ui
         private ComboBox _themeCombo, _language;
         private NumericUpDown _poll;
 
-        public SettingsForm(AppConfig config, Func<string, TrayGauge> gaugeFor)
+        public SettingsForm(Func<AppConfig> current, Func<string, TrayGauge> gaugeFor,
+                            Func<string, bool> hotkeyAvailable)
         {
-            _config = config;
+            _current = current;
+            _config = current().Clone();
             _gaugeFor = gaugeFor;
-            _theme = Theme.Resolve(config.Theme);
+            _hotkeyAvailable = hotkeyAvailable;
+            _theme = Theme.Resolve(_config.Theme);
 
-            Text = Strings.Get("set.title");
+            // 題名に版を出す。不具合の報告でどの版か分かるように（2026-09-18）。
+            Text = Strings.Get("set.title") + " — " + AppVersion.Display;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             ShowInTaskbar = true;
+            // タスクバー・Alt+Tab に出るアイコン。指定しないと WinForms 内蔵の
+            // 古い既定アイコンになる（利用者の指摘、2026-09-20）。
+            Icon = AppIconRenderer.Load();
 
             // 倍率は自分で掛ける。WinForms の自動スケールに任せると、
             // .NET Framework では DeviceDpi が 96 のままなので効かない（Dpi.cs 参照）。
@@ -107,6 +136,45 @@ namespace CtxTray.Ui
             FitToContent();
         }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // 窓枠（タイトルバー・枠線）は Windows が描くので、中身とは別に色を渡す。
+            WindowChrome.Apply(Handle, _theme);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            // Windows のライト/ダークの切り替え。この画面は非モーダルで出しっぱなしにできるので、
+            // HUD と同じように開いたまま追従させる（2026-09-20、利用者の決定）。
+            if (m.Msg == NativeMethods.WM_SETTINGCHANGE && m.LParam != IntPtr.Zero)
+            {
+                string area = null;
+                try { area = Marshal.PtrToStringAuto(m.LParam); }
+                catch { }
+
+                if (string.Equals(area, "ImmersiveColorSet", StringComparison.Ordinal))
+                    ReloadTheme();
+            }
+
+            base.WndProc(ref m);
+        }
+
+        /// <summary>
+        /// 配色を読み直して塗り直す。
+        /// 設定のテーマが light / dark 固定なら Theme.Resolve が同じ色を返すので、
+        /// Windows の切り替えでは見た目が変わらない（意図どおり）。
+        /// </summary>
+        private void ReloadTheme()
+        {
+            _theme = Theme.Resolve(_config.Theme);
+
+            ApplyTheme();
+            WindowChrome.Apply(Handle, _theme);
+            foreach (var bar in _bars) bar.Theme = _theme;
+            Invalidate(true);
+        }
+
         /// <summary>
         /// 窓の高さを、いちばん長いタブが収まる高さに合わせる。
         /// 画面より高くなる場合だけ画面の 9 割で止め、タブの中をスクロールさせる。
@@ -124,6 +192,10 @@ namespace CtxTray.Ui
             var limit = (int)(Screen.FromControl(this).WorkingArea.Height * 0.9);
             ClientSize = new Size(ClientSize.Width, Math.Min(wanted, limit));
             CenterToScreen();
+
+            // 高さが決まってから、ページと自前のスクロールバーを合わせる。
+            PerformLayout();
+            LayoutPages();
         }
 
         // --- 組み立て -----------------------------------------------------------
@@ -150,6 +222,8 @@ namespace CtxTray.Ui
                 Margin = new Padding(0),
             };
             _pageHost = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) };
+            // 窓の高さが決まった後や、表示倍率が変わった後にも追随させる。
+            _pageHost.Resize += (s, e) => LayoutPages();
 
             BuildHudPage();
             BuildTrayPage();
@@ -184,6 +258,9 @@ namespace CtxTray.Ui
             _hideIdle.CheckedChanged += (s, e) => _idleHours.Enabled = _hideIdle.Checked;
             Full(Flow(_hideIdle, Toggles(Text_("set.hideIdlePre"), _hideIdle), _idleHours,
                       Toggles(Text_("set.hideIdlePost"), _hideIdle)));
+
+            _hideStopped = Check("set.hideStopped");
+            Full(_hideStopped);
 
             _external = Check("set.external");
             _externalMax = Number(1, 99);
@@ -226,13 +303,27 @@ namespace CtxTray.Ui
             Hint("set.clickThroughHint");
 
             Section("set.secHudPlace");
-            _hotkey = new TextBox { Width = S(160), ReadOnly = true, Cursor = Cursors.Hand };
+            _hotkey = Framed(new TextBox
+            {
+                Width = S(160),
+                ReadOnly = true,
+                Cursor = Cursors.Hand,
+                // 枠は FieldFrame が描く。
+                BorderStyle = BorderStyle.None,
+            });
             _hotkey.KeyDown += OnHotkeyKeyDown;
             Row("set.hotkey", _hotkey);
             Hint("set.hotkeyHint");
+            // ほかのアプリが使っているキーを選んだときだけ出す。
+            _hotkeyWarning = Hint("set.hotkeyTaken");
+            _hotkeyWarning.Visible = false;
 
             _showAtStartup = Check("set.showAtStartup");
             Full(_showAtStartup);
+
+            _hideFullscreen = Check("set.hideFullscreen");
+            Full(_hideFullscreen);
+            Hint("set.hideFullscreenHint");
 
             Row("set.position", Button("set.resetPosition", (s, e) =>
             {
@@ -413,10 +504,11 @@ namespace CtxTray.Ui
             _tabStrip.Controls.Add(tab);
             _tabs.Add(tab);
 
-            var page = new Panel
+            // Dock = Fill にせず、_pageHost.Resize で大きさを合わせる（LayoutPages）。
+            // 標準のスクロールバーを _pageHost のクリップ範囲の外へ押し出すために、
+            // このパネルだけ横幅を広く取るため。
+            var page = new ScrollPage
             {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
                 Padding = P(16, 4, 16, 12),
                 Visible = false,
             };
@@ -431,10 +523,57 @@ namespace CtxTray.Ui
             _grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(LabelColumn)));
             _grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
+            // 自前の細いスクロールバー。Windows 標準のものは配色に追従せず古く見える
+            // （利用者の指摘、2026-09-20）。タブ見出しを標準の TabControl で作らないのと同じ理由。
+            var bar = new ThinScrollBar { Visible = false };
+            bar.Attach(page);
+
             page.Controls.Add(_grid);
             _pageHost.Controls.Add(page);
+            _pageHost.Controls.Add(bar);
+            bar.BringToFront();
+
             _pages.Add(page);
+            _bars.Add(bar);
             _grids.Add(_grid);
+        }
+
+        /// <summary>
+        /// ページと自前のスクロールバーの位置・大きさを合わせる。
+        ///
+        /// ページは _pageHost より標準スクロールバーの幅だけ横に広くする。こうすると
+        /// 標準のスクロールバーは _pageHost のクリップ範囲の外に出て見えなくなり、
+        /// ホイール・キー操作・Tab での自動スクロールだけが残る。
+        ///
+        /// 広げるのはスクロールが要るタブだけ。いつも広げると、スクロールの要らないタブで
+        /// 中身がその幅ぶん広がって右端が切れる。スクロールの要否で場合分けすると、
+        /// どちらでも中身の幅は _pageHost の幅ちょうどで揃う。
+        /// </summary>
+        private void LayoutPages()
+        {
+            if (_pageHost == null || _pages.Count == 0) return;
+
+            var host = _pageHost.ClientSize;
+            if (host.Width <= 0 || host.Height <= 0) return;
+
+            var slot = SystemInformation.VerticalScrollBarWidth;
+
+            for (var i = 0; i < _pages.Count; i++)
+            {
+                var page = _pages[i];
+                var inner = Math.Max(1, host.Width - page.Padding.Horizontal);
+                var wanted = _grids[i].GetPreferredSize(new Size(inner, 0)).Height
+                             + page.Padding.Vertical;
+
+                var scrolls = wanted > host.Height;
+                page.Bounds = new Rectangle(0, 0, host.Width + (scrolls ? slot : 0), host.Height);
+
+                var bar = _bars[i];
+                bar.Bounds = new Rectangle(host.Width - bar.Width - S(2), S(2),
+                                           bar.Width, Math.Max(1, host.Height - S(4)));
+                bar.BringToFront();
+                bar.Sync();
+            }
         }
 
         private void SelectTab(int index)
@@ -442,6 +581,8 @@ namespace CtxTray.Ui
             for (var i = 0; i < _pages.Count; i++)
             {
                 _pages[i].Visible = i == index;
+                // バーはページの兄弟なので、選ばれているタブのものだけ出す。
+                _bars[i].Active = i == index;
                 _tabs[i].ForeColor = i == index ? _theme.TextPrimary : _theme.TextSecondary;
             }
             if (!_tabs[index].Checked) _tabs[index].Checked = true;
@@ -476,7 +617,7 @@ namespace CtxTray.Ui
                 Padding = P(0, 7, 8, 0),
             };
             _grid.Controls.Add(label, 0, row);
-            _grid.Controls.Add(control, 1, row);
+            _grid.Controls.Add(Place(control), 1, row);
             _grid.RowCount++;
             return label;
         }
@@ -489,8 +630,9 @@ namespace CtxTray.Ui
 
         private void AddFull(Control control)
         {
-            _grid.Controls.Add(control, 0, _grid.RowCount);
-            _grid.SetColumnSpan(control, 2);
+            var placed = Place(control);
+            _grid.Controls.Add(placed, 0, _grid.RowCount);
+            _grid.SetColumnSpan(placed, 2);
             _grid.RowCount++;
         }
 
@@ -510,9 +652,27 @@ namespace CtxTray.Ui
 
         private ComboBox Combo(params string[] items)
         {
-            var c = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = S(300) };
+            var c = new ThemedCombo { Width = S(300) };
             foreach (var item in items) c.Items.Add(item);
             return c;
+        }
+
+        /// <summary>
+        /// 入力欄を角丸の枠に入れる。枠は画面に置くときだけ使い、
+        /// 値の出し入れは今までどおり部品に対して行う。
+        /// </summary>
+        private T Framed<T>(T inner) where T : Control
+        {
+            _frames[inner] = new FieldFrame(inner);
+            return inner;
+        }
+
+        /// <summary>画面に置く実体。枠を持つ部品なら枠を返す。</summary>
+        private Control Place(Control control)
+        {
+            FieldFrame frame;
+            if (control != null && _frames.TryGetValue(control, out frame)) return frame;
+            return control;
         }
 
         private CheckBox Check(string key)
@@ -569,12 +729,12 @@ namespace CtxTray.Ui
         // 数値欄は 4 桁（8760 時間）まで入れば足りる。70 だと「注意／危険」の行が右端からはみ出した。
         private NumericUpDown Number(int min, int max)
         {
-            return new NumericUpDown { Minimum = min, Maximum = max, Width = S(60) };
+            return Framed(new ThemedNumeric { Minimum = min, Maximum = max, Width = S(60) });
         }
 
         private NumericUpDown Percent()
         {
-            return new NumericUpDown { Minimum = 0, Maximum = 100, Width = S(56) };
+            return Framed(new ThemedNumeric { Minimum = 0, Maximum = 100, Width = S(56) });
         }
 
         /// <summary>数値の前後に置く短い文字。空文字なら何も置かない（語順が日英で違うため）。</summary>
@@ -607,7 +767,7 @@ namespace CtxTray.Ui
                         Unit(Strings.Get("set.danger")), danger, Unit("%"));
         }
 
-        private static Control Flow(params Control[] controls)
+        private Control Flow(params Control[] controls)
         {
             var p = new FlowLayoutPanel
             {
@@ -617,7 +777,7 @@ namespace CtxTray.Ui
                 Margin = new Padding(0),
             };
             foreach (var c in controls)
-                if (c != null) p.Controls.Add(c);
+                if (c != null) p.Controls.Add(Place(c));
             return p;
         }
 
@@ -640,6 +800,7 @@ namespace CtxTray.Ui
             _hideIdle.Checked = c.HideIdleSessions;
             _idleHours.Value = Clamp(c.IdleHours, 1, 8760);
             _idleHours.Enabled = c.HideIdleSessions;
+            _hideStopped.Checked = c.HideStoppedSessions;
             _external.Checked = c.ExternalSessionsEnabled;
             _externalMax.Value = Clamp(c.ExternalSessionsMax, 1, 99);
             _externalMax.Enabled = c.ExternalSessionsEnabled;
@@ -655,7 +816,9 @@ namespace CtxTray.Ui
             _clickThrough.Checked = c.ClickThrough;
 
             _hotkey.Text = c.Hotkey;
+            UpdateHotkeyWarning();
             _showAtStartup.Checked = c.HudShowAtStartup;
+            _hideFullscreen.Checked = c.HideWhenFullscreen;
 
             if (c.TrayMultiMode) _modeMulti.Checked = true;
             else _modeSingle.Checked = true;
@@ -687,52 +850,71 @@ namespace CtxTray.Ui
             _poll.Value = Clamp(c.PollSeconds, 1, 600);
         }
 
-        /// <summary>画面の値を設定に入れて保存する。書けなかったら false。</summary>
+        /// <summary>
+        /// 画面の値を設定に入れて保存する。書けなかったら false。
+        ///
+        /// OK の時点の最新の設定を複製し、この画面が受け持つ値だけを載せる。
+        /// 実行中の設定は書き換えないので、保存に失敗しても半端に反映されない。
+        /// パネルの位置など、この画面が受け持たない値は最新のものがそのまま残る。
+        /// </summary>
         private bool Save()
         {
-            _config.HudShowRateLimits = _hudRate.Checked;
-            _config.HudShowSessions = _hudSessions.Checked;
-            _config.HideIdleSessions = _hideIdle.Checked;
-            _config.IdleHours = (int)_idleHours.Value;
-            _config.ExternalSessionsEnabled = _external.Checked;
-            _config.ExternalSessionsMax = (int)_externalMax.Value;
+            var c = _current().Clone();
 
-            _config.HudShowBar = _showBar.Checked;
-            _config.HudShowTokens = _showTokens.Checked;
-            _config.ShowResets = Pick(_showResets.SelectedIndex, "always", "auto", "never");
+            c.HudShowRateLimits = _hudRate.Checked;
+            c.HudShowSessions = _hudSessions.Checked;
+            c.HideIdleSessions = _hideIdle.Checked;
+            c.IdleHours = (int)_idleHours.Value;
+            c.HideStoppedSessions = _hideStopped.Checked;
+            c.ExternalSessionsEnabled = _external.Checked;
+            c.ExternalSessionsMax = (int)_externalMax.Value;
 
-            _config.HudTextSize = Pick(_textSize.SelectedIndex, AppConfig.TextSizes);
-            _config.HudWidth = (int)_hudWidth.Value;
-            _config.Opacity = _opacity.Value / 100.0;
-            _config.ClickThrough = _clickThrough.Checked;
+            c.HudShowBar = _showBar.Checked;
+            c.HudShowTokens = _showTokens.Checked;
+            c.ShowResets = Pick(_showResets.SelectedIndex, "always", "auto", "never");
+
+            c.HudTextSize = Pick(_textSize.SelectedIndex, AppConfig.TextSizes);
+            c.HudWidth = (int)_hudWidth.Value;
+            c.Opacity = _opacity.Value / 100.0;
+            c.ClickThrough = _clickThrough.Checked;
 
             uint mods, vk;
             if (HotkeyParser.TryParse(_hotkey.Text, out mods, out vk))
-                _config.Hotkey = _hotkey.Text;
-            _config.HudShowAtStartup = _showAtStartup.Checked;
+                c.Hotkey = _hotkey.Text;
+            c.HudShowAtStartup = _showAtStartup.Checked;
+            c.HideWhenFullscreen = _hideFullscreen.Checked;
 
-            _config.TrayMode = _modeMulti.Checked ? "multi" : "single";
-            _config.TrayLabel = SelectedLabelStyle();
-            _config.TrayValues = BuildTrayValues();
+            c.TrayMode = _modeMulti.Checked ? "multi" : "single";
+            c.TrayLabel = SelectedLabelStyle();
+            c.TrayValues = BuildTrayValues();
 
-            _config.ContextWarn = (double)_ctxWarn.Value / 100.0;
-            _config.ContextDanger = (double)_ctxDanger.Value / 100.0;
-            _config.FiveHourWarn = (int)_fhWarn.Value;
-            _config.FiveHourDanger = (int)_fhDanger.Value;
-            _config.WeeklyWarn = (int)_wkWarn.Value;
-            _config.WeeklyDanger = (int)_wkDanger.Value;
+            c.ContextWarn = (double)_ctxWarn.Value / 100.0;
+            c.ContextDanger = (double)_ctxDanger.Value / 100.0;
+            c.FiveHourWarn = (int)_fhWarn.Value;
+            c.FiveHourDanger = (int)_fhDanger.Value;
+            c.WeeklyWarn = (int)_wkWarn.Value;
+            c.WeeklyDanger = (int)_wkDanger.Value;
 
-            _config.NotifyContext = _notifyContext.Checked;
-            _config.NotifyFiveHour = _notifyFh.Checked;
-            _config.NotifyWeekly = _notifyWk.Checked;
-            _config.NotifyHysteresisPts = (int)_hysteresis.Value;
-            _config.NotifyMinRepeatMinutes = (int)_minRepeat.Value;
+            c.NotifyContext = _notifyContext.Checked;
+            c.NotifyFiveHour = _notifyFh.Checked;
+            c.NotifyWeekly = _notifyWk.Checked;
+            c.NotifyHysteresisPts = (int)_hysteresis.Value;
+            c.NotifyMinRepeatMinutes = (int)_minRepeat.Value;
 
-            _config.Theme = Pick(_themeCombo.SelectedIndex, "auto", "light", "dark");
-            _config.Language = Pick(_language.SelectedIndex, "auto", "ja", "en");
-            _config.PollSeconds = (int)_poll.Value;
+            c.Theme = Pick(_themeCombo.SelectedIndex, "auto", "light", "dark");
+            c.Language = Pick(_language.SelectedIndex, "auto", "ja", "en");
+            c.PollSeconds = (int)_poll.Value;
 
-            return _config.Save();
+            return c.Save();
+        }
+
+        /// <summary>
+        /// トレイのメニューでクリック透過を切り替えたときに呼ばれる。
+        /// 画面のチェックを合わせておかないと、OK で切り替える前の値に戻してしまう。
+        /// </summary>
+        public void SyncClickThrough(bool on)
+        {
+            if (_clickThrough != null) _clickThrough.Checked = on;
         }
 
         private string SelectedLabelStyle()
@@ -842,6 +1024,26 @@ namespace CtxTray.Ui
 
             parts.Add(key.ToString());
             _hotkey.Text = string.Join("+", parts.ToArray());
+            UpdateHotkeyWarning();
+        }
+
+        /// <summary>
+        /// 選んだキーがほかのアプリに取られていないかを確かめ、駄目なら赤字で知らせる。
+        ///
+        /// 主に効くのは画面を開いたとき（いま設定されているキーが、後から起動したアプリに
+        /// 取られていた場合など）。ほかのアプリが先に取っているキーは、押してもこの欄に届かないので、
+        /// キーを押した時点での確認はまず働かない（RegisterHotKey で予約されたキーは、前面の窓に届かない）。
+        /// その場合の案内は set.hotkeyHint に書いた。
+        /// なお、キーフックで先取りするアプリは RegisterHotKey を妨げないので、ここでも通知でも検出できない。
+        /// Paint_ がラベルの色を塗り直すので、配色を適用した後にも呼ぶ。
+        /// </summary>
+        private void UpdateHotkeyWarning()
+        {
+            if (_hotkeyWarning == null || _hotkey == null) return;
+
+            var taken = _hotkeyAvailable != null && !_hotkeyAvailable(_hotkey.Text);
+            _hotkeyWarning.Visible = taken;
+            if (taken) _hotkeyWarning.ForeColor = _theme.Danger;
         }
 
         // --- トレイアイコンの見本 -----------------------------------------------
@@ -944,9 +1146,13 @@ namespace CtxTray.Ui
                 tab.FlatAppearance.MouseOverBackColor = raised;
             }
 
+            // Paint_ は配色を持たない部品しか塗らないので、自前のバーには直接渡す。
+            foreach (var bar in _bars) bar.Theme = _theme;
+
             UpdateSwatches();
-            // Paint_ が全ラベルの色を塗り直すので、淡色の指定をやり直す。
+            // Paint_ が全ラベルの色を塗り直すので、淡色と赤字の指定をやり直す。
             UpdateTrayEnabled();
+            UpdateHotkeyWarning();
         }
 
         private void UpdateSwatches()
@@ -966,14 +1172,18 @@ namespace CtxTray.Ui
             {
                 c.ForeColor = _theme.TextPrimary;
 
-                if (c is TextBox || c is NumericUpDown || c is ComboBox)
+                // 入力欄は自前で描く部品に置き換えてある（Ui/ThemedFields.cs）。配色はそちらに渡す。
+                if (c is ThemedCombo) { ((ThemedCombo)c).Theme = _theme; }
+                else if (c is ThemedNumeric) { ((ThemedNumeric)c).Theme = _theme; }
+                else if (c is FieldFrame)
                 {
-                    c.BackColor = _theme.IsDark ? ControlPaint.Light(_theme.Background, 0.35f)
-                                                : Color.White;
-                    var combo = c as ComboBox;
-                    if (combo != null) combo.FlatStyle = FlatStyle.Flat;
-                    var num = c as NumericUpDown;
-                    if (num != null) num.BorderStyle = BorderStyle.FixedSingle;
+                    // 角丸の外側（四隅）に出る地。ページと同じ色にしておくと角が溶ける。
+                    c.BackColor = _theme.Background;
+                    ((FieldFrame)c).Theme = _theme;
+                }
+                else if (c is TextBox)
+                {
+                    c.BackColor = _theme.Field;
                 }
                 else if (c is Button)
                 {

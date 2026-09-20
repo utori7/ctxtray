@@ -255,14 +255,32 @@ Because that point can move, context thresholds are expressed as progress toward
 than as a fixed percentage of the window. A hardcoded "85% is dangerous" would fire
 *after* compaction if the point were moved to 80%.
 
-## 5. Terms compliance
+## 5. Getting out of the way of full-screen apps
+
+The panel is a topmost window, so without help it would sit on top of a full-screen video,
+a presentation, or a game. Windows already tracks whether this is a good moment to show a
+notification, and ctxtray borrows that answer: `SHQueryUserNotificationState` reporting
+`QUNS_BUSY`, `QUNS_RUNNING_D3D_FULL_SCREEN`, or `QUNS_PRESENTATION_MODE` is taken to mean
+"something is full-screen". A merely maximised window is not one of those states.
+
+One exception: if the window in front belongs to Claude Desktop, the panel stays. Claude
+Desktop in full screen is exactly when its context readout is worth seeing. The owner of
+the foreground window is resolved with `GetForegroundWindow` and `GetWindowThreadProcessId`,
+then checked against the same test used for "is Claude Desktop running" (section 2) —
+the executable's name and product name, nothing more.
+
+The panel only re-appears if ctxtray was the one that hid it. Hiding it yourself, or while
+a full-screen app is running, is respected. The whole behaviour is one setting
+(`hideWhenFullscreen`, on by default).
+
+## 6. Terms compliance
 
 ctxtray reads plain-text files that Claude Desktop and Claude Code wrote themselves,
 and does nothing else. Specifically it does not modify the application, does not
 decompile or analyse its code, does not call any Anthropic API, does not touch stored
 credentials, and makes no network connections.
 
-## 6. When it breaks
+## 7. When it breaks
 
 All four sources are internal formats and can change without notice. The design rule is
 that an unreadable or unrecognised source degrades to "unknown" and records a diagnostic;

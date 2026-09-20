@@ -72,6 +72,8 @@ namespace CtxTray
             var verifyWeekly = false;
             var iconPreview = false;
             var hudPreview = false;
+            var appIconPreview = false;
+            var writeAppIcon = false;
             string outDir = null;
 
             foreach (var a in args)
@@ -87,6 +89,12 @@ namespace CtxTray
                     case "--verify-weekly": verifyWeekly = true; break;
                     case "--icon-preview": iconPreview = true; break;
                     case "--hud-preview": hudPreview = true; break;
+                    case "--app-icon-preview": appIconPreview = true; break;
+                    case "--write-app-icon": writeAppIcon = true; break;
+                    case "--version":
+                    case "-v":
+                        Console.WriteLine("ctxtray " + AppVersion.Full);
+                        return 0;
                     case "--help":
                     case "-h":
                         PrintHelp();
@@ -99,7 +107,7 @@ namespace CtxTray
             }
 
             // 出力先の指定は見本の書き出しのときだけ意味を持つ。それ以外で渡されたら打ち間違いとして知らせる。
-            if (!iconPreview && !hudPreview && outDir != null)
+            if (!iconPreview && !hudPreview && !appIconPreview && !writeAppIcon && outDir != null)
             {
                 Console.Error.WriteLine(Strings.Format("cli.unknownArg", outDir));
                 PrintHelp();
@@ -108,6 +116,8 @@ namespace CtxTray
 
             if (iconPreview) return WriteIconPreview(config, outDir);
             if (hudPreview) return WriteHudPreview(outDir);
+            if (appIconPreview) return WriteAppIconPreview(outDir);
+            if (writeAppIcon) return WriteAppIcon(outDir);
 
             Snapshot snap;
             try
@@ -156,6 +166,9 @@ namespace CtxTray
                 Console.WriteLine("  ctxtray --verify-weekly     週間枠リセットの推定過程を表示");
                 Console.WriteLine("  ctxtray --icon-preview [dir] トレイアイコンの見本を PNG に出力");
                 Console.WriteLine("  ctxtray --hud-preview [dir]  HUD の見本（架空のデータ）を PNG に出力");
+                Console.WriteLine("  ctxtray --app-icon-preview [dir]  アプリのアイコンの見本を PNG に出力");
+                Console.WriteLine("  ctxtray --write-app-icon [path]   アプリのアイコンを .ico に書き出す（開発用）");
+                Console.WriteLine("  ctxtray --version           版を表示");
             }
             else
             {
@@ -169,6 +182,9 @@ namespace CtxTray
                 Console.WriteLine("  ctxtray --verify-weekly     show how the weekly reset was derived");
                 Console.WriteLine("  ctxtray --icon-preview [dir] write a PNG sheet of the tray icons");
                 Console.WriteLine("  ctxtray --hud-preview [dir]  write PNGs of the panel with made-up data");
+                Console.WriteLine("  ctxtray --app-icon-preview [dir]  write a PNG sheet of the app icon");
+                Console.WriteLine("  ctxtray --write-app-icon [path]   write the app icon as .ico (for maintainers)");
+                Console.WriteLine("  ctxtray --version           print the version");
             }
         }
 
@@ -279,6 +295,105 @@ namespace CtxTray
                     Console.Error.WriteLine(ex.Message);
                     return 1;
                 }
+            }
+
+            Console.WriteLine(path);
+            return 0;
+        }
+
+        /// <summary>
+        /// アプリのアイコン（タスクバー・Explorer に出るもの）の見本を PNG に書き出す。
+        ///
+        /// 実際に使う大きさを 1:1 で並べ、明るい背景と暗いタスクバーの両方に置いて見せる。
+        /// 小さい方で潰れていないかを実寸で確かめるための入口。
+        /// </summary>
+        private static int WriteAppIconPreview(string outDir)
+        {
+            var dir = string.IsNullOrEmpty(outDir) ? Environment.CurrentDirectory : outDir;
+            var path = System.IO.Path.Combine(dir, "ctxtray-app-icon.png");
+
+            var sizes = new[] { 16, 20, 24, 32, 48, 64 };
+            const int detail = 128;   // 形を確かめるための拡大図
+            const int gap = 16;
+            const int labelH = 22;
+
+            var rowH = detail + labelH + gap * 2;
+            var width = gap;
+            foreach (var s in sizes) width += s + gap;
+            width += detail + gap;
+
+            var strips = new[]
+            {
+                // タスクバーの地に近い色と、Explorer の一覧に近い色。
+                new { Back = Color.FromArgb(32, 32, 32), Ink = Color.FromArgb(230, 234, 242) },
+                new { Back = Color.FromArgb(243, 243, 243), Ink = Color.FromArgb(27, 31, 39) },
+            };
+
+            using (var bmp = new Bitmap(width, rowH * strips.Length))
+            using (var g = Graphics.FromImage(bmp))
+            using (var font = new Font(Theme.FontFamily, 8f))
+            {
+                var y = 0;
+                foreach (var strip in strips)
+                {
+                    using (var back = new SolidBrush(strip.Back))
+                        g.FillRectangle(back, 0, y, width, rowH);
+
+                    using (var ink = new SolidBrush(strip.Ink))
+                    {
+                        var x = gap;
+                        // 下端を揃える。タスクバーに並んだときの見え方に近い。
+                        var baseline = y + gap + detail;
+
+                        foreach (var size in sizes)
+                        {
+                            using (var icon = AppIconRenderer.Render(size))
+                                g.DrawImage(icon, x, baseline - size, size, size);
+                            g.DrawString(size + "px", font, ink, x, baseline + 4);
+                            x += size + gap;
+                        }
+
+                        using (var icon = AppIconRenderer.Render(detail))
+                            g.DrawImage(icon, x, baseline - detail, detail, detail);
+                        g.DrawString(detail + "px", font, ink, x, baseline + 4);
+                    }
+
+                    y += rowH;
+                }
+
+                try
+                {
+                    bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(ex.Message);
+                    return 1;
+                }
+            }
+
+            Console.WriteLine(path);
+            return 0;
+        }
+
+        /// <summary>
+        /// アプリのアイコンを .ico に書き出す（リポジトリの src/CtxTray/ctxtray.ico を作り直すため）。
+        /// 配布する exe には埋め込み済みなので、利用者が使うことはない。
+        /// </summary>
+        private static int WriteAppIcon(string outPath)
+        {
+            var path = string.IsNullOrEmpty(outPath)
+                ? System.IO.Path.Combine(Environment.CurrentDirectory, "ctxtray.ico")
+                : outPath;
+
+            try
+            {
+                AppIconRenderer.WriteIco(path);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                return 1;
             }
 
             Console.WriteLine(path);
@@ -441,6 +556,8 @@ namespace CtxTray
         private static string ToJson(Snapshot snap, bool asciiOnly)
         {
             var root = new JObj()
+                // 不具合の報告にはこの出力を貼ってもらうので、どの版で採ったかを先頭に入れる。
+                .Add("version", AppVersion.Full)
                 .Add("generated_at", Local(snap.GeneratedAtUtc))
                 .Add("desktop_running", snap.DesktopRunning)
                 .Add("freshness", snap.Freshness.ToString().ToLowerInvariant())

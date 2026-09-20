@@ -133,6 +133,15 @@ namespace CtxTray.Config
         public bool HideIdleSessions = true;
         public int IdleHours = 24;
 
+        // 止まっているセッション（HUD で淡く出る行）を隠す。既定はオフ＝これまでどおり出す。
+        // トレイ・通知は元から動いている行しか見ないので、これは HUD の見た目だけの設定。
+        public bool HideStoppedSessions = false;
+
+        // 全画面のアプリ（動画・発表・ゲーム）を使っている間は HUD を隠す。
+        // 最前面の窓なので、隠さないと全画面の上に残る。
+        // 前面が Claude Desktop のときは隠さない（TrayApp）。
+        public bool HideWhenFullscreen = true;
+
         // 文字の大きさ。寸法もこの倍率で伸びる。
         public string HudTextSize = "normal";       // small / normal / large / xlarge
         public static readonly string[] TextSizes = { "small", "normal", "large", "xlarge" };
@@ -148,6 +157,21 @@ namespace CtxTray.Config
         // HUD の位置。-1 は「未設定（右下に置く）」。
         public int HudX = -1;
         public int HudY = -1;
+
+        /// <summary>
+        /// 位置の基準。true なら HudY は HUD の「下端」の座標。
+        ///
+        /// 画面の下半分に置いた HUD は、セッションが増えたときに上へ伸ばす。
+        /// 上端を固定していた頃は、行が増えるとタスクバーの裏や画面の外へ出ていた（2026-09-18）。
+        /// このキーが無い旧設定は上端基準として読む。
+        /// </summary>
+        public bool HudAnchorBottom = false;
+
+        /// <summary>
+        /// 設定ファイルが無かった（初めての起動）。ファイルには保存しない。
+        /// 初回だけ操作の案内を出すために見る（Ui/TrayApp.cs）。
+        /// </summary>
+        public bool WasMissing;
 
         public double HudTextScale
         {
@@ -171,6 +195,25 @@ namespace CtxTray.Config
         public Dictionary<string, int> ModelLimits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         // --------------------------------------------------------------------
+
+        /// <summary>
+        /// 複製を作る（一覧と辞書も別物にする）。
+        ///
+        /// 設定画面やトレイのメニューは、この複製を書き換えて保存し、実行中の設定は再読込で差し替える。
+        /// 実行中の設定オブジェクトを直接書き換えていた頃は、次のことが起きた（2026-09-19）。
+        ///   - 「変わったか」を前後の設定で比べると常に同じになり、クリック透過が反映されなかった
+        ///   - 保存に失敗しても、書き換えた値の一部だけが画面に反映された
+        ///   - 設定画面を開いている間に別の場所で変えた値（メニューの透過、パネルの位置）を、OK で古い値に戻した
+        /// パネルの位置だけは実行中の状態そのものなので、HudForm が実行中の設定を直接書き換える。
+        /// </summary>
+        public AppConfig Clone()
+        {
+            var copy = (AppConfig)MemberwiseClone();
+            copy.TrayValues = new List<string>(TrayValues);
+            copy.ModelLimits = new Dictionary<string, int>(ModelLimits, StringComparer.OrdinalIgnoreCase);
+            copy.WasMissing = false;
+            return copy;
+        }
 
         public static string Dir
         {
@@ -219,7 +262,11 @@ namespace CtxTray.Config
                 string text;
                 try
                 {
-                    if (!File.Exists(FilePath)) return config;
+                    if (!File.Exists(FilePath))
+                    {
+                        config.WasMissing = true;
+                        return config;
+                    }
                     using (var fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read,
                                                    FileShare.ReadWrite | FileShare.Delete))
                     using (var sr = new StreamReader(fs, new UTF8Encoding(false), true))
@@ -370,6 +417,11 @@ namespace CtxTray.Config
                 ShowResets = Json.Str(display, "showResets") ?? ShowResets;
                 HudX = (int)Json.Long(display, "hudX", HudX);
                 HudY = (int)Json.Long(display, "hudY", HudY);
+                // キーが無い旧設定は上端基準（これまでと同じ意味）で読む。
+                HudAnchorBottom = string.Equals(Json.Str(display, "hudAnchor"), "bottom",
+                                                StringComparison.OrdinalIgnoreCase);
+                HideWhenFullscreen = Json.Bool(display, "hideWhenFullscreen", HideWhenFullscreen);
+                HideStoppedSessions = Json.Bool(display, "hideStoppedSessions", HideStoppedSessions);
 
                 HudShowRateLimits = Json.Bool(display, "showRateLimits", HudShowRateLimits);
                 HudShowSessions = Json.Bool(display, "showSessions", HudShowSessions);
@@ -467,6 +519,8 @@ namespace CtxTray.Config
                     .Add("showSessions", HudShowSessions)
                     .Add("hideIdleSessions", HideIdleSessions)
                     .Add("idleHours", IdleHours)
+                    .Add("hideStoppedSessions", HideStoppedSessions)
+                    .Add("hideWhenFullscreen", HideWhenFullscreen)
                     .Add("showBar", HudShowBar)
                     .Add("showTokens", HudShowTokens)
                     .Add("showResets", ShowResets)
@@ -474,7 +528,8 @@ namespace CtxTray.Config
                         .Add("fiveHour", ResetLeadFiveHourMinutes))
                     .Add("showAtStartup", HudShowAtStartup)
                     .Add("hudX", HudX)
-                    .Add("hudY", HudY))
+                    .Add("hudY", HudY)
+                    .Add("hudAnchor", HudAnchorBottom ? "bottom" : "top"))
                 .Add("externalSessions", new JObj()
                     .Add("enabled", ExternalSessionsEnabled)
                     .Add("max", ExternalSessionsMax))

@@ -36,6 +36,15 @@ namespace CtxTray.Core
                     continue;
                 }
 
+                // 止まっている行（HUD で淡く出るもの）を出さない設定。既定はオフ。
+                // トレイ・ツールチップ・通知は元から動いている行しか見ないので、
+                // これは HUD の縦の長さを抑えるための設定（2026-09-18）。
+                if (config.HideStoppedSessions && !IsRunning(s))
+                {
+                    hidden++;
+                    continue;
+                }
+
                 if (s.IsExternal)
                 {
                     if (external >= config.ExternalSessionsMax)

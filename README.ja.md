@@ -59,12 +59,17 @@ Release ページにある `.sha256` ファイルと照合できます。
 |---|---|
 | `Ctrl+Alt+C` | パネルの表示 / 非表示（変更可） |
 | ドラッグ | パネルを移動 |
-| トレイアイコンをダブルクリック | パネルの表示 / 非表示 |
-| トレイアイコンを右クリック | パネルの表示・ログオン時に起動・設定・今すぐ更新・設定ファイルを開く・稼働状況・終了 |
+| 行にマウスを乗せる | 詳細（名前の全文・モデル・トークン数・自動圧縮までの残り・値が記録された時刻） |
+| トレイアイコンをクリック | パネルの表示 / 非表示 |
+| トレイアイコンかパネルを右クリック | パネルの表示・クリックを後ろに通す・ログオン時に起動・設定・今すぐ更新・設定ファイルを開く・稼働状況・終了 |
 
 セッション名が灰色のときは、その Claude Code のプロセスがいま動いていないことを表します
 （しばらく使っていないタブなど）。灰色のセッションは、トレイアイコンと通知の対象にしません。
-再び動き出すまで、使用量が増えないためです。
+再び動き出すまで、使用量が増えないためです。設定で、灰色の行そのものを隠すこともできます。
+
+パネルは画面の中に収まり続けます。画面の下半分に置いた場合は、セッションが増えたときに
+上へ伸びます。動画・発表・ゲームなどの全画面表示のあいだはパネルを隠し、終わると戻ります
+（Claude Desktop が前面のときは隠しません）。どちらも設定で切り替えられます。
 
 ### 通知領域アイコン
 
@@ -154,12 +159,14 @@ Claude Desktop が最後に記録した値のまま灰色で表示されます�
     "showSessions": true,
     "hideIdleSessions": true,
     "idleHours": 24,
+    "hideStoppedSessions": false, // 動いていないセッション（灰色の行）を隠す
     "showBar": true,
     "showTokens": false,         // 例: 284k/1M
     "showResets": "auto",        // "always" | "auto" | "never"（5時間枠のリセット時刻）
     "opacity": 0.9,
     "clickThrough": false,
-    "showAtStartup": true
+    "showAtStartup": true,
+    "hideWhenFullscreen": true   // 全画面のアプリを使っている間は隠す
   },
   "language": "auto",            // "ja" | "en"
   // 自動圧縮が起きる点（コンテキストウィンドウに対する割合）。
@@ -185,6 +192,7 @@ ctxtray --include-archived  終了済みタブも含める
 ctxtray --verify-weekly     週間枠リセット推定の過程を表示
 ctxtray --icon-preview DIR  トレイアイコン全スタイルの見本 PNG を DIR に出力
 ctxtray --hud-preview DIR   パネルの見本 PNG（架空のデータ）を DIR に出力
+ctxtray --version           版を表示
 ```
 
 `--status` と `--json` は、パネルで隠しているものも含めて全セッションを出します。
@@ -211,6 +219,10 @@ ctxtray --json | Out-File state.json
 | `claude-code-sessions/**/local_*.json` | 開いているタブ、そのモデルと作業フォルダ |
 | `~/.claude/projects/**/*.jsonl` | `usage` フィールドのトークン数 |
 | `~/.claude/sessions/<pid>.json` | 実際に走っている Claude Code プロセス |
+
+このほかに、全画面のアプリが使われているかと、前面のウィンドウがどのプログラムのものかを
+Windows に尋ねます。全画面のアプリの上ではパネルを隠し、Claude Desktop の上では隠さないためです。
+それ以外のことは調べません。
 
 書き込むのは自分のファイルだけです。
 

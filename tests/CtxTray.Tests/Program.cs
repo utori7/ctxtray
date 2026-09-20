@@ -33,6 +33,8 @@ namespace CtxTray.Tests
                 Run("Config with comments and modelLimits", ConfigLoad);
                 Run("Compaction point: documented default, old placeholder migrated", CompactThresholdMigration);
                 Run("Broken config", BrokenConfig);
+                Run("Config: new display keys and older files without them", NewDisplayKeys);
+                Run("Config: a copy is independent of the original", ConfigClone);
                 Run("ModelLimits lookup", ModelLimitsLookup);
                 Run("Rate samples: latest org only, incomplete samples skipped", RateSamples);
                 Run("JSON writer: ASCII-only output", AsciiJson);
@@ -40,6 +42,8 @@ namespace CtxTray.Tests
                 Run("Sessions: a Desktop tab keeps its Desktop process", TabProcessChoice);
                 Run("Levels with slack", LevelsSlack);
                 Run("Tray: running sessions only", TrayPicksRunning);
+                Run("Sessions: hide the ones that are not running", HideStoppedSessions);
+                Run("HUD placement: grows upward in the lower half, stays on screen", Placement);
                 Run("Notify: stopped sessions are not reported", NotifySkipsStopped);
                 Run("Notify: warn then danger within the quiet period", NotifyEscalation);
                 Run("Notify: hysteresis", NotifyHysteresis);
@@ -129,6 +133,82 @@ namespace CtxTray.Tests
             Check(!failed2, "the saved file loads again");
             Equal(123456, again.ModelLimits["claude-example-6"], "modelLimits survives a save");
             Check(!File.Exists(path + ".tmp"), "temporary file is gone after save");
+        }
+
+        /// <summary>
+        /// 複製は元と切り離されている（設定画面とメニューは複製を書き換えて保存する）。
+        /// 一覧や辞書を共有していると、複製への変更が実行中の設定に漏れる。
+        /// </summary>
+        private static void ConfigClone()
+        {
+            var original = new AppConfig();
+            original.ClickThrough = false;
+            original.HudX = 100;
+            original.ModelLimits["claude-example-6"] = 1000000;
+
+            var copy = original.Clone();
+            Check(!ReferenceEquals(original, copy), "a new object");
+            Equal(100, copy.HudX, "values are copied");
+            Equal(1000000, copy.ModelLimits["claude-example-6"], "modelLimits are copied");
+
+            copy.ClickThrough = true;
+            copy.TrayValues.Clear();
+            copy.TrayValues.Add("weekly");
+            copy.ModelLimits["claude-example-6"] = 200000;
+            copy.ModelLimits["claude-example-7"] = 1;
+
+            Check(!original.ClickThrough, "changing the copy does not change the original");
+            Equal(3, original.TrayValues.Count, "the tray values list is not shared");
+            Equal(1000000, original.ModelLimits["claude-example-6"], "the modelLimits dictionary is not shared");
+            Check(!original.ModelLimits.ContainsKey("claude-example-7"), "entries added to the copy stay in the copy");
+            Check(copy.ModelLimits.ContainsKey("CLAUDE-EXAMPLE-6"), "the copy keeps case-insensitive model names");
+
+            original.WasMissing = true;
+            Check(!original.Clone().WasMissing, "the first-run mark is not copied (a copy is never a first run)");
+        }
+
+        /// <summary>
+        /// 2026-09-18 に足した設定（位置の基準、止まっている行を隠す、全画面で隠す）と、
+        /// それらのキーが無い旧設定の読み方。
+        /// </summary>
+        private static void NewDisplayKeys()
+        {
+            var path = UseConfigDir("config-new-keys");
+
+            // 旧設定（新しいキーが無い）: 位置は上端基準、全画面では隠す、止まっている行は出す。
+            File.WriteAllText(path, "{ \"display\": { \"hudX\": 10, \"hudY\": 20 } }", new UTF8Encoding(false));
+            string problem;
+            bool failed;
+            var old = AppConfig.Load(out problem, out failed);
+            Check(!failed, "an older config still loads");
+            Check(!old.HudAnchorBottom, "no hudAnchor means the top edge (as before)");
+            Check(!old.HideStoppedSessions, "stopped sessions are shown by default");
+            Check(old.HideWhenFullscreen, "hiding over full-screen apps is on by default");
+            Check(!old.WasMissing, "the file was there");
+
+            // 書いた値がそのまま読める。
+            File.WriteAllText(path,
+                "{ \"display\": { \"hudX\": 30, \"hudY\": 40, \"hudAnchor\": \"bottom\","
+                + " \"hideStoppedSessions\": true, \"hideWhenFullscreen\": false } }",
+                new UTF8Encoding(false));
+            var set = AppConfig.Load(out problem, out failed);
+            Check(set.HudAnchorBottom, "hudAnchor: bottom is read");
+            Check(set.HideStoppedSessions, "hideStoppedSessions is read");
+            Check(!set.HideWhenFullscreen, "hideWhenFullscreen is read");
+
+            // 保存して読み直しても同じ（設定画面の OK で消えない）。
+            Check(set.Save(), "save succeeds");
+            var back = AppConfig.Load(out problem, out failed);
+            Check(back.HudAnchorBottom && back.HideStoppedSessions && !back.HideWhenFullscreen,
+                  "the three settings survive a save");
+            Equal(40, back.HudY, "the saved position survives too");
+
+            // ファイルが無いときは「初めての起動」として分かる（初回の案内に使う）。
+            var missing = UseConfigDir("config-first-run");
+            Check(!File.Exists(missing), "no config file yet");
+            var first = AppConfig.Load(out problem, out failed);
+            Check(first.WasMissing, "a missing file is reported as the first run");
+            Check(!failed && problem == null, "and is not treated as a problem");
         }
 
         private static void CompactThresholdMigration()
@@ -411,6 +491,102 @@ namespace CtxTray.Tests
 
             Check(SessionFilter.MostPressed(new Snapshot(), cfg) == null, "nothing when there are no sessions");
             Check(!SessionFilter.IsRunning(null), "null is not running");
+        }
+
+        /// <summary>
+        /// 「動いていないセッションは隠す」設定（既定はオフ）。
+        /// 隠した行は非表示の件数に数え、HUD の見出しに出す。
+        /// </summary>
+        private static void HideStoppedSessions()
+        {
+            var now = new DateTime(2026, 9, 18, 12, 0, 0, DateTimeKind.Utc);
+
+            Func<Snapshot> build = () =>
+            {
+                var s = new Snapshot();
+                var running = Row("running", 300000, 1000000, true);
+                var stopped = Row("stopped", 900000, 1000000, false);
+                running.LastActivityUtc = now.AddMinutes(-1);
+                stopped.LastActivityUtc = now.AddMinutes(-2);
+                s.Sessions.Add(running);
+                s.Sessions.Add(stopped);
+                return s;
+            };
+
+            var off = new AppConfig { HideStoppedSessions = false, HideIdleSessions = false };
+            var kept = build();
+            SessionFilter.Apply(kept, off, now);
+            Equal(2, kept.Sessions.Count, "off: both rows stay");
+            Equal(0, kept.HiddenSessionCount, "off: nothing is hidden");
+
+            var on = new AppConfig { HideStoppedSessions = true, HideIdleSessions = false };
+            var filtered = build();
+            SessionFilter.Apply(filtered, on, now);
+            Equal(1, filtered.Sessions.Count, "on: only the running row stays");
+            Equal("running", filtered.Sessions.Count == 1 ? filtered.Sessions[0].CliSessionId : null,
+                  "on: the kept row is the running one");
+            Equal(1, filtered.HiddenSessionCount, "on: the stopped row is counted as hidden");
+
+            // 動いている行が無ければ 0 件になるが、隠した件数で「動いているものが無い」と分かる。
+            var allStopped = new Snapshot();
+            allStopped.Sessions.Add(Row("a", 900000, 1000000, false));
+            allStopped.Sessions.Add(Row("b", 400000, 1000000, false));
+            SessionFilter.Apply(allStopped, on, now);
+            Equal(0, allStopped.Sessions.Count, "on: no rows when nothing runs");
+            Equal(2, allStopped.HiddenSessionCount, "on: both are counted as hidden");
+        }
+
+        // --- HUD の位置 --------------------------------------------------------
+
+        /// <summary>
+        /// 行が増えても画面の外へ出ない。下半分に置いた HUD は下端を固定して上へ伸びる。
+        /// </summary>
+        private static void Placement()
+        {
+            // 1920x1080 からタスクバー 40px を除いた作業領域。
+            var work = new System.Drawing.Rectangle(0, 0, 1920, 1040);
+
+            var upper = new System.Drawing.Rectangle(100, 100, 352, 200);
+            var lower = new System.Drawing.Rectangle(100, 800, 352, 200);
+            Check(!HudPlacement.AnchorBottom(upper, work), "a HUD in the upper half keeps its top edge");
+            Check(HudPlacement.AnchorBottom(lower, work), "a HUD in the lower half keeps its bottom edge");
+
+            // 上端基準: 高さが増えても上端はそのまま（下に余裕がある間）。
+            Equal(new System.Drawing.Point(100, 100),
+                  HudPlacement.Place(100, 100, false, new System.Drawing.Size(352, 400), work),
+                  "top-anchored: the top edge stays");
+
+            // 下端基準: 下端 1000 のまま高さ 200 → 400 で上へ伸びる。
+            var anchor = HudPlacement.Anchor(lower, true);
+            Equal(new System.Drawing.Point(100, 1000), anchor, "the bottom edge is what gets saved");
+            Equal(new System.Drawing.Point(100, 800),
+                  HudPlacement.Place(anchor.X, anchor.Y, true, new System.Drawing.Size(352, 200), work),
+                  "bottom-anchored: same height, same place");
+            Equal(new System.Drawing.Point(100, 600),
+                  HudPlacement.Place(anchor.X, anchor.Y, true, new System.Drawing.Size(352, 400), work),
+                  "bottom-anchored: a taller HUD grows upward");
+
+            // はみ出しは押し戻す（上端基準で行が増えた場合＝以前は画面外へ出ていた）。
+            Equal(new System.Drawing.Point(100, 640),
+                  HudPlacement.Place(100, 900, false, new System.Drawing.Size(352, 400), work),
+                  "a HUD that would run past the bottom is pushed back inside");
+            Equal(new System.Drawing.Point(1568, 100),
+                  HudPlacement.Place(1800, 100, false, new System.Drawing.Size(352, 200), work),
+                  "same for the right edge");
+            Equal(new System.Drawing.Point(0, 0),
+                  HudPlacement.Place(-50, -80, false, new System.Drawing.Size(352, 200), work),
+                  "and for the left and top edges");
+
+            // 作業領域より大きい HUD は左上に合わせる（頭を切らない）。
+            Equal(new System.Drawing.Point(0, 0),
+                  HudPlacement.Place(100, 900, true, new System.Drawing.Size(2000, 1200), work),
+                  "a HUD larger than the work area starts at its top-left");
+
+            // 左上が負の座標のモニタ（主モニタの左・上にある画面）でも同じ規則。
+            var left = new System.Drawing.Rectangle(-1920, -200, 1920, 1040);
+            Equal(new System.Drawing.Point(-1800, 400),
+                  HudPlacement.Place(-1800, 600, true, new System.Drawing.Size(352, 200), left),
+                  "works on a monitor with negative coordinates");
         }
 
         private static void NotifySkipsStopped()

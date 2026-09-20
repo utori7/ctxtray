@@ -15,6 +15,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
+    <!-- exe の Win32 リソースに入るアイコン。Explorer・ショートカット・タスクバーのピン留め用。
+         絵そのものは Ui/AppIconRenderer.cs が描いていて、
+         このファイルは書き出し用の CLI 引数で作り直せる（Program.WriteAppIcon）。 -->
+    <ApplicationIcon>ctxtray.ico</ApplicationIcon>
+
     <!-- 日本語コメントを含むソースを UTF-8 として読ませる。
          これを指定しないと日本語環境の既定コードページ (cp932) で解釈され、
          コメントや文字列リテラルが壊れる。調査フェーズで .ps1 が同じ罠を踏んでいる。 -->
@@ -36,6 +41,14 @@
   <ItemGroup>
     <!-- JavaScriptSerializer。.NET Framework 同梱なので追加の DLL を配らずに済む。 -->
     <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 窓のアイコン（Form.Icon）用。.NET Framework の WinForms は ApplicationIcon を
+         Form.Icon の既定値にせず、内蔵の古い既定アイコンを出すので、別に埋め込んで読む
+         （AppIconRenderer.Load）。ExtractAssociatedIcon は 32x32 しか返さず、
+         表示倍率 150% のタスクバーでぼやけるため使わない。 -->
+    <EmbeddedResource Include="ctxtray.ico" />
   </ItemGroup>
 
 </Project>

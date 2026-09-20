@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using CtxTray.Collect;
 using CtxTray.Config;
 using CtxTray.Core;
+using CtxTray.Native;
 using CtxTray.Notify;
 
 namespace CtxTray.Ui
@@ -37,6 +38,7 @@ namespace CtxTray.Ui
         private readonly Timer _timer = new Timer();
         private readonly ThresholdNotifier _notifier;
         private readonly ToolStripMenuItem _hudItem;
+        private readonly ToolStripMenuItem _clickThroughItem;
         private readonly ToolStripMenuItem _autoStartItem;
         private readonly ContextMenuStrip _menu;
 
@@ -63,6 +65,16 @@ namespace CtxTray.Ui
         private DateTime _lastErrorUtc;
         private DateTime _lastErrorNotifiedUtc = DateTime.MinValue;
 
+        // 全画面のアプリのために隠したか。自分で隠したときだけ出し直す
+        // （利用者が隠した HUD を勝手に出さない）。
+        private bool _hiddenForFullscreen;
+
+        // 全画面と続けて何回判定したか（一瞬のブレで隠さないため）。
+        private int _fullscreenTicks;
+
+        // ホットキーが使えないことを知らせたキー。同じキーで繰り返し知らせない。
+        private string _hotkeyWarnedFor;
+
         public TrayApp()
         {
             string problem;
@@ -84,6 +96,7 @@ namespace CtxTray.Ui
 
             // HUD の項目は表示状態で文言が変わるので、Tag を付けず UpdateMenuState で付ける。
             _hudItem = new ToolStripMenuItem(Strings.Get("menu.showHud"), null, (s, e) => ToggleHud());
+            _clickThroughItem = MenuItem("menu.clickThrough", ToggleClickThrough);
             _autoStartItem = MenuItem("menu.autoStart", ToggleAutoStart);
 
             _menu = new ContextMenuStrip();
@@ -91,6 +104,7 @@ namespace CtxTray.Ui
             // 古い表示のままにならないように。
             _menu.Opening += (s, e) => UpdateMenuState();
             _menu.Items.Add(_hudItem);
+            _menu.Items.Add(_clickThroughItem);
             _menu.Items.Add(_autoStartItem);
             _menu.Items.Add(new ToolStripSeparator());
             _menu.Items.Add(MenuItem("menu.settings", OpenSettings));
@@ -100,13 +114,22 @@ namespace CtxTray.Ui
             _menu.Items.Add(new ToolStripSeparator());
             _menu.Items.Add(MenuItem("menu.exit", ExitApp));
 
-            // メニューとダブルクリックは全スロットで共有する。
+            // メニューとクリックの扱いは全スロットで共有する。
             foreach (var tray in _trays)
             {
                 tray.ContextMenuStrip = _menu;
                 tray.Text = "ctxtray";
-                tray.Icon = SystemIcons.Application;
-                tray.DoubleClick += (s, e) => ToggleHud();
+                // 最初の描画までの仮のアイコン。Windows の汎用アイコンだと、
+                // 起動直後の一瞬だけ別のアプリに見える。
+                tray.Icon = AppIconRenderer.Load() ?? SystemIcons.Application;
+
+                // ★ 1 回クリックで切り替える（Windows 11 のほかのアイコンと同じ操作、2026-09-18）。
+                //   WinForms はダブルクリックの 2 回目ではクリックの処理を呼ばないので、
+                //   慣れでダブルクリックしても切り替わるのは 1 回で済む。
+                tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ToggleHud(); };
+
+                // 通知をクリックしたら HUD を出す（以前は何も起きなかった）。
+                tray.BalloonTipClicked += (s, e) => ShowHud();
             }
             // ここではまだどのアイコンも出さない。値ごとに分けるモードでは Windows に登録する順が
             // 並びを決めるので（RenderMulti）、先に 1 個目だけ出すと並びが崩れる。
@@ -123,6 +146,18 @@ namespace CtxTray.Ui
             if (!string.IsNullOrEmpty(problem))
                 _notifier.ShowInfo("ctxtray", problem);
 
+            // 初めての起動（設定ファイルが無かった）だけ、操作の案内を出す。
+            // 常駐してアイコンが出るだけでは、ホットキーや右クリックに気づけない。
+            if (_config.WasMissing)
+            {
+                _notifier.ShowInfo("ctxtray", Strings.Format("app.welcome", _config.Hotkey));
+                // 設定ファイルを作って、次の起動では出さないようにする。
+                _config.Save();
+            }
+
+            // ホットキーを登録できたか（他のアプリが同じキーを取っていると失敗する）。
+            CheckHotkey();
+
             UpdateMenuState();
             Tick(null, null);
 
@@ -138,12 +173,39 @@ namespace CtxTray.Ui
             hud.ThemeChanged += (s, e) => { if (_lastSnapshot != null) SetTrayIcon(_lastSnapshot); };
             hud.RestorePosition();
 
+            // トレイと同じメニューを HUD の右クリックでも出す。
+            // アイコンが「隠れているインジケーター」に入っていると、設定や終了に届きにくいため（2026-09-18）。
+            hud.ContextMenuStrip = _menu;
+
             // ホットキーは HUD のウィンドウに登録される。起動時に HUD を出さない設定でも
             // ホットキーで出せるよう、表示せずにハンドルだけ作っておく。
             var handle = hud.Handle;
             GC.KeepAlive(handle);
 
             return hud;
+        }
+
+        /// <summary>
+        /// ホットキーが登録できたかを確かめ、駄目なら理由を知らせる。
+        /// 押しても何も起きない状態を黙って放置しないため（2026-09-18）。
+        /// 同じキーで何度も知らせない（設定を読み直すたびに通知が出ないように）。
+        /// </summary>
+        private void CheckHotkey()
+        {
+            if (_hud == null || _hud.IsDisposed) return;
+
+            if (_hud.HotkeyStatus == HotkeyState.Ok)
+            {
+                _hotkeyWarnedFor = null;
+                return;
+            }
+
+            var key = _config.Hotkey ?? string.Empty;
+            if (string.Equals(_hotkeyWarnedFor, key, StringComparison.Ordinal)) return;
+            _hotkeyWarnedFor = key;
+
+            _notifier.ShowInfo("ctxtray", Strings.Format(
+                _hud.HotkeyStatus == HotkeyState.Taken ? "hotkey.taken" : "hotkey.unparsable", key));
         }
 
         // --- 更新 ---------------------------------------------------------------
@@ -177,6 +239,9 @@ namespace CtxTray.Ui
             // 待たせている通知は、収集を挟まなくても一定間隔で出す。
             _notifier.Pump();
 
+            // 全画面のアプリの出入りは、収集の間隔とは関係なく追いかける。
+            ApplyFullscreenRule();
+
             var due = (DateTime.UtcNow - _lastRefreshUtc).TotalSeconds >= _config.PollSeconds;
             if (!_dirty && !due) return;
 
@@ -205,6 +270,96 @@ namespace CtxTray.Ui
         private void OnThreadException(object sender, System.Threading.ThreadExceptionEventArgs e)
         {
             ReportError(e.Exception);
+        }
+
+        // --- 全画面のアプリ -----------------------------------------------------
+
+        /// <summary>
+        /// 全画面のアプリ（動画・発表・ゲーム）を使っている間は HUD を隠す。
+        ///
+        /// 自分で隠したときだけ印を立て、全画面が終わったら出し直す。
+        /// 利用者が自分で隠した HUD を勝手に出さないため。
+        /// </summary>
+        private void ApplyFullscreenRule()
+        {
+            if (!_config.HideWhenFullscreen)
+            {
+                // 設定を切ったときは、隠していたものを出し直す。
+                if (_hiddenForFullscreen)
+                {
+                    _hiddenForFullscreen = false;
+                    ShowHudIfHidden();
+                }
+                return;
+            }
+
+            // ★ 1 回の判定では隠さない。
+            //   起動直後などに一瞬だけ「全画面」と返ることがあり、それで HUD が消えた（実機で確認、2026-09-18）。
+            //   続けて 2 回（約 1 秒）そうなら隠す。戻すのは 1 回で。
+            var fullscreen = IsFullscreen();
+            _fullscreenTicks = fullscreen ? _fullscreenTicks + 1 : 0;
+            fullscreen = _fullscreenTicks >= 2;
+
+            if (fullscreen && !_hiddenForFullscreen)
+            {
+                if (_hud == null || _hud.IsDisposed || !_hud.Visible) return;
+                _hiddenForFullscreen = true;
+                _hud.Hide();
+                UpdateMenuState();
+                return;
+            }
+
+            if (!fullscreen && _hiddenForFullscreen)
+            {
+                _hiddenForFullscreen = false;
+                ShowHudIfHidden();
+            }
+        }
+
+        /// <summary>
+        /// いま全画面のアプリが使われているか。
+        ///
+        /// Windows の「通知を出してよい状態か」を借りて判定する。最大化しただけの窓は含まれない。
+        /// ただし前面が Claude Desktop なら全画面とみなさない。
+        /// Desktop を全画面で使っているときこそ、コンテキストの残量が見えている必要があるため。
+        /// </summary>
+        private static bool IsFullscreen()
+        {
+            int state;
+            try
+            {
+                if (NativeMethods.SHQueryUserNotificationState(out state) != 0) return false;
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (state != NativeMethods.QUNS_BUSY
+                && state != NativeMethods.QUNS_RUNNING_D3D_FULL_SCREEN
+                && state != NativeMethods.QUNS_PRESENTATION_MODE)
+                return false;
+
+            return !ForegroundIsClaudeDesktop();
+        }
+
+        private static bool ForegroundIsClaudeDesktop()
+        {
+            try
+            {
+                var window = NativeMethods.GetForegroundWindow();
+                if (window == IntPtr.Zero) return false;
+
+                int pid;
+                NativeMethods.GetWindowThreadProcessId(window, out pid);
+                if (pid == 0) return false;
+
+                return SnapshotBuilder.IsDesktopProcess(pid);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -274,7 +429,9 @@ namespace CtxTray.Ui
             {
                 // 行はあるが全部止まっている（HUD では淡い行だけ）ときは、そう書く。
                 // 「セッションなし」だと HUD の表示と食い違って見える。
-                var none = snap.Sessions.Count > 0 ? "tip.noRunning" : "tip.noSessions";
+                // 止まっている行を隠す設定では行が 0 件になるが、それも「動いているものが無い」状態。
+                var none = snap.Sessions.Count > 0 || snap.HiddenSessionCount > 0
+                    ? "tip.noRunning" : "tip.noSessions";
                 return Join(new List<string> { Strings.Get(none) }, tail);
             }
 
@@ -522,14 +679,18 @@ namespace CtxTray.Ui
             }
 
             // 位置は実行中の値を優先する（ドラッグ直後に設定ファイルで巻き戻さない）。
+            // 位置の基準（上端／下端）も位置の一部なので一緒に持ち越す。
             loaded.HudX = _config.HudX;
             loaded.HudY = _config.HudY;
+            loaded.HudAnchorBottom = _config.HudAnchorBottom;
             _config = loaded;
             Strings.Apply(_config.Language);
             RefreshMenuTexts();
 
             // HUD にも新しい設定オブジェクトを渡す。渡さないと HUD だけ古い設定を見続ける。
             if (_hud != null && !_hud.IsDisposed) _hud.ApplyConfig(_config);
+            // 設定でキーを変えたときは、新しいキーで登録できたかを確かめ直す。
+            CheckHotkey();
             if (!string.IsNullOrEmpty(problem)) _notifier.ShowInfo("ctxtray", problem);
 
             _dirty = true;
@@ -548,7 +709,51 @@ namespace CtxTray.Ui
             if (_hud.Visible) _hud.Hide();
             else { _hud.Show(); _dirty = true; }
 
+            // 利用者の操作を優先する。全画面のために隠した印は消す
+            // （利用者が出したものを次のティックで引っ込めない／隠したものを出し直さない）。
+            _hiddenForFullscreen = false;
+
             UpdateMenuState();
+        }
+
+        /// <summary>HUD を出す（切り替えではない）。通知をクリックしたときに使う。</summary>
+        private void ShowHud()
+        {
+            if (_hud == null || _hud.IsDisposed) _hud = CreateHud();
+            _hiddenForFullscreen = false;
+            ShowHudIfHidden();
+        }
+
+        private void ShowHudIfHidden()
+        {
+            if (_hud == null || _hud.IsDisposed) return;
+            if (!_hud.Visible) { _hud.Show(); _dirty = true; }
+            UpdateMenuState();
+        }
+
+        /// <summary>
+        /// クリック透過の切り替え。透過中は HUD をドラッグできず右クリックも届かないので、
+        /// 設定画面を開かずにトレイのメニューから戻せるようにする。
+        ///
+        /// 実行中の設定は書き換えず、複製を保存して再読込で反映する（設定画面の OK と同じ経路。
+        /// AppConfig.Clone の説明を参照）。保存できなければ何も変えずに知らせる。
+        /// </summary>
+        private void ToggleClickThrough()
+        {
+            var next = _config.Clone();
+            next.ClickThrough = !next.ClickThrough;
+
+            if (!next.Save())
+            {
+                _notifier.ShowInfo("ctxtray", Strings.Format("set.saveFailed", AppConfig.FilePath));
+                return;
+            }
+
+            // 設定ファイルの監視を待たずに、次の更新で読み直す。
+            _configDirty = true;
+
+            // 設定画面が開いていれば、そのチェックも合わせる（OK で元に戻さないように）。
+            if (_settings != null && !_settings.IsDisposed) _settings.SyncClickThrough(next.ClickThrough);
         }
 
         private void ToggleAutoStart()
@@ -581,6 +786,7 @@ namespace CtxTray.Ui
         {
             _hudItem.Text = Strings.Get((_hud != null && _hud.Visible) ? "menu.hideHud" : "menu.showHud");
             _hudItem.Checked = _hud != null && _hud.Visible;
+            _clickThroughItem.Checked = _config.ClickThrough;
             _autoStartItem.Checked = AutoStart.IsEnabled;
         }
 
@@ -596,7 +802,11 @@ namespace CtxTray.Ui
                 return;
             }
 
-            _settings = new SettingsForm(_config, PreviewGauge);
+            // キーの空き確認は HUD のウィンドウで行う（ホットキーの登録先がそこなので、
+            // 「いま自分が使っているキー」を正しく扱える）。
+            if (_hud == null || _hud.IsDisposed) _hud = CreateHud();
+            // 設定画面には「いまの設定を返す関数」を渡す。画面は OK の時点の最新の設定を複製して保存する。
+            _settings = new SettingsForm(() => _config, PreviewGauge, _hud.IsHotkeyAvailable);
             _settings.ResetHudPositionRequested += (s, e) =>
             {
                 if (_hud == null || _hud.IsDisposed) _hud = CreateHud();
@@ -623,7 +833,8 @@ namespace CtxTray.Ui
         {
             var up = DateTime.UtcNow - _startedUtc;
             // 時間は切り捨てる（TotalHours をそのまま "0" で書式化すると 1.6 時間が「2 時間 36 分」になる）。
-            var text = Strings.Format("uptime.body", (int)up.TotalHours, up.Minutes, _config.PollSeconds, AppConfig.FilePath);
+            var text = Strings.Format("uptime.body", (int)up.TotalHours, up.Minutes, _config.PollSeconds,
+                                      AppConfig.FilePath, AppVersion.Display);
             if (_lastError != null)
                 text += Strings.Format("uptime.lastError", _lastError,
                     _lastErrorUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture));

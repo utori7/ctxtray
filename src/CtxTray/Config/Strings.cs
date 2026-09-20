@@ -51,6 +51,8 @@ namespace CtxTray.Config
             // トレイメニュー
             { "menu.showHud",     new[] { "HUD を表示",        "Show HUD" } },
             { "menu.hideHud",     new[] { "HUD を隠す",        "Hide HUD" } },
+            // 透過中は HUD をドラッグできず右クリックも届かないので、メニューからも切り替えられるようにする。
+            { "menu.clickThrough",new[] { "クリックを後ろに通す", "Pass clicks through" } },
             { "menu.autoStart",   new[] { "ログオン時に起動",   "Start at sign-in" } },
             { "menu.settings",    new[] { "設定…",              "Settings…" } },
             { "menu.refresh",     new[] { "今すぐ更新",         "Refresh now" } },
@@ -73,6 +75,22 @@ namespace CtxTray.Config
             { "hud.fiveHour",     new[] { "5時間",          "5h" } },
             { "hud.weekly",       new[] { "週間",           "Week" } },
             { "hud.hidden",       new[] { "ほか {0} 件は非表示", "{0} more hidden" } },
+
+            // HUD の行にマウスを乗せたときに出す詳細（行は簡潔なまま、確かな値だけをここに出す）。
+            { "hud.tipTerminal",  new[] { "ターミナルで実行中",        "Running in a terminal" } },
+            { "hud.tipVsCode",    new[] { "VS Code で実行中",          "Running in VS Code" } },
+            { "hud.tipTokens",    new[] { "{0} / {1} トークン（{2}%）", "{0} / {1} tokens ({2}%)" } },
+            { "hud.tipTokensOnly",new[] { "{0} トークン",              "{0} tokens" } },
+            { "hud.tipToCompact", new[] { "自動圧縮まで {0} トークン",  "{0} tokens until auto-compaction" } },
+            { "hud.tipLastReply", new[] { "最後の応答: {0}",           "Last reply: {0}" } },
+            { "hud.tipStopped",   new[] { "Claude Code のプロセスは止まっています",
+                                          "The Claude Code process is not running" } },
+            { "hud.tipNoLimit",   new[] { "このモデルの上限が分からないため % を出していません（設定の modelLimits で指定できます）",
+                                          "This model's context window is unknown, so no % is shown (set it in modelLimits)" } },
+            { "hud.tipSampled",   new[] { "Claude Desktop が {0}に記録", "Claude Desktop recorded this {0}" } },
+            { "hud.tipReset",     new[] { "リセット見込み {0}",         "Next reset about {0}" } },
+            { "hud.tipReference", new[] { "Claude Desktop が起動していないため、最後に記録された値です",
+                                          "Claude Desktop isn't running, so this is the last value it recorded" } },
 
             { "hud.loading",      new[] { "読み取り中…",              "Reading…" } },
             { "hud.rateUnavail",  new[] { "レートリミット: 取得できず", "Rate limits: unavailable" } },
@@ -102,8 +120,8 @@ namespace CtxTray.Config
             { "config.openFailed", new[] { "設定ファイルを開けませんでした: {0}",
                                            "Could not open the config file: {0}" } },
 
-            { "uptime.body",   new[] { "起動してから: {0:0} 時間 {1:00} 分\n更新間隔: {2} 秒\n設定: {3}",
-                                       "Running for: {0:0} h {1:00} m\nRefresh interval: {2} s\nConfig: {3}" } },
+            { "uptime.body",   new[] { "版: {4}\n起動してから: {0:0} 時間 {1:00} 分\n更新間隔: {2} 秒\n設定: {3}",
+                                       "Version: {4}\nRunning for: {0:0} h {1:00} m\nRefresh interval: {2} s\nConfig: {3}" } },
             { "uptime.lastError", new[] { "\n最後に起きた問題: {0}（{1}）",
                                           "\nLast problem: {0} ({1})" } },
             { "app.crashed",   new[] { "ctxtray が停止しました。\n\n{0}",
@@ -112,6 +130,17 @@ namespace CtxTray.Config
                                        "Something went wrong while updating. ctxtray keeps running.\n{0}" } },
             { "autostart.description", new[] { "Claude のコンテキスト残量とレート枠を常時表示する",
                                                "Always-visible Claude context and rate-limit readout" } },
+
+            // 初めての起動（設定ファイルが無かったとき）に 1 回だけ出す案内。
+            // 通知は長いと末尾が切れる（実機で確認）。題名が「ctxtray」なので、本文は操作だけにする。
+            { "app.welcome",   new[] { "{0} か通知領域のアイコンで HUD を出し入れできます。右クリックで設定。",
+                                       "Press {0} or click the tray icon to show the panel. Right-click it for settings." } },
+
+            // ホットキーが登録できなかったとき（押しても何も起きない理由を伝える）。
+            { "hotkey.taken",  new[] { "ショートカット {0} は、ほかのアプリが使っているため効きません。設定で別のキーを選んでください。",
+                                       "The {0} shortcut is in use by another app, so it does nothing. Choose a different key in the settings." } },
+            { "hotkey.unparsable", new[] { "設定ファイルのショートカット「{0}」を読み取れません。設定で選び直してください。",
+                                           "The shortcut \"{0}\" in the config file could not be read. Choose one in the settings." } },
 
             // 設定ダイアログ
             { "set.title",         new[] { "ctxtray の設定",      "ctxtray settings" } },
@@ -129,6 +158,8 @@ namespace CtxTray.Config
             // 語順が日英で違うので、数値の前後を別の文言にする。
             { "set.hideIdlePre",   new[] { "",                     "Hide sessions not used for" } },
             { "set.hideIdlePost",  new[] { "時間以上使っていないセッションは隠す", "hours or more" } },
+            { "set.hideStopped",   new[] { "動いていないセッション（灰色の行）は隠す",
+                                           "Hide sessions that aren't running (grey rows)" } },
             { "set.external",      new[] { "ターミナルや VS Code のセッションも出す",
                                            "Also show terminal and VS Code sessions" } },
             { "set.externalMaxPre",  new[] { "最大",               "Up to" } },
@@ -160,9 +191,17 @@ namespace CtxTray.Config
 
             { "set.secHudPlace",   new[] { "表示と位置",           "Showing and position" } },
             { "set.hotkey",        new[] { "表示／非表示のキー",    "Show/hide shortcut" } },
-            { "set.hotkeyHint",    new[] { "欄をクリックしてから、Ctrl・Alt・Shift のどれかと一緒にキーを押します。",
-                                           "Click the box, then press a key together with Ctrl, Alt, or Shift." } },
+            // ほかのアプリが先に取っているキーは欄に届かず、押しても何も変わらない（2026-09-18 実機で確認）。
+            // 無反応の理由をその場で分かるようにする。
+            { "set.hotkeyHint",    new[] { "欄をクリックしてから、Ctrl・Alt・Shift のどれかと一緒にキーを押します。押しても欄が変わらないキーは、ほかのアプリが先に使っています。",
+                                           "Click the box, then press a key together with Ctrl, Alt, or Shift. If the box doesn't change, another app is already using that key." } },
+            { "set.hotkeyTaken",   new[] { "このキーはほかのアプリが使っているため効きません。",
+                                           "Another app is using this key, so it will not work." } },
             { "set.showAtStartup", new[] { "起動したときに HUD を表示する", "Show the HUD when ctxtray starts" } },
+            { "set.hideFullscreen", new[] { "全画面のアプリを使っている間は隠す",
+                                            "Hide while a full-screen app is in use" } },
+            { "set.hideFullscreenHint", new[] { "動画・発表・ゲームなどの全画面表示のあいだ HUD を隠します。Claude Desktop が前面のときは隠しません。",
+                                                "Hides the HUD while a video, presentation, or game is full-screen. It stays visible when Claude Desktop is in front." } },
             { "set.position",      new[] { "位置",                 "Position" } },
             { "set.resetPosition", new[] { "右下の隅に戻す",        "Move to bottom-right corner" } },
 
@@ -260,6 +299,7 @@ namespace CtxTray.Config
             { "cli.unknownArg", new[] { "不明な引数: {0}", "Unknown argument: {0}" } },
             { "cli.secondsAgo", new[] { "{0} 秒前", "{0}s ago" } },
             { "cli.minutesAgo", new[] { "{0:N0} 分前", "{0:N0} min ago" } },
+            { "cli.hoursAgo",   new[] { "{0:N0} 時間前", "{0:N0} h ago" } },
 
             // --verify-weekly
             { "vw.title",       new[] { "週間枠リセットの推定", "Weekly reset estimate" } },

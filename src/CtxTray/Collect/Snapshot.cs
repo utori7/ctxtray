@@ -286,6 +286,26 @@ namespace CtxTray.Collect
             return found;
         }
 
+        /// <summary>
+        /// この PID は Claude Desktop 本体か（同名で動く Claude Code のプロセスは除く）。
+        ///
+        /// 全画面のアプリの上で HUD を隠すときに、前面の窓が Claude Desktop なら隠さないために使う
+        /// （Desktop を全画面で使っているときこそ HUD が要る。Ui/TrayApp.cs、2026-09-18）。
+        /// 判定の理由は IsDesktopRunning と同じ。
+        /// </summary>
+        public static bool IsDesktopProcess(int pid)
+        {
+            var path = Native.NativeMethods.ProcessImagePath(pid);
+            if (string.IsNullOrEmpty(path)) return false;
+
+            string name;
+            try { name = Path.GetFileNameWithoutExtension(path); }
+            catch { return false; }
+
+            if (!string.Equals(name, "Claude", StringComparison.OrdinalIgnoreCase)) return false;
+            return !IsClaudeCodeBinary(pid);
+        }
+
         // 実行ファイルのパス → Claude Code 本体か。更新のたびに版情報を読み直さないよう覚えておく
         // （同じ exe のプロセスが十数個並ぶ）。パスの種類は数個なので捨てなくてよい。
         private static readonly Dictionary<string, bool> ClaudeCodeByPath =

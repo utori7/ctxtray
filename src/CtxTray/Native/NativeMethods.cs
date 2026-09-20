@@ -39,6 +39,13 @@ namespace CtxTray.Native
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
         private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
+        // WS_EX_LAYERED の窓の透明度。一度も設定しないと、その窓は画面に描かれない。
+        public const uint LWA_ALPHA = 0x00000002;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint crKey, byte bAlpha, uint dwFlags);
+
         public static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
         {
             return IntPtr.Size == 8 ? GetWindowLongPtr64(hWnd, nIndex) : GetWindowLongPtr32(hWnd, nIndex);
@@ -86,9 +93,44 @@ namespace CtxTray.Native
         public static extern int DwmSetWindowAttribute(IntPtr hWnd, int attribute,
                                                        ref int value, int size);
 
+        // --- タイトルバーと枠の配色 -------------------------------------------
+        //
+        // Windows 11 (build 22000+) は、タイトルバーの地・文字・枠の色を DWM に指定できる。
+        // 窓を枠なしにして自前で描き直さなくても、中身と同じ配色に揃えられる。
+        // 対応していない Windows では DwmSetWindowAttribute が失敗を返すだけなので、
+        // 戻り値を見ずに呼びっぱなしでよい。
+        //
+        // 暗い配色の指定だけは番号が変わった歴史がある。
+        // Windows 10 1809〜1903 が 19、それ以降（と Windows 11）が 20。
+        public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        public const int DWMWA_USE_IMMERSIVE_DARK_MODE_1809 = 19;
+
+        public const int DWMWA_BORDER_COLOR = 34;
+        public const int DWMWA_CAPTION_COLOR = 35;
+        public const int DWMWA_TEXT_COLOR = 36;
+
         /// <summary>ライト/ダークの切り替えは WM_SETTINGCHANGE で飛んでくる。</summary>
         public const int WM_SETTINGCHANGE = 0x001A;
         public const int WM_DPICHANGED = 0x02E0;
+
+        // --- 全画面のアプリの検出 ---------------------------------------------
+        //
+        // 最前面の HUD は、動画・発表・ゲームの全画面表示の上にも残る。
+        // Windows は「いま通知を出してよいか」を SHQueryUserNotificationState で教えてくれるので、
+        // 通知を控えるべき状態（全画面・発表モード）を HUD を隠す合図に使う。
+        // 最大化しただけの窓はここに含まれない（全画面とは別）。
+        public const int QUNS_BUSY = 2;                      // 全画面のアプリ、または発表設定が有効
+        public const int QUNS_RUNNING_D3D_FULL_SCREEN = 3;   // 全画面のゲームなど
+        public const int QUNS_PRESENTATION_MODE = 4;         // 発表モード
+
+        [DllImport("shell32.dll")]
+        public static extern int SHQueryUserNotificationState(out int state);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int processId);
 
         // --- アイコン後始末 ---------------------------------------------------
         [DllImport("user32.dll", SetLastError = true)]

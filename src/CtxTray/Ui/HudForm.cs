@@ -27,9 +27,25 @@ namespace CtxTray.Ui
     /// 検証できていない数字を常に目に入る場所に置くと、確かな値と区別がつかないため
     /// （2026-09-15 に削除。5時間枠のリセット時刻は公式値と照合済みなので残している）。
     /// </summary>
+    /// <summary>ホットキーの登録結果。使えないときに理由を利用者へ伝えるために持つ。</summary>
+    internal enum HotkeyState
+    {
+        /// <summary>登録できた。</summary>
+        Ok,
+
+        /// <summary>設定の文字列を読み取れない（手で書き換えた場合）。</summary>
+        Unparsable,
+
+        /// <summary>ほかのアプリが同じキーを登録している。</summary>
+        Taken,
+    }
+
     internal sealed class HudForm : Form
     {
         private const int HotkeyId = 0xC5A7;
+
+        /// <summary>設定画面から「そのキーが空いているか」を試すときの ID。本番の登録とぶつけない。</summary>
+        private const int HotkeyProbeId = 0xC5A8;
 
         /// <summary>
         /// Desktop のタブでないセッション（ターミナル・VS Code）の名前の前に付ける印。
@@ -44,6 +60,12 @@ namespace CtxTray.Ui
         private AppConfig _config;
         private Theme _theme;
         private Snapshot _snapshot;
+
+        /// <summary>
+        /// ドラッグ中は位置を計算し直さない。
+        /// 移動ループの中でもタイマーは動くので、そこで位置を決めると利用者の手と取り合いになる。
+        /// </summary>
+        private bool _dragging;
 
         public event EventHandler HotkeyPressed;
 
@@ -63,6 +85,9 @@ namespace CtxTray.Ui
                      | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
 
             MouseDown += OnDragStart;
+            MouseMove += OnHoverRow;
+            // 「外れた」は、窓の出入りなどでも飛んでくる。本当に外にいるときだけ消す。
+            MouseLeave += (s, e) => { if (!Bounds.Contains(Cursor.Position)) ClearTip(); };
         }
 
         /// <summary>フォーカスを奪わない。Alt+Tab にも出さない。</summary>
@@ -86,11 +111,38 @@ namespace CtxTray.Ui
             _dpiScale = Dpi.ScaleFor(Handle);
             RegisterHotkey();
             ApplyRoundedCorners();
+            EnsureLayeredAttributes();
+        }
+
+        /// <summary>いまの窓にクリック透過の拡張スタイルが付いているか。</summary>
+        private bool HasClickThroughStyle()
+        {
+            var ex = NativeMethods.GetWindowLongPtr(Handle, NativeMethods.GWL_EXSTYLE).ToInt64();
+            return (ex & NativeMethods.WS_EX_TRANSPARENT) != 0;
+        }
+
+        /// <summary>
+        /// 不透明度 100% でクリック透過にしたときの手当て。
+        ///
+        /// クリック透過には WS_EX_LAYERED が要るので CreateParams で付けている。
+        /// 不透明度が 100% 未満なら WinForms が透明度を設定するが、100% のときは何もしない。
+        /// 透明度を一度も設定しない LAYERED の窓は画面に描かれないので、ここで「不透明」を設定する。
+        /// </summary>
+        private void EnsureLayeredAttributes()
+        {
+            if (Opacity < 1.0) return;
+
+            var ex = NativeMethods.GetWindowLongPtr(Handle, NativeMethods.GWL_EXSTYLE).ToInt64();
+            if ((ex & NativeMethods.WS_EX_LAYERED) == 0) return;
+
+            NativeMethods.SetLayeredWindowAttributes(Handle, 0, 255, NativeMethods.LWA_ALPHA);
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
             NativeMethods.UnregisterHotKey(Handle, HotkeyId);
+            // 空きを調べる登録が残っていても困らないが、念のため外す。
+            NativeMethods.UnregisterHotKey(Handle, HotkeyProbeId);
             base.OnHandleDestroyed(e);
         }
 
@@ -141,12 +193,64 @@ namespace CtxTray.Ui
             base.WndProc(ref m);
         }
 
+        /// <summary>
+        /// ホットキーを登録する。
+        ///
+        /// ★ 戻り値を捨てない。ほかのアプリが同じキーを取っていると登録は失敗し、
+        ///   以前はそれを黙って見逃していたので、押しても何も起きない理由が利用者に分からなかった
+        ///   （2026-09-18）。結果は HotkeyStatus に残し、TrayApp が通知で知らせる。
+        /// </summary>
         private void RegisterHotkey()
         {
             uint mods, vk;
-            if (!HotkeyParser.TryParse(_config.Hotkey, out mods, out vk)) return;
+            if (!HotkeyParser.TryParse(_config.Hotkey, out mods, out vk))
+            {
+                _hotkeyState = HotkeyState.Unparsable;
+                return;
+            }
+
             NativeMethods.UnregisterHotKey(Handle, HotkeyId);
-            NativeMethods.RegisterHotKey(Handle, HotkeyId, mods | NativeMethods.MOD_NOREPEAT, vk);
+            _hotkeyState = NativeMethods.RegisterHotKey(Handle, HotkeyId,
+                                                        mods | NativeMethods.MOD_NOREPEAT, vk)
+                ? HotkeyState.Ok
+                : HotkeyState.Taken;
+        }
+
+        private HotkeyState _hotkeyState = HotkeyState.Ok;
+
+        public HotkeyState HotkeyStatus { get { return _hotkeyState; } }
+
+        /// <summary>
+        /// 設定画面から呼ぶ。そのキーがいま登録できるか。
+        ///
+        /// 自分がすでに登録しているキーは「使える」と答える。自分の登録のせいで
+        /// RegisterHotKey が失敗し、いま使えているキーを「使えない」と見せてしまうため。
+        /// </summary>
+        public bool IsHotkeyAvailable(string combo)
+        {
+            uint mods, vk;
+            if (!HotkeyParser.TryParse(combo, out mods, out vk)) return false;
+
+            if (_hotkeyState == HotkeyState.Ok && SameHotkey(_config.Hotkey, combo)) return true;
+
+            // 窓がまだ無ければ確かめようがない。使えないと決めつけない。
+            if (!IsHandleCreated) return true;
+
+            if (!NativeMethods.RegisterHotKey(Handle, HotkeyProbeId,
+                                              mods | NativeMethods.MOD_NOREPEAT, vk))
+                return false;
+
+            NativeMethods.UnregisterHotKey(Handle, HotkeyProbeId);
+            return true;
+        }
+
+        /// <summary>表記の違い（"ctrl+alt+c" と "Ctrl+Alt+C"）を無視して同じキーか。</summary>
+        private static bool SameHotkey(string a, string b)
+        {
+            uint ma, va, mb, vb;
+            if (!HotkeyParser.TryParse(a, out ma, out va)) return false;
+            if (!HotkeyParser.TryParse(b, out mb, out vb)) return false;
+            return ma == mb && va == vb;
         }
 
         public Theme CurrentTheme { get { return _theme; } }
@@ -173,15 +277,22 @@ namespace CtxTray.Ui
         /// </summary>
         public void ApplyConfig(AppConfig config)
         {
-            var clickThroughChanged = config.ClickThrough != _config.ClickThrough;
             _config = config;
 
             Opacity = Clamp(_config.Opacity, 0.2, 1.0);
 
             // クリック透過はウィンドウの拡張スタイルなので、作り直さないと変わらない。
             // 作り直すと OnHandleCreated でホットキーも登録し直される。
-            if (clickThroughChanged && IsHandleCreated) RecreateHandle();
+            //
+            // ★ 切り替わったかは、設定どうしではなく「窓に実際に付いているか」と比べて決める。
+            //   トレイのメニューも設定画面も、HUD が握っている設定オブジェクトそのものを書き換えてから
+            //   ここへ来る（再読込でも同じ値が届く）。以前は前後の設定を比べていたので常に「変わっていない」になり、
+            //   窓が作り直されず、再起動するまでクリック透過が効かなかった（2026-09-19、利用者の指摘で発覚）。
+            if (IsHandleCreated && HasClickThroughStyle() != _config.ClickThrough) RecreateHandle();
             else RegisterHotkey();
+
+            // 不透明度だけを 100% に変えた場合も、LAYERED の窓に前の透明度が残らないようにする。
+            if (IsHandleCreated) EnsureLayeredAttributes();
 
             ReloadTheme();
             Relayout();
@@ -194,6 +305,133 @@ namespace CtxTray.Ui
             Relayout();
             EnsureTopMost();
             Invalidate();
+
+            // ★ ここで詳細を消さない。
+            //   transcript の書き込みで更新は数秒ごとに来るので、消すと出る前に取り消されて
+            //   いつまでも出なかった（実機で確認、2026-09-18）。
+            //   出している間に値が変わったときは、描き直した後に文言だけ差し替える（OnPaint の最後）。
+        }
+
+        // --- 行の詳細（マウスを乗せたときに出す）--------------------------------
+        //
+        // 行は幅が限られていて名前も省略されるので、確かな値の詳細はここに出す
+        // （2026-09-18、利用者が見本から「全部入り」を選んだ）。
+        // 推測値は出さない方針は変えない。レート枠の「表示値は下限」の注記も出さない（利用者の判断）。
+
+        private sealed class TipRow
+        {
+            public int Top;
+            public int Bottom;
+            public System.Collections.Generic.List<TipLine> Lines;
+
+            /// <summary>中身が変わったかを見るための、行をつないだ文字列。</summary>
+            public string Text;
+        }
+
+        private readonly System.Collections.Generic.List<TipRow> _tipRows =
+            new System.Collections.Generic.List<TipRow>();
+
+        /// <summary>
+        /// 詳細の札。Windows 標準の ToolTip はこの窓（一度も前面にならない最前面の窓）では
+        /// 出なかったので、自前の窓で描く（Ui/TipForm.cs）。
+        /// </summary>
+        private TipForm _tip;
+
+
+        private int _tipRow = -1;
+        private bool _tipShowing;
+        private int _tipShownRow = -1;
+        private string _tipShownText;
+
+        private void OnHoverRow(object sender, MouseEventArgs e)
+        {
+            var row = -1;
+            for (var i = 0; i < _tipRows.Count; i++)
+            {
+                if (e.Y < _tipRows[i].Top || e.Y >= _tipRows[i].Bottom) continue;
+                row = i;
+                break;
+            }
+
+            if (row == _tipRow) return;
+
+            _tipRow = row;
+
+            // ★ 遅らせずにすぐ出す。
+            //   WinForms のタイマー（WM_TIMER）はこの窓では発火しなかったので、待ち時間は入れない
+            //   （2026-09-18 実機で確認）。札はパネルの外に出るので、すぐ出ても邪魔にならない。
+            if (row < 0) HideTip();
+            else ShowTip();
+        }
+
+        private void ShowTip()
+        {
+            if (_tipRow < 0 || _tipRow >= _tipRows.Count)
+            {
+                HideTip();
+                return;
+            }
+
+            var row = _tipRows[_tipRow];
+
+            // ★ 同じ行の同じ内容なら出し直さない。
+            //   出し直しを繰り返すと、札が描かれる前に作り直されて、いつまでも見えないままになる
+            //   （2026-09-18、実機で確認。何かの拍子に「外れた・入った」が連続することがある）。
+            if (_tipShowing && _tipShownRow == _tipRow
+                && string.Equals(_tipShownText, row.Text, StringComparison.Ordinal)) return;
+
+            _tipShowing = true;
+            _tipShownRow = _tipRow;
+            _tipShownText = row.Text;
+
+            if (_tip == null || _tip.IsDisposed) _tip = new TipForm();
+            // 札はパネルの外に出す（パネルは最前面へ押し戻しているので、重ねると裏に隠れる）。
+            _tip.ShowLines(row.Lines, _theme, Factor, Bounds, PointToScreen(new Point(0, row.Top)).Y);
+        }
+
+        /// <summary>
+        /// 出している詳細の文言を、描き直した後の値に合わせる（古い数字を出したままにしない）。
+        /// 描画の途中で窓を触らないよう、描き終わってから呼ぶ。
+        /// </summary>
+        private void RefreshTip()
+        {
+            if (!_tipShowing) return;
+
+            if (_tipRow < 0 || _tipRow >= _tipRows.Count) { HideTip(); return; }
+            if (string.Equals(_tipRows[_tipRow].Text, _tipShownText, StringComparison.Ordinal)) return;
+
+            BeginInvoke(new Action(ShowTip));
+        }
+
+        private void HideTip()
+        {
+            if (!_tipShowing) return;
+            _tipShowing = false;
+            _tipShownRow = -1;
+            _tipShownText = null;
+            if (_tip != null && !_tip.IsDisposed) _tip.Hide();
+        }
+
+        private void ClearTip()
+        {
+            _tipRow = -1;
+            HideTip();
+        }
+
+        private void AddTipRow(int y, System.Collections.Generic.List<TipLine> lines)
+        {
+            if (lines == null || lines.Count == 0) return;
+
+            var joined = new System.Text.StringBuilder();
+            foreach (var line in lines) joined.Append(line.Text).Append('\n');
+
+            _tipRows.Add(new TipRow
+            {
+                Top = y,
+                Bottom = y + RowHeight,
+                Lines = lines,
+                Text = joined.ToString(),
+            });
         }
 
         /// <summary>
@@ -271,32 +509,56 @@ namespace CtxTray.Ui
             var size = new Size(PanelWidth, height);
             if (Size != size) Size = size;
 
-            if (_config.HudX < 0 && _config.HudY < 0) MoveToDefaultCorner();
+            ApplyPosition();
+        }
+
+        /// <summary>
+        /// いまの大きさに合わせて位置を決め直す。
+        ///
+        /// 高さはセッションの数で変わるので、大きさを変えるたびに呼ぶ。
+        /// 保存した位置が無ければ右下の隅。ドラッグ中は触らない。
+        /// </summary>
+        private void ApplyPosition()
+        {
+            if (_dragging) return;
+
+            if (!HasSavedPosition)
+            {
+                MoveToDefaultCorner();
+                return;
+            }
+
+            var work = Screen.FromRectangle(SavedBounds()).WorkingArea;
+            Location = HudPlacement.Place(_config.HudX, _config.HudY,
+                                          _config.HudAnchorBottom, Size, work);
+        }
+
+        /// <summary>位置が保存されているか（-1 は未設定＝右下の隅）。</summary>
+        private bool HasSavedPosition { get { return _config.HudX >= 0 && _config.HudY >= 0; } }
+
+        /// <summary>保存された座標といまの大きさから、置こうとしている範囲。</summary>
+        private Rectangle SavedBounds()
+        {
+            var top = _config.HudAnchorBottom ? _config.HudY - Height : _config.HudY;
+            return new Rectangle(_config.HudX, top, Width, Height);
         }
 
         private void MoveToDefaultCorner()
         {
-            if (_config.HudX >= 0 && _config.HudY >= 0)
-            {
-                Location = new Point(_config.HudX, _config.HudY);
-                return;
-            }
-
             var area = Screen.PrimaryScreen.WorkingArea;
             Location = new Point(area.Right - Width - S(16), area.Bottom - Height - S(16));
         }
 
+        /// <summary>
+        /// 起動時に位置を戻す。
+        ///
+        /// 保存位置が今のモニタ構成から外れていても（外部モニタを外した、画面を縦向きにしたなど）、
+        /// ApplyPosition が作業領域の内側へ押し戻すので画面外には残らない。
+        /// 設定は書き換えないので、元の構成に戻せば元の位置に戻る。
+        /// </summary>
         public void RestorePosition()
         {
-            if (_config.HudX >= 0 && _config.HudY >= 0 &&
-                IsOnAnyScreen(new Point(_config.HudX, _config.HudY)))
-            {
-                Location = new Point(_config.HudX, _config.HudY);
-            }
-            else
-            {
-                MoveToDefaultCorner();
-            }
+            ApplyPosition();
         }
 
         /// <summary>
@@ -307,25 +569,27 @@ namespace CtxTray.Ui
         {
             _config.HudX = -1;
             _config.HudY = -1;
+            _config.HudAnchorBottom = false;
             MoveToDefaultCorner();
             _config.Save();
         }
 
         /// <summary>
-        /// 保存位置が今のモニタ構成に無ければ既定位置に戻す。
-        /// 外部モニタを外したときに画面外へ消えるのを防ぐ。
+        /// 位置を保存する。画面の下半分に置かれていれば下端の座標を覚える（HudPlacement）。
+        /// 上端だけを覚えていた頃は、行が増えると下へ伸びて画面の外に出ていた。
+        ///
+        /// 位置は実行中の状態そのものなので、ここだけは実行中の設定を直接書き換える
+        /// （保存に失敗しても、動かした位置はそのまま使う。再読込でも実行中の値が優先される）。
         /// </summary>
-        private static bool IsOnAnyScreen(Point p)
-        {
-            foreach (var s in Screen.AllScreens)
-                if (s.WorkingArea.Contains(p)) return true;
-            return false;
-        }
-
         private void SavePosition()
         {
-            _config.HudX = Location.X;
-            _config.HudY = Location.Y;
+            var work = Screen.FromRectangle(Bounds).WorkingArea;
+            var anchorBottom = HudPlacement.AnchorBottom(Bounds, work);
+            var anchor = HudPlacement.Anchor(Bounds, anchorBottom);
+
+            _config.HudX = anchor.X;
+            _config.HudY = anchor.Y;
+            _config.HudAnchorBottom = anchorBottom;
             _config.Save();
         }
 
@@ -343,9 +607,19 @@ namespace CtxTray.Ui
             if (e.Button != MouseButtons.Left) return;
 
             var before = Location;
-            NativeMethods.ReleaseCapture();
-            NativeMethods.SendMessage(Handle, NativeMethods.WM_NCLBUTTONDOWN,
-                                      (IntPtr)NativeMethods.HTCAPTION, IntPtr.Zero);
+            // 移動ループの中でもタイマーは動く。その間 ApplyPosition が働くと、
+            // 保存済みの位置へ引き戻されて動かせない。
+            _dragging = true;
+            try
+            {
+                NativeMethods.ReleaseCapture();
+                NativeMethods.SendMessage(Handle, NativeMethods.WM_NCLBUTTONDOWN,
+                                          (IntPtr)NativeMethods.HTCAPTION, IntPtr.Zero);
+            }
+            finally
+            {
+                _dragging = false;
+            }
 
             if (Location != before) SavePosition();
         }
@@ -357,6 +631,9 @@ namespace CtxTray.Ui
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(_theme.Background);
+
+            // 行の詳細は描くたびに組み直す（行の位置も内容も、そのとき描いたものと一致させる）。
+            _tipRows.Clear();
 
             using (var border = new Pen(_theme.Border))
                 g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
@@ -402,6 +679,9 @@ namespace CtxTray.Ui
                     DrawRateRows(g, body, bold, y);
                 }
             }
+
+            // 詳細を出している最中に値が変わっていたら、新しい文言に差し替える。
+            RefreshTip();
         }
 
         private void DrawCaption(Graphics g, Font cap, Font noteFont, string text, string note, int y)
@@ -427,12 +707,14 @@ namespace CtxTray.Ui
                     Strings.Get("hud.fiveHour"), FiveHourResetText(r), false,
                     r.FiveHourPct / 100.0, "fiveHour", Levels.ForFiveHour(r, _config), dimmed,
                     FormatPercent(r.FiveHourPct), null);
+            AddTipRow(y, RateTip(r, true));
             y += RowHeight;
 
             DrawRow(g, body, bold, y,
                     Strings.Get("hud.weekly"), null, false,
                     r.WeeklyPct / 100.0, "weekly", Levels.ForWeekly(r, _config), dimmed,
                     FormatPercent(r.WeeklyPct), null);
+            AddTipRow(y, RateTip(r, false));
             y += RowHeight;
 
             return y;
@@ -481,6 +763,7 @@ namespace CtxTray.Ui
                 DrawRow(g, body, bold, y, name, null, s.IsActive,
                         fraction, "context", Levels.ForContext(s, _config), !s.ProcessAlive,
                         pct, tokens);
+                AddTipRow(y, SessionTip(s));
 
                 y += RowHeight;
             }
@@ -594,6 +877,117 @@ namespace CtxTray.Ui
             return pct.ToString(CultureInfo.InvariantCulture) + "%";
         }
 
+        /// <summary>
+        /// セッションの行の詳細。読み取れた事実だけを並べる（推測は入れない）。
+        /// 名前は行では省略されるので、ここでは全部出す。
+        /// </summary>
+        private System.Collections.Generic.List<TipLine> SessionTip(SessionRow s)
+        {
+            var lines = new System.Collections.Generic.List<TipLine>();
+
+            // 名前は行では省略されるので、ここで全部出す（見出しなので太字）。
+            lines.Add(new TipLine(
+                string.IsNullOrEmpty(s.Title) ? Strings.Get("hud.untitled") : s.Title, false, true));
+
+            if (s.IsExternal)
+            {
+                // 分かっている入口だけ名前で出す。知らない値のときは何も言わない。
+                if (string.Equals(s.Entrypoint, "cli", StringComparison.OrdinalIgnoreCase))
+                    lines.Add(new TipLine(Strings.Get("hud.tipTerminal"), true, false));
+                else if (string.Equals(s.Entrypoint, "claude-vscode", StringComparison.OrdinalIgnoreCase))
+                    lines.Add(new TipLine(Strings.Get("hud.tipVsCode"), true, false));
+            }
+
+            if (!string.IsNullOrEmpty(s.Model)) lines.Add(new TipLine(s.Model, true, false));
+
+            if (s.ContextTokens.HasValue)
+            {
+                if (s.ModelKnown && s.ContextLimit.HasValue && s.ContextPct.HasValue)
+                {
+                    lines.Add(new TipLine(Strings.Format("hud.tipTokens",
+                        Thousands(s.ContextTokens.Value), Thousands(s.ContextLimit.Value),
+                        s.ContextPct.Value.ToString("0", CultureInfo.InvariantCulture)), false, false));
+
+                    // 圧縮点は設定の compactThreshold（公式の既定値）。通知の本文と同じ根拠。
+                    var left = (int)Math.Round(s.ContextLimit.Value * _config.CompactThreshold
+                                               - s.ContextTokens.Value);
+                    if (left > 0)
+                        lines.Add(new TipLine(Strings.Format("hud.tipToCompact", Thousands(left)), false, false));
+                }
+                else
+                {
+                    lines.Add(new TipLine(
+                        Strings.Format("hud.tipTokensOnly", Thousands(s.ContextTokens.Value)), false, false));
+                    lines.Add(new TipLine(Strings.Get("hud.tipNoLimit"), true, false));
+                }
+            }
+
+            // 応答が記録された時刻（transcript の usage）と、タブ側の最終操作の新しい方を出す。
+            // タブ側の記録は遅れることがあり、それだけを見ると「1 時間前」のように古く出る（実機で確認）。
+            var last = Later(s.LastMeasuredUtc, s.LastActivityUtc);
+            if (last.HasValue)
+                lines.Add(new TipLine(Strings.Format("hud.tipLastReply", Ago(last.Value)), true, false));
+
+            // 淡い行の理由をはっきり書く（色だけでは意味が伝わらない）。
+            if (!s.ProcessAlive) lines.Add(new TipLine(Strings.Get("hud.tipStopped"), true, false));
+
+            return lines;
+        }
+
+        /// <summary>
+        /// レート枠の行の詳細。いつ記録された値かを書く（画面の値は Desktop が最後に記録したもの）。
+        /// 「記録の後にも使用があったので実際はこれより高い」は出さない（2026-09-18、利用者の判断）。
+        /// </summary>
+        private System.Collections.Generic.List<TipLine> RateTip(RateLimitStatus r, bool fiveHour)
+        {
+            if (r == null) return null;
+
+            var lines = new System.Collections.Generic.List<TipLine>();
+            lines.Add(new TipLine(Strings.Format(fiveHour ? "notify.fiveHourBody" : "notify.weeklyBody",
+                                                 fiveHour ? r.FiveHourPct : r.WeeklyPct), false, true));
+
+            if (r.SampledAtUtc != DateTime.MinValue)
+                lines.Add(new TipLine(Strings.Format("hud.tipSampled", Ago(r.SampledAtUtc)), true, false));
+
+            if (_snapshot != null && _snapshot.Freshness == RateFreshness.Reference)
+                lines.Add(new TipLine(Strings.Get("hud.tipReference"), true, false));
+
+            // 行には残り 30 分からしか出さないリセット見込みも、ここでは常に出す
+            //（自分で見に来たときだけなので、雑音にならない）。「表示しない」設定のときは出さない。
+            if (fiveHour && r.NextFiveHourResetUtc.HasValue
+                && !string.Equals(_config.ShowResets, "never", StringComparison.OrdinalIgnoreCase))
+            {
+                lines.Add(new TipLine(Strings.Format("hud.tipReset",
+                    r.NextFiveHourResetUtc.Value.ToLocalTime()
+                     .ToString("H:mm", CultureInfo.InvariantCulture)), false, false));
+            }
+
+            return lines;
+        }
+
+        private static DateTime? Later(DateTime? a, DateTime? b)
+        {
+            if (!a.HasValue) return b;
+            if (!b.HasValue) return a;
+            return a.Value >= b.Value ? a : b;
+        }
+
+        private static string Thousands(int value)
+        {
+            return value.ToString("N0", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>どれくらい前か。秒・分・時間で言い方を変える。</summary>
+        private static string Ago(DateTime utc)
+        {
+            var span = DateTime.UtcNow - utc;
+            if (span.TotalSeconds < 60)
+                return Strings.Format("cli.secondsAgo", Math.Max(0, (int)span.TotalSeconds));
+            if (span.TotalMinutes < 60)
+                return Strings.Format("cli.minutesAgo", (int)span.TotalMinutes);
+            return Strings.Format("cli.hoursAgo", (int)span.TotalHours);
+        }
+
         private string FiveHourResetText(RateLimitStatus r)
         {
             if (!ShouldShowReset(r)) return null;
@@ -629,6 +1023,22 @@ namespace CtxTray.Ui
         private static double Clamp(double v, double lo, double hi)
         {
             return v < lo ? lo : (v > hi ? hi : v);
+        }
+
+        /// <summary>パネルを隠したら札も引っ込める（札だけ画面に残らないように）。</summary>
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (!Visible) ClearTip();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (_tip != null && !_tip.IsDisposed) _tip.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

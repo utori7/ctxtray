@@ -60,12 +60,19 @@ on the release page. If you would rather not trust a prebuilt binary,
 |---|---|
 | `Ctrl+Alt+C` | show / hide the panel (configurable) |
 | drag | move the panel |
-| double-click the tray icon | show / hide the panel |
-| right-click the tray icon | show / hide panel, start at sign-in, settings, refresh now, open config file, uptime, exit |
+| hover over a row | details: the full name, the model, token counts, how much is left before auto-compaction, and when the value was recorded |
+| click the tray icon | show / hide the panel |
+| right-click the tray icon or the panel | show / hide panel, pass clicks through, start at sign-in, settings, refresh now, open config file, uptime, exit |
 
 A session name in grey means its Claude Code process is not running right now
 (for example, a tab that has been idle). Grey sessions are left out of the tray icon and
-the notifications: their usage cannot grow until they run again.
+the notifications: their usage cannot grow until they run again. You can hide them
+altogether in the settings.
+
+The panel stays on screen: when it sits in the lower half of the screen it grows upward
+as sessions come and go, and it is never pushed past the edge. While a video, a
+presentation, or a game is full-screen, the panel hides itself and comes back afterwards
+(it stays visible when Claude Desktop itself is in front). Both can be turned off in the settings.
 
 ### The tray icon
 
@@ -157,12 +164,14 @@ notifications together. There is no separate set of numbers for each.
     "showSessions": true,
     "hideIdleSessions": true,
     "idleHours": 24,
+    "hideStoppedSessions": false, // hide the grey rows (sessions that are not running)
     "showBar": true,
     "showTokens": false,         // e.g. 284k/1M
     "showResets": "auto",        // "always" | "auto" | "never" (5-hour reset time)
     "opacity": 0.9,
     "clickThrough": false,
-    "showAtStartup": true
+    "showAtStartup": true,
+    "hideWhenFullscreen": true   // hide while a full-screen app is in use
   },
   "language": "auto",            // "ja" | "en"
   // Where auto-compaction happens, as a share of the context window.
@@ -188,6 +197,7 @@ ctxtray --include-archived  include closed tabs
 ctxtray --verify-weekly     show how the weekly reset estimate was derived
 ctxtray --icon-preview DIR  write a PNG sheet of every tray icon style to DIR
 ctxtray --hud-preview DIR   write PNGs of the panel, filled with made-up data, to DIR
+ctxtray --version           print the version
 ```
 
 `--status` and `--json` list every session, including the ones the panel hides.
@@ -214,6 +224,10 @@ opened read-only. Details in [docs/how-it-works.md](docs/how-it-works.md).
 | `claude-code-sessions/**/local_*.json` | which tabs are open, and their model and working directory |
 | `~/.claude/projects/**/*.jsonl` | token counts from the `usage` field |
 | `~/.claude/sessions/<pid>.json` | which Claude Code processes are actually running |
+
+It also asks Windows whether a full-screen app is in use, and which program owns the
+window in front, so that it can hide the panel over full-screen apps without hiding it
+over Claude Desktop. It reads nothing else about those programs.
 
 It writes only its own files:
 

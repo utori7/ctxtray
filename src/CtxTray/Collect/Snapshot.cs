@@ -72,6 +72,15 @@ namespace CtxTray.Collect
         /// </summary>
         public int HiddenSessionCount;
 
+        /// <summary>
+        /// 隠したセッションそのもの。HUD で「ほか N 件は非表示」を押したときだけ描く。
+        ///
+        /// ★ Sessions には入れない。トレイ・ツールチップ・通知はこれまでどおり
+        ///   Sessions だけを見るので、展開しても値や通知の対象は変わらない
+        ///   （絞り込みは SessionFilter で 1 回だけ、という原則を保つ）。
+        /// </summary>
+        public List<SessionRow> HiddenSessions = new List<SessionRow>();
+
         public Diagnostics Diag = new Diagnostics();
     }
 

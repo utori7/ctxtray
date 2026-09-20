@@ -75,6 +75,10 @@ namespace CtxTray.Ui
         // ホットキーが使えないことを知らせたキー。同じキーで繰り返し知らせない。
         private string _hotkeyWarnedFor;
 
+        // 初めての起動のときにパネルへ出す案内を、何秒出しておくか。
+        // 通知（5〜6 秒）より長く置く。読む前に消えるのを避けるため。
+        private const int WelcomeSeconds = 120;
+
         public TrayApp()
         {
             string problem;
@@ -153,7 +157,13 @@ namespace CtxTray.Ui
             // 常駐してアイコンが出るだけでは、ホットキーや右クリックに気づけない。
             if (_config.WasMissing)
             {
-                _notifier.ShowInfo("ctxtray", Strings.Format("app.welcome", _config.Hotkey));
+                var welcome = Strings.Format("app.welcome", _config.Hotkey);
+                _notifier.ShowInfo("ctxtray", welcome);
+
+                // 通知は集中モード中や通知を切っている環境では出ないので、パネルにも同じ案内を出す。
+                // しばらくすると自分で消える（HudForm.Pump）。
+                if (_hud != null && !_hud.IsDisposed) _hud.ShowWelcome(welcome, WelcomeSeconds);
+
                 // 設定ファイルを作って、次の起動では出さないようにする。
                 _config.Save();
             }
@@ -241,6 +251,10 @@ namespace CtxTray.Ui
 
             // 待たせている通知は、収集を挟まなくても一定間隔で出す。
             _notifier.Pump();
+
+            // 行の詳細の待ち時間と、初回案内を消す時刻もここで計る
+            // （HUD の窓では WinForms のタイマーが発火しない）。
+            if (_hud != null && !_hud.IsDisposed && _hud.Visible) _hud.Pump();
 
             // 全画面のアプリの出入りは、収集の間隔とは関係なく追いかける。
             ApplyFullscreenRule();
@@ -712,6 +726,9 @@ namespace CtxTray.Ui
             if (_hud.Visible) _hud.Hide();
             else { _hud.Show(); _dirty = true; }
 
+            // 出し入れができたなら、初回の案内はもう読まなくてよい。
+            _hud.DismissWelcome();
+
             // 利用者の操作を優先する。全画面のために隠した印は消す
             // （利用者が出したものを次のティックで引っ込めない／隠したものを出し直さない）。
             _hiddenForFullscreen = false;
@@ -810,6 +827,8 @@ namespace CtxTray.Ui
             // キーの空き確認は HUD のウィンドウで行う（ホットキーの登録先がそこなので、
             // 「いま自分が使っているキー」を正しく扱える）。
             if (_hud == null || _hud.IsDisposed) _hud = CreateHud();
+            // 設定までたどり着いたなら、初回の案内はもう読まなくてよい。
+            _hud.DismissWelcome();
             // 設定画面には「いまの設定を返す関数」を渡す。画面は OK の時点の最新の設定を複製して保存する。
             _settings = new SettingsForm(() => _config, PreviewGauge, _hud.IsHotkeyAvailable);
             _settings.ResetHudPositionRequested += (s, e) =>

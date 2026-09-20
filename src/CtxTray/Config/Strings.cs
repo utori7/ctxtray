@@ -78,7 +78,13 @@ namespace CtxTray.Config
             { "hud.capContext",   new[] { "コンテキスト",   "CONTEXT" } },
             { "hud.fiveHour",     new[] { "5時間",          "5h" } },
             { "hud.weekly",       new[] { "週間",           "Week" } },
-            { "hud.hidden",       new[] { "ほか {0} 件は非表示", "{0} more hidden" } },
+            // 押すと隠した行をその場で出す（設定は変えない）。記号は使わず、
+            // 押せることが分かる言い方にする（▲ や + は意味が伝わらなかった、2026-09-15）。
+            { "hud.hidden",       new[] { "ほか {0} 件を表示",   "show {0} more" } },
+            { "hud.collapse",     new[] { "隠す",                "hide them" } },
+            // レート枠が淡いときの理由。灰色なだけでは「壊れている」と読まれうるので、
+            // 見出しの右に言葉で出す（記号は付けない。▲ も + も意味が伝わらなかった）。
+            { "hud.capReference", new[] { "参考値",           "for reference" } },
 
             // HUD の行にマウスを乗せたときに出す詳細（行は簡潔なまま、確かな値だけをここに出す）。
             { "hud.tipTerminal",  new[] { "ターミナルで実行中",        "Running in a terminal" } },

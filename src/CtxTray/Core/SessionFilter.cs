@@ -24,7 +24,10 @@ namespace CtxTray.Core
             if (snap == null || config == null) return;
 
             var kept = new List<SessionRow>();
-            var hidden = 0;
+
+            // ★ 落とした行も取っておく（HUD の「ほか N 件は非表示」を押したときに描く）。
+            //   Sessions には入れないので、トレイ・ツールチップ・通知の対象は今までどおり。
+            var hiddenRows = new List<SessionRow>();
             var external = 0;
 
             // 並びは新しい順（SnapshotBuilder で整列済み）。上限で落ちるのは古い方になる。
@@ -32,7 +35,7 @@ namespace CtxTray.Core
             {
                 if (config.HideIdleSessions && IsIdle(s, config.IdleHours, nowUtc))
                 {
-                    hidden++;
+                    hiddenRows.Add(s);
                     continue;
                 }
 
@@ -41,7 +44,7 @@ namespace CtxTray.Core
                 // これは HUD の縦の長さを抑えるための設定（2026-09-18）。
                 if (config.HideStoppedSessions && !IsRunning(s))
                 {
-                    hidden++;
+                    hiddenRows.Add(s);
                     continue;
                 }
 
@@ -49,7 +52,7 @@ namespace CtxTray.Core
                 {
                     if (external >= config.ExternalSessionsMax)
                     {
-                        hidden++;
+                        hiddenRows.Add(s);
                         continue;
                     }
                     external++;
@@ -59,7 +62,8 @@ namespace CtxTray.Core
             }
 
             snap.Sessions = kept;
-            snap.HiddenSessionCount = hidden;
+            snap.HiddenSessions = hiddenRows;
+            snap.HiddenSessionCount = hiddenRows.Count;
         }
 
         /// <summary>トレイ・ツールチップ・通知の対象か（HUD で淡く出ない行か）。</summary>

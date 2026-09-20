@@ -422,6 +422,13 @@ namespace CtxTray
         /// 英語・日本語 × ダーク・ライトの 4 枚で、大きさはこの画面の表示倍率に従う（実寸）。
         /// 設定は既定値を使う（初めて使う人が見る姿）。
         /// </summary>
+        /// <summary>
+        /// 見本に出す状態。normal は README の画像に使うもので、
+        /// 残りは「普段は見えないが、見え方を確かめたい」状態（2026-09-20）。
+        /// </summary>
+        private static readonly string[] HudPreviewStates =
+            { "danger", "reference", "stopped", "welcome" };
+
         private static int WriteHudPreview(string outDir)
         {
             var dir = string.IsNullOrEmpty(outDir) ? Environment.CurrentDirectory : outDir;
@@ -435,19 +442,16 @@ namespace CtxTray
                     foreach (var theme in new[] { "dark", "light" })
                     {
                         var path = System.IO.Path.Combine(dir, "ctxtray-hud-" + lang + "-" + theme + ".png");
-                        using (var hud = new HudForm(new AppConfig { Theme = theme }))
-                        {
-                            // 表示はしない。寸法と描画にはウィンドウハンドルが要る。
-                            GC.KeepAlive(hud.Handle);
-                            hud.SetSnapshot(SampleSnapshot(lang == "ja"));
-
-                            using (var bmp = new Bitmap(hud.Width, hud.Height))
-                            {
-                                hud.DrawToBitmap(bmp, new Rectangle(0, 0, hud.Width, hud.Height));
-                                bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-                            }
-                        }
+                        using (var bmp = RenderHud(theme, lang == "ja", "normal"))
+                            bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
                         written.Add(path);
+
+                        // ほかの状態は 1 枚に縦に並べる（1 状態 1 ファイルだと見比べにくい）。
+                        var sheet = System.IO.Path.Combine(
+                            dir, "ctxtray-hud-states-" + lang + "-" + theme + ".png");
+                        using (var bmp = RenderHudStates(theme, lang == "ja"))
+                            bmp.Save(sheet, System.Drawing.Imaging.ImageFormat.Png);
+                        written.Add(sheet);
                     }
                 }
             }
@@ -461,23 +465,86 @@ namespace CtxTray
             return 0;
         }
 
+        /// <summary>見本のパネルを 1 枚描く。表示はしない（寸法と描画にハンドルだけ要る）。</summary>
+        private static Bitmap RenderHud(string theme, bool japanese, string state)
+        {
+            using (var hud = new HudForm(new AppConfig { Theme = theme }))
+            {
+                GC.KeepAlive(hud.Handle);
+                hud.SetSnapshot(SampleSnapshot(japanese, state));
+                if (state == "welcome")
+                    hud.ShowWelcome(Strings.Format("app.welcome", "Ctrl+Alt+C"), 600);
+
+                var bmp = new Bitmap(hud.Width, hud.Height);
+                hud.DrawToBitmap(bmp, new Rectangle(0, 0, hud.Width, hud.Height));
+                return bmp;
+            }
+        }
+
+        /// <summary>普段は見えない状態を縦に並べた 1 枚。</summary>
+        private static Bitmap RenderHudStates(string theme, bool japanese)
+        {
+            var panels = new List<Bitmap>();
+            try
+            {
+                foreach (var state in HudPreviewStates) panels.Add(RenderHud(theme, japanese, state));
+
+                const int gap = 12;
+                var width = 0;
+                var height = gap;
+                foreach (var p in panels)
+                {
+                    width = Math.Max(width, p.Width);
+                    height += p.Height + gap;
+                }
+
+                var sheet = new Bitmap(width + gap * 2, height);
+                using (var g = Graphics.FromImage(sheet))
+                {
+                    // タスクバーの地色に近い色を敷く（--icon-preview と同じ値）。
+                    g.Clear(theme == "light" ? Color.FromArgb(243, 243, 243) : Color.FromArgb(32, 32, 32));
+                    var y = gap;
+                    foreach (var p in panels)
+                    {
+                        g.DrawImageUnscaled(p, gap, y);
+                        y += p.Height + gap;
+                    }
+                }
+                return sheet;
+            }
+            finally
+            {
+                foreach (var p in panels) p.Dispose();
+            }
+        }
+
         /// <summary>
         /// 見本用の状態。1 行目は注意の色（圧縮点の 77%）、3 行目は Desktop 以外のセッション。
         /// 5時間枠のリセット時刻は既定の設定（残り 30 分から表示）でも出るよう、18 分後にする。
         /// </summary>
-        private static Snapshot SampleSnapshot(bool japanese)
+        /// <param name="state">
+        /// normal … README の画像に使う普段の状態
+        /// danger … コンテキストも枠も危険。色と（あれば）形の出方を見る
+        /// reference … Claude Desktop が起動していない。レート枠が淡く、見出しに「参考値」
+        /// stopped … 止まっているセッションが混ざっている
+        /// welcome … 初めての起動の案内（呼び出し側が ShowWelcome する）
+        /// </param>
+        private static Snapshot SampleSnapshot(bool japanese, string state = "normal")
         {
             var now = DateTime.UtcNow;
+            var danger = state == "danger";
+            var reference = state == "reference";
+
             var snap = new Snapshot
             {
                 GeneratedAtUtc = now,
-                DesktopRunning = true,
-                Freshness = RateFreshness.Current,
+                DesktopRunning = !reference,
+                Freshness = reference ? RateFreshness.Reference : RateFreshness.Current,
                 HiddenSessionCount = 4,
                 RateLimits = new RateLimitStatus
                 {
-                    FiveHourPct = 47,
-                    WeeklyPct = 28,
+                    FiveHourPct = danger ? 96 : 47,
+                    WeeklyPct = danger ? 83 : 28,
                     SampledAtUtc = now,
                     FiveHourWindowStartUtc = now.AddMinutes(18).AddHours(-5),
                     NextFiveHourResetUtc = now.AddMinutes(18),
@@ -485,13 +552,17 @@ namespace CtxTray
             };
 
             // 744K は圧縮点（967K）の 77%。既定の注意（75%）を超え、値の色が黄に替わる例になる。
-            snap.Sessions.Add(SampleRow(japanese ? "認証まわりの整理" : "Refactor auth module", 744000, true, false));
-            snap.Sessions.Add(SampleRow(japanese ? "不安定なテストの修正" : "Fix flaky tests", 338000, false, false));
-            snap.Sessions.Add(SampleRow("my-project", 221000, false, true));
+            // 危険の見本は 940K（圧縮点の 97%）。
+            snap.Sessions.Add(SampleRow(japanese ? "認証まわりの整理" : "Refactor auth module",
+                                        danger ? 940000 : 744000, true, false, true));
+            snap.Sessions.Add(SampleRow(japanese ? "不安定なテストの修正" : "Fix flaky tests",
+                                        338000, false, false, state != "stopped"));
+            snap.Sessions.Add(SampleRow("my-project", 221000, false, true, true));
             return snap;
         }
 
-        private static SessionRow SampleRow(string title, int tokens, bool active, bool external)
+        private static SessionRow SampleRow(string title, int tokens, bool active, bool external,
+                                            bool alive = true)
         {
             const int limit = 1000000;
             return new SessionRow
@@ -504,7 +575,7 @@ namespace CtxTray
                 ContextPct = Math.Round(100.0 * tokens / limit, 1),
                 IsActive = active,
                 IsExternal = external,
-                ProcessAlive = true,
+                ProcessAlive = alive,
                 LastActivityUtc = DateTime.UtcNow,
             };
         }

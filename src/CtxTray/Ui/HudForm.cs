@@ -332,6 +332,51 @@ namespace CtxTray.Ui
             new System.Collections.Generic.List<TipRow>();
 
         /// <summary>
+        /// 隠した行も出している最中か。
+        ///
+        /// 見出しの「ほか N 件を表示」を押すと立つ。設定（hideIdleSessions など）は書き換えない —
+        /// ここで出すのはその場の一時的な表示で、次に開き直すまで続く。
+        /// 絞り込み自体は SessionFilter のままなので、トレイ・ツールチップ・通知の対象は変わらない。
+        /// </summary>
+        private bool _showHidden;
+
+        /// <summary>見出しのメモ（「ほか N 件を表示」／「隠す」）の当たり判定。空なら押せない。</summary>
+        private Rectangle _hiddenToggleArea = Rectangle.Empty;
+
+        /// <summary>
+        /// 初めての起動のときだけ出す操作の案内。null なら出さない。
+        ///
+        /// 通知（バルーン）だけだと、集中モード中や通知を切っている環境では一度も出ない。
+        /// パネル自体は既定で出るので、ここにも同じ案内を置く（2026-09-20）。
+        /// 設定ファイルには何も足さない。初回に設定を保存するので、次の起動では出ない。
+        /// </summary>
+        private string _welcome;
+
+        /// <summary>案内を自分で消す時刻。触らないまま残り続けないようにする。</summary>
+        private DateTime _welcomeUntilUtc = DateTime.MinValue;
+
+        /// <summary>案内が占める高さ（本文 2 行＋区切り）。★ Relayout と OnPaint で同じ値を使う。</summary>
+        private int WelcomeHeight { get { return _welcome == null ? 0 : RowHeight * 2 + SectionGap; } }
+
+        /// <summary>初回の案内を出す。TrayApp が初めての起動のときだけ呼ぶ。</summary>
+        public void ShowWelcome(string text, int seconds)
+        {
+            _welcome = string.IsNullOrEmpty(text) ? null : text;
+            _welcomeUntilUtc = DateTime.UtcNow.AddSeconds(seconds);
+            Relayout();
+            Invalidate();
+        }
+
+        /// <summary>案内を消す。読み終わったとき（操作したとき）と、時間が過ぎたときに呼ぶ。</summary>
+        public void DismissWelcome()
+        {
+            if (_welcome == null) return;
+            _welcome = null;
+            Relayout();
+            Invalidate();
+        }
+
+        /// <summary>
         /// 詳細の札。Windows 標準の ToolTip はこの窓（一度も前面にならない最前面の窓）では
         /// 出なかったので、自前の窓で描く（Ui/TipForm.cs）。
         /// </summary>
@@ -342,6 +387,18 @@ namespace CtxTray.Ui
         private bool _tipShowing;
         private int _tipShownRow = -1;
         private string _tipShownText;
+
+        /// <summary>
+        /// 札を出すまでの待ち。パネルの上をマウスが通り過ぎただけで出さないため。
+        ///
+        /// ★ この窓では WinForms のタイマー（WM_TIMER）が発火しない（2026-09-18 実機で確認）ので、
+        ///   待ちは自分で計れない。TrayApp の 500ms のタイマーから PumpTip を呼んでもらう。
+        ///   そのため実際に出るまでは、この値から 500ms 遅れるまでの幅がある。
+        /// </summary>
+        private const int TipDelayMs = 300;
+
+        /// <summary>いまの行にマウスが乗った時刻。待ち時間の起点。</summary>
+        private DateTime _tipHoverUtc = DateTime.MinValue;
 
         private void OnHoverRow(object sender, MouseEventArgs e)
         {
@@ -356,12 +413,36 @@ namespace CtxTray.Ui
             if (row == _tipRow) return;
 
             _tipRow = row;
+            _tipHoverUtc = DateTime.UtcNow;
 
-            // ★ 遅らせずにすぐ出す。
-            //   WinForms のタイマー（WM_TIMER）はこの窓では発火しなかったので、待ち時間は入れない
-            //   （2026-09-18 実機で確認）。札はパネルの外に出るので、すぐ出ても邪魔にならない。
-            if (row < 0) HideTip();
-            else ShowTip();
+            // 行から外れたら、待たずに消す。
+            if (row < 0) { HideTip(); return; }
+
+            // すでに札が出ているなら、隣の行へ移ったときは待たせない
+            // （読んでいる最中に一度消えてから出し直すと、かえって読みにくい）。
+            if (_tipShowing) ShowTip();
+        }
+
+        /// <summary>
+        /// 時間で決まることをまとめて進める。TrayApp のタイマー（500ms）から呼ばれる。
+        /// この窓では WinForms のタイマーが発火しないので、時計はここから借りる。
+        /// </summary>
+        public void Pump()
+        {
+            if (_welcome != null && DateTime.UtcNow >= _welcomeUntilUtc) DismissWelcome();
+            PumpTip();
+        }
+
+        /// <summary>待ち時間が過ぎていれば札を出す。</summary>
+        private void PumpTip()
+        {
+            if (_tipShowing || _tipRow < 0) return;
+            if ((DateTime.UtcNow - _tipHoverUtc).TotalMilliseconds < TipDelayMs) return;
+
+            // 待っている間にマウスが外へ出ていることがある（外に出た合図が届かない経路がある）。
+            if (!Bounds.Contains(Cursor.Position)) { ClearTip(); return; }
+
+            ShowTip();
         }
 
         private void ShowTip()
@@ -499,9 +580,9 @@ namespace CtxTray.Ui
 
         private void Relayout()
         {
-            var sessions = _snapshot == null ? 1 : Math.Max(1, _snapshot.Sessions.Count);
+            var sessions = VisibleRowCount;
 
-            var height = PadY * 2;
+            var height = PadY * 2 + WelcomeHeight;
             if (ShowRates) height += CapHeight + RowHeight * 2;
             if (ShowRates && ShowSessions) height += SectionGap;
             if (ShowSessions) height += CapHeight + RowHeight * sessions;
@@ -606,6 +687,17 @@ namespace CtxTray.Ui
         {
             if (e.Button != MouseButtons.Left) return;
 
+            // 触ったなら案内は読み終えたとみなす（押す場所を選ばせない）。
+            DismissWelcome();
+
+            // 見出しの「ほか N 件を表示」はドラッグに渡さない。
+            // 押した場所がそこなら、移動ではなく展開の切り替えにする。
+            if (!_hiddenToggleArea.IsEmpty && _hiddenToggleArea.Contains(e.Location))
+            {
+                ToggleHiddenRows();
+                return;
+            }
+
             var before = Location;
             // 移動ループの中でもタイマーは動く。その間 ApplyPosition が働くと、
             // 保存済みの位置へ引き戻されて動かせない。
@@ -624,6 +716,21 @@ namespace CtxTray.Ui
             if (Location != before) SavePosition();
         }
 
+        /// <summary>
+        /// 隠した行を出す／しまう。設定は書き換えない（その場の表示だけ）。
+        /// 行数が変わるので、大きさを取り直してから描き直す。
+        /// </summary>
+        private void ToggleHiddenRows()
+        {
+            if (!_showHidden && HiddenRows.Count == 0) return;
+
+            _showHidden = !_showHidden;
+            // 行が入れ替わるので、いま出している札は当てにならない。
+            ClearTip();
+            Relayout();
+            Invalidate();
+        }
+
         // --- 描画 ---------------------------------------------------------------
 
         protected override void OnPaint(PaintEventArgs e)
@@ -632,8 +739,10 @@ namespace CtxTray.Ui
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(_theme.Background);
 
-            // 行の詳細は描くたびに組み直す（行の位置も内容も、そのとき描いたものと一致させる）。
+            // 行の詳細と押せる範囲は描くたびに組み直す
+            // （行の位置も内容も、そのとき描いたものと一致させる）。
             _tipRows.Clear();
+            _hiddenToggleArea = Rectangle.Empty;
 
             using (var border = new Pen(_theme.Border))
                 g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
@@ -651,15 +760,33 @@ namespace CtxTray.Ui
                     return;
                 }
 
+                if (_welcome != null)
+                {
+                    // 1 行では収まらないので折り返す（高さは WelcomeHeight と揃える）。
+                    TextRenderer.DrawText(g, _welcome, body,
+                        new Rectangle(PadX, y, Width - PadX * 2, RowHeight * 2), _theme.TextSecondary,
+                        TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak
+                        | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+
+                    var lineY = y + RowHeight * 2 + SectionGap / 2;
+                    using (var sep = new Pen(_theme.Separator))
+                        g.DrawLine(sep, PadX, lineY, Width - PadX, lineY);
+
+                    y += WelcomeHeight;
+                }
+
                 if (ShowSessions)
                 {
                     // 隠した行があることは見出しに小さく出す。
                     // 何も書かないと「セッションが消えた」と受け取られるため。
-                    var hidden = _snapshot.HiddenSessionCount > 0
-                        ? Strings.Format("hud.hidden", _snapshot.HiddenSessionCount)
-                        : null;
+                    // 押すとその場で出せる（設定は変えない。2026-09-20）。
+                    string hidden = null;
+                    if (_showHidden && HiddenRows.Count > 0) hidden = Strings.Get("hud.collapse");
+                    else if (_snapshot.HiddenSessionCount > 0)
+                        hidden = Strings.Format("hud.hidden", _snapshot.HiddenSessionCount);
 
-                    DrawCaption(g, cap, capNote, Strings.Get("hud.capContext"), hidden, y);
+                    _hiddenToggleArea =
+                        DrawCaption(g, cap, capNote, Strings.Get("hud.capContext"), hidden, y);
                     y += CapHeight;
                     y = DrawSessionRows(g, body, bold, y);
                 }
@@ -674,7 +801,14 @@ namespace CtxTray.Ui
 
                 if (ShowRates)
                 {
-                    DrawCaption(g, cap, capNote, Strings.Get("hud.capLimits"), null, y);
+                    // 淡い行の理由は見出しに言葉で出す。灰色なだけでは「壊れている」と読まれ、
+                    // 理由は行にマウスを乗せないと分からなかった（2026-09-20）。
+                    // 記号は付けない（▲ も + も意味が伝わらなかった、2026-09-15）。
+                    var reference = _snapshot.Freshness == RateFreshness.Reference
+                        ? Strings.Get("hud.capReference")
+                        : null;
+
+                    DrawCaption(g, cap, capNote, Strings.Get("hud.capLimits"), reference, y);
                     y += CapHeight;
                     DrawRateRows(g, body, bold, y);
                 }
@@ -684,11 +818,17 @@ namespace CtxTray.Ui
             RefreshTip();
         }
 
-        private void DrawCaption(Graphics g, Font cap, Font noteFont, string text, string note, int y)
+        /// <summary>見出しを描き、右のメモが占めた範囲を返す（メモが無ければ空）。押せる範囲に使う。</summary>
+        private Rectangle DrawCaption(Graphics g, Font cap, Font noteFont, string text, string note, int y)
         {
             DrawLeft(g, cap, text, _theme.TextSecondary, PadX, y, Width - PadX * 2);
-            if (!string.IsNullOrEmpty(note))
-                DrawRight(g, noteFont, note, _theme.TextSecondary, PadX, y, Width - PadX * 2);
+            if (string.IsNullOrEmpty(note)) return Rectangle.Empty;
+
+            DrawRight(g, noteFont, note, _theme.TextSecondary, PadX, y, Width - PadX * 2);
+
+            var w = TextRenderer.MeasureText(g, note, noteFont, new Size(int.MaxValue, RowHeight),
+                                             TextFormatFlags.NoPrefix).Width;
+            return new Rectangle(Width - PadX - w, y, w, CapHeight);
         }
 
         private int DrawRateRows(Graphics g, Font body, Font bold, int y)
@@ -720,10 +860,35 @@ namespace CtxTray.Ui
             return y;
         }
 
+        /// <summary>
+        /// 隠した行。展開していないときは空（Relayout と DrawSessionRows が同じ数を見るための入口）。
+        /// </summary>
+        private System.Collections.Generic.IList<SessionRow> HiddenRows
+        {
+            get
+            {
+                if (_snapshot == null || _snapshot.HiddenSessions == null)
+                    return new SessionRow[0];
+                return _snapshot.HiddenSessions;
+            }
+        }
+
+        /// <summary>いま描くセッションの行数。★ Relayout の高さ計算と必ず同じ数にする。</summary>
+        private int VisibleRowCount
+        {
+            get
+            {
+                if (_snapshot == null) return 1;
+                var n = _snapshot.Sessions.Count;
+                if (_showHidden) n += HiddenRows.Count;
+                return Math.Max(1, n);   // 0 件でも案内の 1 行を出す
+            }
+        }
+
         /// <summary>セッションの行を描き、次の行の y を返す（行が無くても案内の 1 行分進める。Relayout と同じ）。</summary>
         private int DrawSessionRows(Graphics g, Font body, Font bold, int y)
         {
-            if (_snapshot.Sessions.Count == 0)
+            if (_snapshot.Sessions.Count == 0 && !(_showHidden && HiddenRows.Count > 0))
             {
                 // 読み取りに失敗しているなら、その理由をここに出す。
                 // 「セッションなし」とだけ出すと、使っていないだけなのか
@@ -736,7 +901,11 @@ namespace CtxTray.Ui
                 return y + RowHeight;
             }
 
-            foreach (var s in _snapshot.Sessions)
+            var rows = new System.Collections.Generic.List<SessionRow>(_snapshot.Sessions);
+            // 展開中は、絞り込みで落とした行を後ろに続ける（設定は変えない）。
+            if (_showHidden) rows.AddRange(HiddenRows);
+
+            foreach (var s in rows)
             {
                 var name = string.IsNullOrEmpty(s.Title) ? Strings.Get("hud.untitled") : s.Title;
                 // Desktop のタブでないものは印を付ける。

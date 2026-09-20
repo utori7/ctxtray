@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Text;
+using System.Windows.Forms;
 using Microsoft.Win32;
 using CtxTray.Core;
 
@@ -17,6 +18,12 @@ namespace CtxTray.Ui
     internal sealed class Theme
     {
         public bool IsDark;
+
+        /// <summary>
+        /// Windows のコントラストテーマから作った配色か。
+        /// 独自の色を足さない（角丸の飾りや淡い色を重ねない）ための目印。
+        /// </summary>
+        public bool IsHighContrast;
 
         public Color Background;
         public Color Border;
@@ -90,6 +97,47 @@ namespace CtxTray.Ui
             return IdentityFor(value);
         }
 
+        /// <summary>
+        /// Windows のコントラストテーマ（ハイコントラスト）用。
+        ///
+        /// 色は自分で決めず、すべて Windows が用意した組み合わせ（SystemColors）から取る。
+        /// 独自の色を混ぜると、利用者がコントラストテーマを選んだ意味が無くなるため。
+        ///
+        /// 値ごとの識別色は使えない（使える色が限られていて、どれも背景と対にされた色なので）。
+        /// そのぶん、何の値かは行の名前と目印で、注意・危険は形（Ui/LevelMark.cs）で分かる。
+        /// </summary>
+        public static Theme HighContrast()
+        {
+            var back = SystemColors.Window;
+            var text = SystemColors.WindowText;
+            // 地が暗いコントラストテーマ（黒 #1・黒 #2）と明るいもの（白）の両方がある。
+            var dark = back.GetBrightness() < 0.5;
+
+            return new Theme
+            {
+                IsDark = dark,
+                IsHighContrast = true,
+                Background = back,
+                Border = SystemColors.ActiveBorder,
+                Separator = SystemColors.ActiveBorder,
+                TextPrimary = text,
+                TextSecondary = SystemColors.GrayText,
+                BarTrack = SystemColors.Control,
+                TrayTrack = SystemColors.Control,
+                ScrollThumb = SystemColors.ControlDark,
+                ScrollThumbHot = SystemColors.Highlight,
+                Field = back,
+                FieldBorder = text,
+                // 通常・注意・危険は、Windows が「対になる」と保証している色だけを使う。
+                Normal = text,
+                Warn = SystemColors.Highlight,
+                Danger = SystemColors.HotTrack,
+                IdContext = text,
+                IdFiveHour = text,
+                IdWeekly = text,
+            };
+        }
+
         public static Theme Dark()
         {
             return new Theme
@@ -147,9 +195,25 @@ namespace CtxTray.Ui
         /// </summary>
         public static Theme Resolve(string setting)
         {
+            // コントラストテーマは「自動」のときだけ。light / dark を選んだ人の指定は尊重する。
+            if (IsAuto(setting) && HighContrastOn()) return HighContrast();
+
             if (string.Equals(setting, "light", StringComparison.OrdinalIgnoreCase)) return Light();
             if (string.Equals(setting, "dark", StringComparison.OrdinalIgnoreCase)) return Dark();
             return SystemPrefersLight() ? Light() : Dark();
+        }
+
+        private static bool IsAuto(string setting)
+        {
+            return !string.Equals(setting, "light", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(setting, "dark", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Windows のコントラストテーマが入っているか。読めなければ入っていない扱い。</summary>
+        public static bool HighContrastOn()
+        {
+            try { return SystemInformation.HighContrast; }
+            catch { return false; }
         }
 
         /// <summary>
@@ -161,6 +225,8 @@ namespace CtxTray.Ui
         /// </summary>
         public static Theme ResolveForTray(string setting)
         {
+            if (IsAuto(setting) && HighContrastOn()) return HighContrast();
+
             if (string.Equals(setting, "light", StringComparison.OrdinalIgnoreCase)) return Light();
             if (string.Equals(setting, "dark", StringComparison.OrdinalIgnoreCase)) return Dark();
             return ReadPersonalize("SystemUsesLightTheme") ? Light() : Dark();

@@ -76,6 +76,15 @@ A session name in grey means its Claude Code process is not running right now
 the notifications: their usage cannot grow until they run again. You can hide them
 altogether in the settings.
 
+Click **show N more** at the right of the heading to see the rows that are currently
+filtered out, and click it again to fold them away. Nothing is saved, and the tray icon
+and notifications are unaffected. When the limits heading says **for reference**, Claude
+Desktop is not running and those two rows are the last values it recorded.
+
+Warn and danger are shown by diagonal stripes on the bar as well as by colour — wider for
+warn, tighter for danger — so the level does not depend on telling red from green. It can
+be turned off in the settings.
+
 The panel stays on screen: when it sits in the lower half of the screen it grows upward
 as sessions come and go, and it is never pushed past the edge. While a video, a
 presentation, or a game is full-screen, the panel hides itself and comes back afterwards
@@ -277,6 +286,13 @@ It writes only its own files:
   add the model to `modelLimits` to fix it.
 - Notifications use balloon tips, so they do not persist in the Action Center and are
   suppressed by Focus Assist.
+- **The panel cannot be read by a screen reader.** It is drawn as a single surface on a
+  window that never takes focus, so there is nothing for Narrator to walk. The same values
+  are available two other ways: the tray icon's tooltip, which is read out normally, and
+  `ctxtray --status` in a terminal.
+- Under a Windows contrast theme, ctxtray uses the theme's own colours and stays opaque.
+  Values are then told apart by the row labels and by the stripes on warn and danger,
+  not by colour.
 
 ## Building
 

@@ -183,6 +183,9 @@ namespace CtxTray.Ui
                     ReloadTheme();
             }
 
+            // コントラストテーマの入り切りは別の合図で来る。
+            if (m.Msg == NativeMethods.WM_THEMECHANGED) ReloadTheme();
+
             base.WndProc(ref m);
         }
 

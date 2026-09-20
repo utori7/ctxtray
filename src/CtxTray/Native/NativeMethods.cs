@@ -113,6 +113,12 @@ namespace CtxTray.Native
         public const int WM_SETTINGCHANGE = 0x001A;
         public const int WM_DPICHANGED = 0x02E0;
 
+        /// <summary>
+        /// コントラストテーマ（ハイコントラスト）の入り切り。
+        /// こちらは WM_SETTINGCHANGE の文字列では飛んでこないので、別に拾う。
+        /// </summary>
+        public const int WM_THEMECHANGED = 0x031A;
+
         // --- 座標からモニタの倍率を取る ---------------------------------------
         //
         // 設定画面は窓を作る前に倍率が要る（部品の大きさを自分で掛けて組むため）。

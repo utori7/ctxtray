@@ -43,14 +43,17 @@ namespace CtxTray.Tests
                 Run("Levels with slack", LevelsSlack);
                 Run("Tray: running sessions only", TrayPicksRunning);
                 Run("Sessions: hide the ones that are not running", HideStoppedSessions);
+                Run("Sessions: the filtered-out rows are kept for the panel", HiddenSessionsKept);
                 Run("HUD placement: grows upward in the lower half, stays on screen", Placement);
                 Run("Notify: stopped sessions are not reported", NotifySkipsStopped);
+                Run("Notify: the context body counts tokens, not a second percentage", NotifyContextBody);
                 Run("Notify: warn then danger within the quiet period", NotifyEscalation);
                 Run("Notify: hysteresis", NotifyHysteresis);
                 Run("Notify: same level within the quiet period", NotifyQuiet);
                 Run("Notify: spacing between balloons", NotifySpacing);
                 Run("AutoStart: shortcut target comparison", AutoStartTarget);
                 Run("Colors: value colours, amber/red override", ValueColors);
+                Run("Colors: the Windows contrast theme", ContrastTheme);
             }
             finally
             {
@@ -202,6 +205,14 @@ namespace CtxTray.Tests
             Check(back.HudAnchorBottom && back.HideStoppedSessions && !back.HideWhenFullscreen,
                   "the three settings survive a save");
             Equal(40, back.HudY, "the saved position survives too");
+
+            // 形の手がかり（thresholds.marks）は既定でオン。古い設定にも無いので既定が効く。
+            Check(old.LevelMarks, "the shape marks are on by default");
+            File.WriteAllText(path, "{ \"thresholds\": { \"marks\": false } }", new UTF8Encoding(false));
+            var noMarks = AppConfig.Load(out problem, out failed);
+            Check(!noMarks.LevelMarks, "marks: false is read");
+            Check(noMarks.Save(), "save succeeds");
+            Check(!AppConfig.Load(out problem, out failed).LevelMarks, "and survives a save");
 
             // ファイルが無いときは「初めての起動」として分かる（初回の案内に使う）。
             var missing = UseConfigDir("config-first-run");
@@ -536,6 +547,43 @@ namespace CtxTray.Tests
             Equal(2, allStopped.HiddenSessionCount, "on: both are counted as hidden");
         }
 
+        /// <summary>
+        /// 落とした行は捨てずに取っておく（HUD の「ほか N 件を表示」で描くため）。
+        /// Sessions の中身は今までどおりで、トレイ・ツールチップ・通知が見るものは変わらない。
+        /// </summary>
+        private static void HiddenSessionsKept()
+        {
+            var now = new DateTime(2026, 9, 20, 12, 0, 0, DateTimeKind.Utc);
+
+            var snap = new Snapshot();
+            var running = Row("running", 300000, 1000000, true);
+            var stopped = Row("stopped", 900000, 1000000, false);
+            running.LastActivityUtc = now.AddMinutes(-1);
+            stopped.LastActivityUtc = now.AddMinutes(-2);
+            snap.Sessions.Add(running);
+            snap.Sessions.Add(stopped);
+
+            var config = new AppConfig { HideStoppedSessions = true, HideIdleSessions = false };
+            SessionFilter.Apply(snap, config, now);
+
+            Equal(1, snap.Sessions.Count, "the visible list is unchanged");
+            Equal("running", snap.Sessions[0].CliSessionId, "and holds the running row");
+            Equal(1, snap.HiddenSessions.Count, "the dropped row is kept aside");
+            Equal("stopped", snap.HiddenSessions[0].CliSessionId, "and it is the stopped one");
+            Equal(snap.HiddenSessions.Count, snap.HiddenSessionCount, "the count matches the list");
+
+            // 取っておいても、トレイが見る対象は変わらない。
+            var worst = SessionFilter.MostPressed(snap, config);
+            Equal("running", worst == null ? null : worst.CliSessionId,
+                  "the tray still ignores what was filtered out");
+
+            // 何も落とさなければ空のまま。
+            var all = new Snapshot();
+            all.Sessions.Add(Row("a", 100000, 1000000, true));
+            SessionFilter.Apply(all, new AppConfig { HideIdleSessions = false }, now);
+            Equal(0, all.HiddenSessions.Count, "nothing is set aside when nothing is dropped");
+        }
+
         // --- HUD の位置 --------------------------------------------------------
 
         /// <summary>
@@ -612,6 +660,35 @@ namespace CtxTray.Tests
             h.Notifier.Pump();
             Equal(1, h.Shown.Count, "reported once it runs again");
             if (h.Shown.Count == 1) Check(h.Shown[0].StartsWith("Warning"), "as danger");
+        }
+
+        /// <summary>
+        /// コンテキストの通知は、残りをトークン数で書く。
+        /// 以前は「74.0%（圧縮まで残り 23%）」のように分母の違う % を並べていて、
+        /// 足して 100 にならないので丸め誤差に見えた（2026-09-20）。
+        /// </summary>
+        private static void NotifyContextBody()
+        {
+            var h = new Harness(30);
+            h.Config.NotifyContext = true;
+            h.Config.NotifyFiveHour = false;
+            h.Config.ContextWarn = 0.75;
+            h.Config.ContextDanger = 0.90;
+            h.Config.CompactThreshold = 0.967;
+
+            var snap = new Snapshot();
+            snap.Sessions.Add(Row("s", 750000, 1000000, true));
+
+            h.Notifier.Check(snap, h.Config);
+            h.Notifier.Pump();
+            Equal(1, h.Shown.Count, "warn is reported");
+            if (h.Shown.Count != 1) return;
+
+            var body = h.Shown[0];
+            // 967,000 - 750,000 = 217,000
+            Check(body.Contains("217,000"), "the remainder is given in tokens: " + body);
+            Check(body.Contains("75%"), "the percentage is the one shown on screen: " + body);
+            Check(!body.Contains("% left"), "no second percentage on another scale: " + body);
         }
 
         private static void NotifyEscalation()
@@ -698,6 +775,32 @@ namespace CtxTray.Tests
                 Equal(theme.IdContext.ToArgb(), theme.ColorFor(null, Level.Normal).ToArgb(),
                       name + " an unknown value uses the context colour");
             }
+        }
+
+        /// <summary>
+        /// コントラストテーマの配色。色は Windows の組み合わせからだけ取る。
+        /// 「自動」のときだけ使い、light / dark を選んだ人の指定は上書きしない。
+        /// </summary>
+        private static void ContrastTheme()
+        {
+            var hc = Theme.HighContrast();
+            Check(hc.IsHighContrast, "the contrast theme is marked as such");
+            Equal(System.Drawing.SystemColors.Window.ToArgb(), hc.Background.ToArgb(),
+                  "the background comes from Windows");
+            Equal(System.Drawing.SystemColors.WindowText.ToArgb(), hc.TextPrimary.ToArgb(),
+                  "so does the text");
+            // 値ごとの色は使わない（限られた組み合わせしか使えないので、形で区別する）。
+            Equal(hc.IdContext.ToArgb(), hc.IdFiveHour.ToArgb(), "values share one colour");
+            Equal(hc.IdFiveHour.ToArgb(), hc.IdWeekly.ToArgb(), "all three of them");
+
+            // 固定の指定はコントラストテーマに乗っ取られない。
+            Check(!Theme.Resolve("dark").IsHighContrast, "an explicit dark theme stays dark");
+            Check(!Theme.Resolve("light").IsHighContrast, "an explicit light theme stays light");
+            Check(!Theme.ResolveForTray("dark").IsHighContrast, "same for the tray");
+
+            // 「自動」はいまの Windows の設定に従う（この PC の状態で判定する）。
+            Equal(Theme.HighContrastOn(), Theme.Resolve("auto").IsHighContrast,
+                  "auto follows the Windows contrast setting");
         }
 
         private static void NotifySpacing()

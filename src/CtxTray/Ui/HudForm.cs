@@ -79,7 +79,7 @@ namespace CtxTray.Ui
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
             BackColor = _theme.Background;
-            Opacity = Clamp(config.Opacity, 0.2, 1.0);
+            Opacity = WantedOpacity(config);
             DoubleBuffered = true;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                      | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
@@ -112,6 +112,18 @@ namespace CtxTray.Ui
             RegisterHotkey();
             ApplyRoundedCorners();
             EnsureLayeredAttributes();
+        }
+
+        /// <summary>
+        /// 実際に使う不透明度。
+        ///
+        /// コントラストテーマのときは設定によらず不透明にする。後ろが透けると
+        /// 文字と地の差が縮み、コントラストテーマを選んだ意味が無くなるため。
+        /// </summary>
+        private double WantedOpacity(AppConfig config)
+        {
+            if (_theme != null && _theme.IsHighContrast) return 1.0;
+            return Clamp(config.Opacity, 0.2, 1.0);
         }
 
         /// <summary>いまの窓にクリック透過の拡張スタイルが付いているか。</summary>
@@ -190,6 +202,9 @@ namespace CtxTray.Ui
                     ReloadTheme();
             }
 
+            // コントラストテーマの入り切りは別の合図で来る。
+            if (m.Msg == NativeMethods.WM_THEMECHANGED) ReloadTheme();
+
             base.WndProc(ref m);
         }
 
@@ -260,6 +275,8 @@ namespace CtxTray.Ui
         {
             _theme = Theme.Resolve(_config.Theme);
             BackColor = _theme.Background;
+            // コントラストテーマに入る／出ると、使ってよい不透明度が変わる。
+            Opacity = WantedOpacity(_config);
             Invalidate();
 
             var handler = ThemeChanged;
@@ -279,7 +296,7 @@ namespace CtxTray.Ui
         {
             _config = config;
 
-            Opacity = Clamp(_config.Opacity, 0.2, 1.0);
+            Opacity = WantedOpacity(_config);
 
             // クリック透過はウィンドウの拡張スタイルなので、作り直さないと変わらない。
             // 作り直すと OnHandleCreated でホットキーも登録し直される。

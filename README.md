@@ -81,9 +81,10 @@ filtered out, and click it again to fold them away. Nothing is saved, and the tr
 and notifications are unaffected. When the limits heading says **for reference**, Claude
 Desktop is not running and those two rows are the last values it recorded.
 
-Warn and danger are shown by diagonal stripes on the bar as well as by colour — wider for
-warn, tighter for danger — so the level does not depend on telling red from green. It can
-be turned off in the settings.
+In the panel, warn and danger are shown by diagonal stripes on the bar as well as by
+colour — wider for warn, tighter for danger — so the level does not depend on telling red
+from green. It can be turned off in the settings. The tray icon is too small for stripes
+to read, so it uses colour alone.
 
 The panel stays on screen: when it sits in the lower half of the screen it grows upward
 as sessions come and go, and it is never pushed past the edge. While a video, a
@@ -291,8 +292,8 @@ It writes only its own files:
   are available two other ways: the tray icon's tooltip, which is read out normally, and
   `ctxtray --status` in a terminal.
 - Under a Windows contrast theme, ctxtray uses the theme's own colours and stays opaque.
-  Values are then told apart by the row labels and by the stripes on warn and danger,
-  not by colour.
+  In the panel, values are then told apart by the row labels and by the stripes on warn
+  and danger rather than by colour; the tray icon has neither, so hover it for the values.
 
 ## Building
 

@@ -436,7 +436,6 @@ namespace CtxTray.Ui
 
             // 色だけだと、赤と緑の区別が付きにくい人には通常と危険が見分けられない。
             _levelMarks = Check("set.levelMarks");
-            _levelMarks.CheckedChanged += (s, e) => InvalidatePreview();
             Full(_levelMarks);
             Hint("set.levelMarksHint");
             foreach (var box in new[] { _ctxWarn, _ctxDanger, _fhWarn, _fhDanger, _wkWarn, _wkDanger })
@@ -1284,21 +1283,18 @@ namespace CtxTray.Ui
 
             var values = BuildTrayValues();
 
-            // 形の手がかりも画面のチェックに合わせる（OK を押す前に見え方が分かるように）。
-            var marks = _levelMarks == null || _levelMarks.Checked;
-
             if (_modeMulti.Checked)
             {
                 var style = SelectedLabelStyle();
                 foreach (var value in values)
                     icons.Add(TrayIconRenderer.Render(new List<TrayGauge> { PreviewGauge(value) },
-                                                      style, theme, marks, side));
+                                                      style, theme, side));
             }
             else
             {
                 var gauges = new List<TrayGauge>();
                 foreach (var value in values) gauges.Add(PreviewGauge(value));
-                icons.Add(TrayIconRenderer.Render(gauges, TrayIconRenderer.BarsStyle, theme, marks, side));
+                icons.Add(TrayIconRenderer.Render(gauges, TrayIconRenderer.BarsStyle, theme, side));
             }
 
             return icons;

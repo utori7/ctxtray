@@ -40,9 +40,12 @@ namespace CtxTray.Ui
     ///   glyphs  … 同上。英字の代わりに絵記号（吹き出し / 時計 / カレンダー）
     ///
     /// 色の規則はすべて共通で、HUD とも同じ（Theme.ColorFor）: 普段は値ごとの色、注意・危険になった値だけ黄・赤。
-    /// 注意・危険には形の手がかり（斜めの縞）も重ねる。これも HUD と同じ規則（Ui/LevelMark.cs）。
     /// 以前の「危険時は背景を塗る（反転）」はやめた。1 個にまとめるモードでは
     /// どの値が危ないのかが分からなくなり、両モードで規則を揃えられないため。
+    ///
+    /// ★ パネルが注意・危険に重ねる縞（Ui/LevelMark.cs）は、ここには入れない。
+    ///   16〜24px では、はっきり見えるようにすると今度はうるさくなる。
+    ///   実寸で 3 案を見比べた上での利用者の決定（2026-09-20）。揃えに行かないこと。
     /// </summary>
     internal static class TrayIconRenderer
     {
@@ -54,15 +57,11 @@ namespace CtxTray.Ui
         /// 呼び出し側は差し替え後に古い Icon を Dispose すること
         /// （GDI ハンドルは自動では解放されない）。
         /// </summary>
-        /// <param name="marks">
-        /// 注意・危険を色だけでなく形（縞）でも示すか（設定 thresholds.marks）。HUD と同じ規則。
-        /// </param>
         /// <param name="sideOverride">
         /// 0 以外を渡すとその一辺で描く。設定画面の見本と、各表示倍率での見え方を
         /// 実寸で確かめるための入口。通常は 0 で、画面の DPI から決める。
         /// </param>
-        public static Icon Render(IList<TrayGauge> gauges, string style, Theme theme, bool marks,
-                                  int sideOverride = 0)
+        public static Icon Render(IList<TrayGauge> gauges, string style, Theme theme, int sideOverride = 0)
         {
             var side = sideOverride > 0 ? sideOverride : CanvasSide();
 
@@ -79,12 +78,12 @@ namespace CtxTray.Ui
 
                     if (IsStyle(style, BarsStyle))
                     {
-                        DrawBars(g, side, gauges, theme, marks);
+                        DrawBars(g, side, gauges, theme);
                     }
                     else
                     {
                         var gauge = (gauges != null && gauges.Count > 0) ? gauges[0] : null;
-                        DrawMarked(g, side, gauge, IsStyle(style, GlyphsStyle), theme, marks);
+                        DrawMarked(g, side, gauge, IsStyle(style, GlyphsStyle), theme);
                     }
                 }
 
@@ -136,7 +135,7 @@ namespace CtxTray.Ui
 
         // --- bars（1 個にまとめるモード） ---------------------------------------
 
-        private static void DrawBars(Graphics g, int side, IList<TrayGauge> gauges, Theme theme, bool marks)
+        private static void DrawBars(Graphics g, int side, IList<TrayGauge> gauges, Theme theme)
         {
             var count = gauges == null ? 0 : Math.Min(3, gauges.Count);
             if (count == 0) return;
@@ -152,7 +151,7 @@ namespace CtxTray.Ui
             for (var i = 0; i < count; i++)
             {
                 var rect = new RectangleF(1, top + i * (thickness + gap), side - 2, thickness);
-                DrawBar(g, rect, gauges[i], theme, radius, marks);
+                DrawBar(g, rect, gauges[i], theme, radius);
             }
         }
 
@@ -182,7 +181,7 @@ namespace CtxTray.Ui
             gap = count == 2 ? spacing : 0;
         }
 
-        private static void DrawBar(Graphics g, RectangleF rect, TrayGauge gauge, Theme theme, float radius, bool marks)
+        private static void DrawBar(Graphics g, RectangleF rect, TrayGauge gauge, Theme theme, float radius)
         {
             using (var brush = new SolidBrush(theme.TrayTrack))
             using (var path = RoundedRect(rect, radius))
@@ -197,10 +196,6 @@ namespace CtxTray.Ui
             using (var brush = new SolidBrush(ColorFor(gauge, theme)))
             using (var path = RoundedRect(new RectangleF(rect.X, rect.Y, filled, rect.Height), radius))
                 g.FillPath(brush, path);
-
-            // 注意・危険は色以外でも分かるようにする。規則は HUD と共通（Ui/LevelMark.cs）。
-            LevelMark.Decorate(g, new RectangleF(rect.X, rect.Y, filled, rect.Height),
-                               gauge.Level, theme.TrayTrack, marks);
         }
 
         // --- letters / glyphs（値ごとに分けるモード） ---------------------------
@@ -209,7 +204,7 @@ namespace CtxTray.Ui
         /// 上に目印、下にバー。寸法は実寸のモックアップ（24px: 目印の枠 高さ約 14・バー 5）に合わせ、
         /// 他の大きさは同じ比率で求める。
         /// </summary>
-        private static void DrawMarked(Graphics g, int side, TrayGauge gauge, bool glyphs, Theme theme, bool marks)
+        private static void DrawMarked(Graphics g, int side, TrayGauge gauge, bool glyphs, Theme theme)
         {
             // ★ 16px（表示倍率 100%）は余白を削って、目印とバーに画素を回す。
             //   以前は バー 4・余白 上下 1.5 ずつ で、目印に 9px 弱しか残らず「5h」が潰れていた。
@@ -219,7 +214,7 @@ namespace CtxTray.Ui
             var barH = small ? 5 : Math.Max(3, (int)Math.Round(side * 0.22));
             var barY = small ? side - barH : side - 1 - barH;
             var barX = small ? 0f : 1f;
-            DrawBar(g, new RectangleF(barX, barY, side - barX * 2, barH), gauge, theme, barH / 2f, marks);
+            DrawBar(g, new RectangleF(barX, barY, side - barX * 2, barH), gauge, theme, barH / 2f);
 
             var gap = small ? 1f : Math.Max(1.5f, side * 0.1f);
             var pad = small ? 0f : 1f;

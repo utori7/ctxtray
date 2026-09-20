@@ -263,10 +263,11 @@ namespace CtxTray.Config
                                            "Set the warn value below the danger value. While it is higher, the warn colour and its notification never appear." } },
 
             // 色だけで示すと、赤と緑の区別が付きにくい人には通常と危険が見分けられない。
-            { "set.levelMarks",    new[] { "注意・危険はバーの模様でも示す",
-                                           "Also mark warn and danger on the bar" } },
-            { "set.levelMarksHint",new[] { "バーに斜めの縞を入れます（注意は粗く、危険は細かく）。色の違いが分かりにくいときに。パネルと通知領域のアイコンの両方に効きます。",
-                                           "Draws diagonal stripes on the bar - wider for warn, tighter for danger - for when the colours are hard to tell apart. It applies to both the panel and the tray icon." } },
+            // 通知領域のアイコンには入れない（小さすぎて、見えるようにするとうるさくなる）。
+            { "set.levelMarks",    new[] { "注意・危険はパネルのバーの模様でも示す",
+                                           "Also mark warn and danger on the panel's bars" } },
+            { "set.levelMarksHint",new[] { "バーに斜めの縞を入れます（注意は粗く、危険は細かく）。色の違いが分かりにくいときに。通知領域のアイコンは小さいので入れません。",
+                                           "Draws diagonal stripes on the bar - wider for warn, tighter for danger - for when the colours are hard to tell apart. The tray icon is too small for them, so it keeps colour alone." } },
 
             { "set.secNotify",     new[] { "通知を出す",           "Send notifications for" } },
             { "set.notifyContext", new[] { "コンテキスト",          "Context" } },

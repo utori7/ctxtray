@@ -269,9 +269,7 @@ namespace CtxTray
                                     var x = cellX;
                                     foreach (var size in sizes)
                                     {
-                                        // 形の手がかりは設定どおりに描く（切ったときの見え方も確かめられる）。
-                                        using (var icon = TrayIconRenderer.Render(gauges, style, theme,
-                                                                                  config.LevelMarks, size))
+                                        using (var icon = TrayIconRenderer.Render(gauges, style, theme, size))
                                         using (var shot = icon.ToBitmap())
                                         {
                                             // 実寸は拡大図（高さ 2 倍）の縦の中央に置く。

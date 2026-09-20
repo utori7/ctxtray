@@ -262,6 +262,12 @@ namespace CtxTray.Config
             { "set.thresholdOrder",new[] { "「注意」は「危険」より小さい値にしてください。大きいままだと、注意の色も通知も出ません。",
                                            "Set the warn value below the danger value. While it is higher, the warn colour and its notification never appear." } },
 
+            // 色だけで示すと、赤と緑の区別が付きにくい人には通常と危険が見分けられない。
+            { "set.levelMarks",    new[] { "注意・危険はバーの模様でも示す",
+                                           "Also mark warn and danger on the bar" } },
+            { "set.levelMarksHint",new[] { "バーに斜めの縞を入れます（注意は粗く、危険は細かく）。色の違いが分かりにくいときに。パネルと通知領域のアイコンの両方に効きます。",
+                                           "Draws diagonal stripes on the bar - wider for warn, tighter for danger - for when the colours are hard to tell apart. It applies to both the panel and the tray icon." } },
+
             { "set.secNotify",     new[] { "通知を出す",           "Send notifications for" } },
             { "set.notifyContext", new[] { "コンテキスト",          "Context" } },
             { "set.notifyFh",      new[] { "5時間枠",              "5-hour limit" } },

@@ -33,6 +33,15 @@ namespace CtxTray.Config
         public int WeeklyWarn = 80;
         public int WeeklyDanger = 95;
 
+        /// <summary>
+        /// 注意・危険を、色だけでなくバーの形（斜めの縞）でも示す。
+        ///
+        /// 赤と緑の区別が付きにくい人には、5時間枠の「通常」と「危険」が色だけでは見分けられない。
+        /// 見た目を静かにしたい人のために切れるようにしてある（既定はオン。2026-09-20 利用者の決定）。
+        /// 描き方は Ui/LevelMark.cs。HUD とトレイアイコンで同じ規則。
+        /// </summary>
+        public bool LevelMarks = true;
+
         // --- 通知 -----------------------------------------------------------
         public bool NotifyContext = true;
         public bool NotifyFiveHour = true;
@@ -330,6 +339,8 @@ namespace CtxTray.Config
                     WeeklyWarn = (int)Json.Long(wk, "warn", WeeklyWarn);
                     WeeklyDanger = (int)Json.Long(wk, "danger", WeeklyDanger);
                 }
+
+                LevelMarks = Json.Bool(thresholds, "marks", LevelMarks);
             }
 
             var notify = Json.Obj(o, "notify");
@@ -493,7 +504,8 @@ namespace CtxTray.Config
                 .Add("thresholds", new JObj()
                     .Add("context", new JObj().Add("warn", ContextWarn).Add("danger", ContextDanger))
                     .Add("fiveHour", new JObj().Add("warn", FiveHourWarn).Add("danger", FiveHourDanger))
-                    .Add("weekly", new JObj().Add("warn", WeeklyWarn).Add("danger", WeeklyDanger)))
+                    .Add("weekly", new JObj().Add("warn", WeeklyWarn).Add("danger", WeeklyDanger))
+                    .Add("marks", LevelMarks))
                 .Add("notify", new JObj()
                     .Add("enabled", new JObj()
                         .Add("context", NotifyContext)

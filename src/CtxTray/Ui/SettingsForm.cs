@@ -108,6 +108,7 @@ namespace CtxTray.Ui
         private NumericUpDown _hysteresis, _minRepeat;
         private Label _ctxHint;
         private Label _thresholdOrderWarning;
+        private CheckBox _levelMarks;
         private CheckBox _notifyContext, _notifyFh, _notifyWk;
 
         // --- 全般 ---
@@ -429,6 +430,12 @@ namespace CtxTray.Ui
             // 注意が危険より大きいと、判定が危険を先に見るので注意が一度も起きない。
             // ホットキーの赤字と同じ作りで、その場で知らせる（値は勝手に直さない）。
             _thresholdOrderWarning = Hint("set.thresholdOrder");
+
+            // 色だけだと、赤と緑の区別が付きにくい人には通常と危険が見分けられない。
+            _levelMarks = Check("set.levelMarks");
+            _levelMarks.CheckedChanged += (s, e) => InvalidatePreview();
+            Full(_levelMarks);
+            Hint("set.levelMarksHint");
             foreach (var box in new[] { _ctxWarn, _ctxDanger, _fhWarn, _fhDanger, _wkWarn, _wkDanger })
                 box.ValueChanged += (s, e) => UpdateThresholdOrderWarning();
 
@@ -885,6 +892,7 @@ namespace CtxTray.Ui
             _wkDanger.Value = Clamp(c.WeeklyDanger, 0, 100);
             UpdateContextHint();
             UpdateThresholdOrderWarning();
+            _levelMarks.Checked = c.LevelMarks;
 
             _notifyContext.Checked = c.NotifyContext;
             _notifyFh.Checked = c.NotifyFiveHour;
@@ -941,6 +949,7 @@ namespace CtxTray.Ui
             c.FiveHourDanger = (int)_fhDanger.Value;
             c.WeeklyWarn = (int)_wkWarn.Value;
             c.WeeklyDanger = (int)_wkDanger.Value;
+            c.LevelMarks = _levelMarks.Checked;
 
             c.NotifyContext = _notifyContext.Checked;
             c.NotifyFiveHour = _notifyFh.Checked;
@@ -1272,18 +1281,21 @@ namespace CtxTray.Ui
 
             var values = BuildTrayValues();
 
+            // 形の手がかりも画面のチェックに合わせる（OK を押す前に見え方が分かるように）。
+            var marks = _levelMarks == null || _levelMarks.Checked;
+
             if (_modeMulti.Checked)
             {
                 var style = SelectedLabelStyle();
                 foreach (var value in values)
                     icons.Add(TrayIconRenderer.Render(new List<TrayGauge> { PreviewGauge(value) },
-                                                      style, theme, side));
+                                                      style, theme, marks, side));
             }
             else
             {
                 var gauges = new List<TrayGauge>();
                 foreach (var value in values) gauges.Add(PreviewGauge(value));
-                icons.Add(TrayIconRenderer.Render(gauges, TrayIconRenderer.BarsStyle, theme, side));
+                icons.Add(TrayIconRenderer.Render(gauges, TrayIconRenderer.BarsStyle, theme, marks, side));
             }
 
             return icons;

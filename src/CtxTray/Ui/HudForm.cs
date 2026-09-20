@@ -974,7 +974,9 @@ namespace CtxTray.Ui
             if (BarW > 0)
             {
                 var barH = S(6);
-                DrawBar(g, x, y + (RowHeight - barH) / 2, BarW, barH, fraction, valueColor);
+                // 淡い行は色で区別していないので、形の印も付けない（レベルを主張させない）。
+                DrawBar(g, x, y + (RowHeight - barH) / 2, BarW, barH, fraction, valueColor,
+                        dimmed ? Level.Normal : level);
                 x += BarW + Gap;
             }
 
@@ -985,7 +987,8 @@ namespace CtxTray.Ui
                 DrawRight(g, body, tokens, _theme.TextSecondary, x + Gap, y, TokensW);
         }
 
-        private void DrawBar(Graphics g, int x, int y, int w, int h, double fraction, Color color)
+        private void DrawBar(Graphics g, int x, int y, int w, int h, double fraction, Color color,
+                             Level level)
         {
             using (var track = new SolidBrush(_theme.BarTrack))
             using (var path = RoundedRect(x, y, w, h))
@@ -1001,6 +1004,10 @@ namespace CtxTray.Ui
             using (var brush = new SolidBrush(color))
             using (var path = RoundedRect(x, y, filled, h))
                 g.FillPath(brush, path);
+
+            // 注意・危険は色以外でも分かるようにする。規則はトレイと共通（Ui/LevelMark.cs）。
+            LevelMark.Decorate(g, new RectangleF(x, y, filled, h), level, _theme.BarTrack,
+                               _config.LevelMarks);
         }
 
         private static GraphicsPath RoundedRect(int x, int y, int w, int h)

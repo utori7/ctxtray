@@ -530,7 +530,7 @@ namespace CtxTray.Ui
             foreach (var value in _config.OrderedTrayValues())
                 gauges.Add(Gauge(value, snap, worst));
 
-            Apply(0, TrayIconRenderer.Render(gauges, TrayIconRenderer.BarsStyle, theme));
+            Apply(0, TrayIconRenderer.Render(gauges, TrayIconRenderer.BarsStyle, theme, _config.LevelMarks));
 
             for (var i = 1; i < _trays.Length; i++) Hide(i);
         }
@@ -553,7 +553,7 @@ namespace CtxTray.Ui
                 if (!ContainsValue(_config.TrayValues, value)) { Hide(slot); continue; }
 
                 Apply(slot, TrayIconRenderer.Render(new List<TrayGauge> { Gauge(value, snap, worst) },
-                                                    _config.TrayLabel, theme));
+                                                    _config.TrayLabel, theme, _config.LevelMarks));
             }
         }
 

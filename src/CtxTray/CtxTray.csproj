@@ -6,7 +6,7 @@
     <LangVersion>7.3</LangVersion>
     <AssemblyName>ctxtray</AssemblyName>
     <RootNamespace>CtxTray</RootNamespace>
-    <Version>0.1.7</Version>
+    <Version>0.2.0</Version>
 
     <!-- 常駐 GUI なのでコンソール窓を出さない。
          ターミナルから引数付きで叩いたときだけ、

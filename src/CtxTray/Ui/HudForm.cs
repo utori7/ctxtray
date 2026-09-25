@@ -933,7 +933,7 @@ namespace CtxTray.Ui
                 if (s.ModelKnown && s.ContextPct.HasValue)
                 {
                     // 表示するのはウィンドウに対する消費率。公式インジケーターと同じ値。
-                    pct = s.ContextPct.Value.ToString("0", CultureInfo.InvariantCulture) + "%";
+                    pct = PercentText.Format(s.ContextPct.Value) + "%";
                     fraction = s.ContextPct.Value / 100.0;
                 }
                 else
@@ -1099,7 +1099,7 @@ namespace CtxTray.Ui
                 {
                     lines.Add(new TipLine(Strings.Format("hud.tipTokens",
                         Thousands(s.ContextTokens.Value), Thousands(s.ContextLimit.Value),
-                        s.ContextPct.Value.ToString("0", CultureInfo.InvariantCulture)), false, false));
+                        PercentText.Format(s.ContextPct.Value)), false, false));
 
                     // 圧縮点は設定の compactThreshold（公式の既定値）。通知の本文と同じ根拠。
                     var left = (int)Math.Round(s.ContextLimit.Value * _config.CompactThreshold

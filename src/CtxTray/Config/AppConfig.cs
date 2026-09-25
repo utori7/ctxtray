@@ -76,14 +76,14 @@ namespace CtxTray.Config
         // --- トレイアイコン ---------------------------------------------------
         //
         // single = アイコン 1 個に、選んだ値を横のバーで並べる（数字なし）
-        // multi  = 値ごとにアイコンを分け、目印（英字か絵記号）とバーで描く
+        // multi  = 値ごとにアイコンを分け、目印（英字・絵記号・数字）とバーで描く
         //
         // Windows 11 は新しいアイコンを既定で「隠れているインジケーター」に入れる。
         // タスクバーへ出す手間が 1 回で済むので、既定は single（利用者の判断、2026-09-16）。
         public string TrayMode = "single";
 
-        // multi のときの目印。letters = C / 5h / W、glyphs = 吹き出し / 時計 / カレンダー。
-        // 既定は 16px でも読みやすい letters。
+        // multi のときの目印。letters = C / 5h / W、glyphs = 吹き出し / 時計 / カレンダー、
+        // percent = いまの %（2026-09-25 に追加）。既定は 16px でも読みやすい letters。
         public string TrayLabel = "letters";
 
         // 表示する値（両モード共通）。部分集合でよい。並びは描画時に正式な順へ揃える。
@@ -375,6 +375,7 @@ namespace CtxTray.Config
                 var label = Json.Str(tray, "label");
                 if (string.Equals(label, "glyphs", StringComparison.OrdinalIgnoreCase)) TrayLabel = "glyphs";
                 else if (string.Equals(label, "letters", StringComparison.OrdinalIgnoreCase)) TrayLabel = "letters";
+                else if (string.Equals(label, "percent", StringComparison.OrdinalIgnoreCase)) TrayLabel = "percent";
 
                 var values = Json.Arr(tray, "values");
                 if (values != null)

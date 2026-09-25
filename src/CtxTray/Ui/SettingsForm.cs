@@ -100,7 +100,7 @@ namespace CtxTray.Ui
         private CheckBox _showContext, _showFiveHour, _showWeekly;
         private readonly Dictionary<string, Label> _swatches = new Dictionary<string, Label>();
         private Label _labelHeading;
-        private RadioButton _labelLetters, _labelGlyphs;
+        private RadioButton _labelLetters, _labelGlyphs, _labelPercent;
         private PictureBox _preview;
 
         // --- しきい値と通知 ---
@@ -397,8 +397,13 @@ namespace CtxTray.Ui
             _labelHeading = Section("set.secTrayLabel");
             _labelLetters = Radio("set.labelLetters");
             _labelGlyphs = Radio("set.labelGlyphs");
+            _labelPercent = Radio("set.labelPercent");
+            // 2 択のときは英字の側だけで足りたが、3 択では絵記号⇔数字の切り替えで英字の側が動かない。
+            // 全部に付ける（切り替えのたびに 2 回呼ばれるが、描き直しの予約なので害はない）。
             _labelLetters.CheckedChanged += (s, e) => InvalidatePreview();
-            Full(Stack(_labelLetters, _labelGlyphs));
+            _labelGlyphs.CheckedChanged += (s, e) => InvalidatePreview();
+            _labelPercent.CheckedChanged += (s, e) => InvalidatePreview();
+            Full(Stack(_labelLetters, _labelGlyphs, _labelPercent));
             Hint("set.labelHint");
 
             Hint("set.trayOverflowHint");
@@ -879,6 +884,8 @@ namespace CtxTray.Ui
             else _modeSingle.Checked = true;
             if (string.Equals(c.TrayLabel, TrayIconRenderer.GlyphsStyle, StringComparison.OrdinalIgnoreCase))
                 _labelGlyphs.Checked = true;
+            else if (string.Equals(c.TrayLabel, TrayIconRenderer.PercentStyle, StringComparison.OrdinalIgnoreCase))
+                _labelPercent.Checked = true;
             else
                 _labelLetters.Checked = true;
             _showContext.Checked = HasValue(c, "context");
@@ -1075,7 +1082,9 @@ namespace CtxTray.Ui
 
         private string SelectedLabelStyle()
         {
-            return _labelGlyphs.Checked ? TrayIconRenderer.GlyphsStyle : TrayIconRenderer.LettersStyle;
+            if (_labelGlyphs.Checked) return TrayIconRenderer.GlyphsStyle;
+            if (_labelPercent.Checked) return TrayIconRenderer.PercentStyle;
+            return TrayIconRenderer.LettersStyle;
         }
 
         /// <summary>
@@ -1124,6 +1133,7 @@ namespace CtxTray.Ui
             Dim(_labelHeading, dim);
             Dim(_labelLetters, dim);
             Dim(_labelGlyphs, dim);
+            Dim(_labelPercent, dim);
 
             InvalidatePreview();
         }

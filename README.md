@@ -93,7 +93,7 @@ presentation, or a game is full-screen, the panel hides itself and comes back af
 
 ### The tray icon
 
-The tray icon shows amounts as bars, not numbers — hover over it for the exact values.
+The tray icon shows amounts as bars — hover over it for the exact values.
 Each value has its own colour (context blue, 5-hour green, weekly violet), and a value
 that crosses a threshold turns amber, then red. The panel uses the same colours, and
 both list the values in the same order: context, 5-hour, weekly.
@@ -103,6 +103,8 @@ Two arrangements, switchable in settings:
   context, 5-hour, weekly.
 - **One icon per value** — a separate icon for each value, with a label above its bar:
   letters (`C`, `5h`, `W`) or symbols (speech bubble, clock, calendar).
+  Instead of a label, an icon can also show the current percentage (the same number
+  as the panel); you then tell the icons apart by their order and colour.
   The icons are added so that they line up left to right as context, 5-hour, weekly.
   If they land in the hidden overflow, drag them onto the taskbar once.
 
@@ -170,7 +172,7 @@ notifications together. There is no separate set of numbers for each.
   },
   "tray": {
     "mode": "single",            // "single" = one combined icon, "multi" = one per value
-    "label": "letters",          // multi only: "letters" | "glyphs"
+    "label": "letters",          // multi only: "letters" | "glyphs" | "percent"
     "values": ["context", "fiveHour", "weekly"]
   },
   "display": {

@@ -236,8 +236,9 @@ namespace CtxTray.Config
             { "set.secTrayLabel",  new[] { "値ごとに分けるときの目印", "Label on each icon" } },
             { "set.labelLetters",  new[] { "文字（C・5h・W）",      "Letters (C, 5h, W)" } },
             { "set.labelGlyphs",   new[] { "絵記号（吹き出し・時計・カレンダー）", "Symbols (bubble, clock, calendar)" } },
-            { "set.labelHint",     new[] { "C と吹き出しはコンテキスト、5h と時計は5時間枠、W とカレンダーは週間枠です。",
-                                           "C and the bubble mean context, 5h and the clock the 5-hour limit, W and the calendar the weekly limit." } },
+            { "set.labelPercent",  new[] { "数字（いまの %）",      "Numbers (current %)" } },
+            { "set.labelHint",     new[] { "C と吹き出しはコンテキスト、5h と時計は5時間枠、W とカレンダーは週間枠です。数字はパネルと同じ % で、どれが何の値かは並び（左からコンテキスト・5時間枠・週間枠）と色で見分けます。",
+                                           "C and the bubble mean context, 5h and the clock the 5-hour limit, W and the calendar the weekly limit. Numbers are the same % as the panel; tell them apart by order (context, 5-hour, weekly from the left) and colour." } },
 
             { "set.trayOverflowHint", new[] { "アイコンが通知領域の「^」の中に入ったときは、タスクバーへドラッグして出してください（最初の 1 回だけ）。正確な値はアイコンにマウスを乗せると出ます。",
                                               "If an icon lands under the ^ overflow, drag it onto the taskbar (only needed once). Hover over an icon for the exact values." } },

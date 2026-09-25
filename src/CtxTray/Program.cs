@@ -204,8 +204,11 @@ namespace CtxTray
             var themes = new[] { Theme.Dark(), Theme.Light() };
             var levels = new[] { Level.Normal, Level.Warn, Level.Danger };
             var sizes = new[] { 16, 20, 24, 32 };
-            var styles = new[] { TrayIconRenderer.LettersStyle, TrayIconRenderer.GlyphsStyle, TrayIconRenderer.BarsStyle };
+            var styles = new[] { TrayIconRenderer.LettersStyle, TrayIconRenderer.GlyphsStyle,
+                                 TrayIconRenderer.PercentStyle, TrayIconRenderer.BarsStyle };
             const int columns = 3;
+            // 数字の境目の段（1 桁・3 桁・値なし）。見本の 78/46/19 だけでは幅の違いが見られない。
+            const int extraRows = 1;
 
             // 1 セル = 大きさごとに「実寸 + 余白 + 2 倍拡大 + 余白」。1 行にセルを 3 つ並べる。
             var cell = 0;
@@ -215,7 +218,8 @@ namespace CtxTray
             // 32px の 2 倍（64）と、その下の説明文。詰めると説明文が次の行の見出しに見える。
             const int rowH = 96;
             var width = labelW + cell * columns + 12;
-            var height = rowH * styles.Length * levels.Length * themes.Length + 16;
+            var rowsPerTheme = styles.Length * levels.Length + extraRows;
+            var height = rowH * rowsPerTheme * themes.Length + 16;
 
             using (var bmp = new Bitmap(width, height))
             using (var g = Graphics.FromImage(bmp))
@@ -229,7 +233,7 @@ namespace CtxTray
                 {
                     using (var back = new SolidBrush(theme.IsDark ? Color.FromArgb(32, 32, 32)
                                                                   : Color.FromArgb(243, 243, 243)))
-                        g.FillRectangle(back, 0, y - 8, width, rowH * styles.Length * levels.Length + 8);
+                        g.FillRectangle(back, 0, y - 8, width, rowH * rowsPerTheme + 8);
 
                     using (var ink = new SolidBrush(theme.TextPrimary))
                     {
@@ -283,6 +287,34 @@ namespace CtxTray
                                 y += rowH;
                             }
                         }
+
+                        g.DrawString(TrayIconRenderer.PercentStyle + " edges", font, ink, 6, y + 24);
+                        var edges = new[]
+                        {
+                            EdgeSample("context", 5, Level.Normal),
+                            EdgeSample("fiveHour", 100, Level.Danger),
+                            new TrayGauge { Value = "weekly" },
+                        };
+                        for (var col = 0; col < columns; col++)
+                        {
+                            var gauge = edges[col];
+                            var cellX = labelW + cell * col;
+                            var x = cellX;
+                            foreach (var size in sizes)
+                            {
+                                using (var icon = TrayIconRenderer.Render(new List<TrayGauge> { gauge },
+                                                                          TrayIconRenderer.PercentStyle, theme, size))
+                                using (var shot = icon.ToBitmap())
+                                {
+                                    g.DrawImage(shot, x, y + size / 2, size, size);
+                                    g.DrawImage(shot, x + size + 6, y, size * 2, size * 2);
+                                }
+                                x += size + 6 + size * 2 + 10;
+                            }
+                            var caption = gauge.Value + " " + (gauge.HasValue ? gauge.Percent.Value + "%" : "no value");
+                            g.DrawString(caption, font, ink, cellX, y + 66);
+                        }
+                        y += rowH;
                     }
                 }
 
@@ -403,6 +435,11 @@ namespace CtxTray
         /// <summary>
         /// 見本用のゲージ。値ごとに長さを変え、長い・中くらい・短いバーを同時に見られるようにする。
         /// </summary>
+        private static TrayGauge EdgeSample(string value, int pct, Level level)
+        {
+            return new TrayGauge { Value = value, Fraction = pct / 100.0, Percent = pct, Level = level };
+        }
+
         private static TrayGauge PreviewSample(string value, Level level)
         {
             var pct = value == "context" ? 78 : (value == "fiveHour" ? 46 : 19);

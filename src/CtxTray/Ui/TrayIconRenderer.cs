@@ -30,14 +30,17 @@ namespace CtxTray.Ui
     /// <summary>
     /// 通知領域のアイコンを描く。
     ///
-    /// 数字は描かない。量はバーの長さで大まかに示し、正確な値はツールチップと HUD に任せる。
+    /// 既定では数字は描かない。量はバーの長さで大まかに示し、正確な値はツールチップと HUD に任せる。
     /// 16〜24px の数字は大きくしても読むのに一瞬かかり、3 つ並べると何の数字かも
     /// 分かりにくかった。数字の代わりに「何の値か」を示す方が親切、という利用者の判断（2026-09-16）。
+    /// その上で、値ごとに分けるモードの目印として数字（percent）も選べるようにした
+    /// （2026-09-25、利用者の判断）。既定は letters のまま。
     ///
-    /// スタイルは 3 つ:
+    /// スタイルは 4 つ:
     ///   bars    … 1 個にまとめるモード。選んだ値 1 つにつき横のバー 1 本（上から context / fiveHour / weekly）
     ///   letters … 値ごとに分けるモード。何の値かを英字（C / 5h / W）で示し、下にバー
     ///   glyphs  … 同上。英字の代わりに絵記号（吹き出し / 時計 / カレンダー）
+    ///   percent … 同上。目印の代わりにいまの %（HUD と同じ丸め）。何の値かは色と並びで見分ける
     ///
     /// 色の規則はすべて共通で、HUD とも同じ（Theme.ColorFor）: 普段は値ごとの色、注意・危険になった値だけ黄・赤。
     /// 以前の「危険時は背景を塗る（反転）」はやめた。1 個にまとめるモードでは
@@ -52,6 +55,7 @@ namespace CtxTray.Ui
         public const string BarsStyle = "bars";
         public const string LettersStyle = "letters";
         public const string GlyphsStyle = "glyphs";
+        public const string PercentStyle = "percent";
 
         /// <summary>
         /// 呼び出し側は差し替え後に古い Icon を Dispose すること
@@ -83,7 +87,7 @@ namespace CtxTray.Ui
                     else
                     {
                         var gauge = (gauges != null && gauges.Count > 0) ? gauges[0] : null;
-                        DrawMarked(g, side, gauge, IsStyle(style, GlyphsStyle), theme);
+                        DrawMarked(g, side, gauge, style, theme);
                     }
                 }
 
@@ -198,13 +202,13 @@ namespace CtxTray.Ui
                 g.FillPath(brush, path);
         }
 
-        // --- letters / glyphs（値ごとに分けるモード） ---------------------------
+        // --- letters / glyphs / percent（値ごとに分けるモード） -----------------
 
         /// <summary>
-        /// 上に目印、下にバー。寸法は実寸のモックアップ（24px: 目印の枠 高さ約 14・バー 5）に合わせ、
+        /// 上に目印（英字・絵記号・数字）、下にバー。寸法は実寸のモックアップ（24px: 目印の枠 高さ約 14・バー 5）に合わせ、
         /// 他の大きさは同じ比率で求める。
         /// </summary>
-        private static void DrawMarked(Graphics g, int side, TrayGauge gauge, bool glyphs, Theme theme)
+        private static void DrawMarked(Graphics g, int side, TrayGauge gauge, string style, Theme theme)
         {
             // ★ 16px（表示倍率 100%）は余白を削って、目印とバーに画素を回す。
             //   以前は バー 4・余白 上下 1.5 ずつ で、目印に 9px 弱しか残らず「5h」が潰れていた。
@@ -222,8 +226,19 @@ namespace CtxTray.Ui
 
             var color = ColorFor(gauge, theme);
             var value = gauge == null ? null : gauge.Value;
-            if (glyphs) DrawGlyph(g, value, box, color, side);
+            if (IsStyle(style, GlyphsStyle)) DrawGlyph(g, value, box, color, side);
+            else if (IsStyle(style, PercentStyle)) FillDigits(g, DigitsFor(gauge), box, color);
             else FillFittedText(g, LetterFor(value), box, color);
+        }
+
+        /// <summary>
+        /// 数字の目印。% 記号は付けない（16px に 3 文字は入らない）。
+        /// 値が読めていなければ「-」（色は ColorFor が下地の色にする）。
+        /// </summary>
+        private static string DigitsFor(TrayGauge gauge)
+        {
+            if (gauge == null || !gauge.HasValue) return "-";
+            return PercentText.Format(gauge.Percent.Value);
         }
 
         /// <summary>
@@ -316,30 +331,57 @@ namespace CtxTray.Ui
         /// </summary>
         private static void FillFittedText(Graphics g, string text, RectangleF box, Color color)
         {
+            FillFittedText(g, text, null, box, color);
+        }
+
+        /// <summary>
+        /// 数字を枠に合わせて塗る。高さは文字列自身ではなく「0」の高さで合わせる。
+        ///   ・「5」と「42」で文字の高さが揃う（1 桁でも枠いっぱいに膨らまない）
+        ///   ・「100」は横幅で決まり、そのぶんだけ小さくなる（利用者の決定、2026-09-25）
+        ///   ・「-」が枠いっぱいの塊にならず、数字の中ほどの高さに普通の大きさで出る
+        /// </summary>
+        private static void FillDigits(Graphics g, string text, RectangleF box, Color color)
+        {
+            FillFittedText(g, text, "0", box, color);
+        }
+
+        /// <param name="reference">
+        /// 高さと縦位置の基準にする文字列。null なら text 自身のインクの範囲で合わせる。
+        /// </param>
+        private static void FillFittedText(Graphics g, string text, string reference, RectangleF box, Color color)
+        {
             if (box.Width <= 0 || box.Height <= 0) return;
 
             using (var path = new GraphicsPath())
+            using (var refPath = new GraphicsPath())
             {
                 using (var family = OpenBoldFamily())
                 {
                     var style = family.IsStyleAvailable(FontStyle.Bold) ? FontStyle.Bold : FontStyle.Regular;
                     path.AddString(text, family, (int)style, 100f, PointF.Empty, StringFormat.GenericTypographic);
+                    if (reference != null)
+                        refPath.AddString(reference, family, (int)style, 100f, PointF.Empty, StringFormat.GenericTypographic);
                 }
 
                 var b = path.GetBounds();
                 if (b.Width <= 0 || b.Height <= 0) return;
 
-                var scale = Math.Min(box.Width / b.Width, box.Height / b.Height);
+                // 縦方向の基準。基準の文字列が無ければ text 自身。
+                var r = reference != null ? refPath.GetBounds() : b;
+                if (r.Height <= 0) return;
+
+                var scale = Math.Min(box.Width / b.Width, box.Height / r.Height);
                 var w = b.Width * scale;
-                var h = b.Height * scale;
+                var h = r.Height * scale;
 
                 using (var m = new Matrix())
                 {
                     // 後から足した変換ほど先に効く（既定の MatrixOrder.Prepend）。
                     // 原点へ寄せる → 拡大 → 枠の中央へ、の順になる。
+                    // 横は text 自身の幅で、縦は基準の高さで中央に置く。
                     m.Translate(box.X + (box.Width - w) / 2f, box.Y + (box.Height - h) / 2f);
                     m.Scale(scale, scale);
-                    m.Translate(-b.X, -b.Y);
+                    m.Translate(-b.X, -r.Y);
                     path.Transform(m);
                 }
 

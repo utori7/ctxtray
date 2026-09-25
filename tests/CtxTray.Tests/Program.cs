@@ -35,6 +35,8 @@ namespace CtxTray.Tests
                 Run("Broken config", BrokenConfig);
                 Run("Config: new display keys and older files without them", NewDisplayKeys);
                 Run("Config: a copy is independent of the original", ConfigClone);
+                Run("Config: tray label (letters / glyphs / percent)", TrayLabel);
+                Run("Percent text: the same rounding everywhere", PercentRounding);
                 Run("ModelLimits lookup", ModelLimitsLookup);
                 Run("Rate samples: latest org only, incomplete samples skipped", RateSamples);
                 Run("JSON writer: ASCII-only output", AsciiJson);
@@ -168,6 +170,45 @@ namespace CtxTray.Tests
 
             original.WasMissing = true;
             Check(!original.Clone().WasMissing, "the first-run mark is not copied (a copy is never a first run)");
+        }
+
+        /// <summary>
+        /// 値ごとに分けるモードの目印。percent は 2026-09-25 に追加。知らない値は無視して前の値のまま。
+        /// </summary>
+        private static void TrayLabel()
+        {
+            var path = UseConfigDir("config-tray-label");
+            string problem;
+            bool failed;
+
+            File.WriteAllText(path, "{ \"tray\": { \"mode\": \"multi\" } }", new UTF8Encoding(false));
+            Equal("letters", AppConfig.Load(out problem, out failed).TrayLabel, "no label means letters");
+
+            File.WriteAllText(path, "{ \"tray\": { \"label\": \"Percent\" } }", new UTF8Encoding(false));
+            var c = AppConfig.Load(out problem, out failed);
+            Check(!failed, "a percent label loads");
+            Equal("percent", c.TrayLabel, "percent is read (any case)");
+
+            Check(c.Save(), "save succeeds");
+            Equal("percent", AppConfig.Load(out problem, out failed).TrayLabel, "percent survives a save");
+
+            File.WriteAllText(path, "{ \"tray\": { \"label\": \"digits\" } }", new UTF8Encoding(false));
+            Equal("letters", AppConfig.Load(out problem, out failed).TrayLabel, "an unknown label falls back to letters");
+        }
+
+        /// <summary>
+        /// HUD・ツールチップ・アイコンの数字は同じ丸め（x.5 は上へ）。
+        /// 以前のツールチップは Math.Round（偶数丸め）で、42.5 が HUD と 1 ずれていた。
+        /// </summary>
+        private static void PercentRounding()
+        {
+            Equal("0", PercentText.Format(0), "0");
+            Equal("5", PercentText.Format(5), "one digit stays one digit (no leading zero)");
+            Equal("42", PercentText.Format(42.4), "42.4");
+            Equal("43", PercentText.Format(42.5), "42.5 rounds up like the panel");
+            Equal("3", PercentText.Format(2.5), "2.5 rounds up (Math.Round would give 2)");
+            Equal("100", PercentText.Format(99.5), "99.5 becomes 100");
+            Equal("100", PercentText.Format(100), "100 is not capped at 99");
         }
 
         /// <summary>

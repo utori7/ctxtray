@@ -452,7 +452,8 @@ namespace CtxTray.Ui
                 return Join(new List<string> { Strings.Get(none) }, tail);
             }
 
-            var pct = (int)Math.Round(worst.ContextPct.Value);
+            // HUD とアイコンの数字と同じ丸めにする（Math.Round の偶数丸めだと x.5 で 1 ずれる）。
+            var pct = PercentText.Format(worst.ContextPct.Value);
             var head = Strings.Format("tip.context", pct, string.Empty).TrimEnd();
 
             // 残りの文字数にセッション名を詰める。入らなければ名前を落とす。

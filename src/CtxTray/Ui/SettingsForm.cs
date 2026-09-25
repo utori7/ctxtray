@@ -115,13 +115,35 @@ namespace CtxTray.Ui
         private ComboBox _themeCombo, _language;
         private NumericUpDown _poll;
 
+        // --- モデル ---
+        /// <summary>一覧に出すモデル（組み込み・取得済み・設定・使ったのに不明だったもの）。</summary>
+        private readonly Func<IList<Collect.ModelEntry>> _models;
+        /// <summary>「今すぐ確認」で呼ぶ（上限が分からないモデルを、待たずに公式ドキュメントで確かめる）。</summary>
+        private readonly Action _checkNowAction;
+        private CheckBox _fetchDocs;
+        private Button _checkNow;
+        private Label _checkNowStatus;
+        private int _modelsTab = -1;
+        /// <summary>上限を選べる行（不明・手動）。モデル ID → ドロップダウン。</summary>
+        private readonly Dictionary<string, ComboBox> _limitPickers =
+            new Dictionary<string, ComboBox>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// 選べる上限。今のモデルはこの 2 通りしかないので、数字を打たせず選ばせる
+        /// （桁を打ち間違えると、気づかないまま % がずれる）。ほかの値は設定ファイルで書ける。
+        /// </summary>
+        private static readonly int[] LimitChoices = { 200000, 1000000 };
+
         public SettingsForm(Func<AppConfig> current, Func<string, TrayGauge> gaugeFor,
-                            Func<string, bool> hotkeyAvailable)
+                            Func<string, bool> hotkeyAvailable,
+                            Func<IList<Collect.ModelEntry>> models = null, Action checkNow = null)
         {
             _current = current;
             _config = current().Clone();
             _gaugeFor = gaugeFor;
             _hotkeyAvailable = hotkeyAvailable;
+            _models = models;
+            _checkNowAction = checkNow;
             _theme = Theme.Resolve(_config.Theme);
 
             // 倍率と置き場所は、窓を作る前にマウスのあるモニタから決める。
@@ -270,6 +292,7 @@ namespace CtxTray.Ui
             BuildHudPage();
             BuildTrayPage();
             BuildThresholdPage();
+            BuildModelsPage();
             BuildGeneralPage();
 
             _buttons = BuildButtons();
@@ -458,6 +481,198 @@ namespace CtxTray.Ui
             Row("set.hysteresis", Flow(Text_("set.hysteresisPre"), _hysteresis, Text_("set.hysteresisUnit")));
             _minRepeat = Number(0, 1440);
             Row("set.minRepeat", Flow(_minRepeat, Text_("set.minutes")));
+        }
+
+        private void BuildModelsPage()
+        {
+            _modelsTab = _pages.Count;
+            BeginPage("set.tabModels");
+
+            Section("set.secModelFetch");
+            _fetchDocs = Check("set.fetchDocs");
+            _fetchDocs.CheckedChanged += (s, e) => UpdateCheckNow();
+            Full(_fetchDocs);
+            Hint("set.fetchDocsHint");
+            // 押した時点で確認を始める（OK を待たない）。チェックを入れて押すこと自体が、
+            // 通信してよいという利用者の意思表示になる。結果は HUD と、次に開いたこの一覧に出る。
+            _checkNow = Button("set.checkNow", (s, e) =>
+            {
+                if (_checkNowAction != null) _checkNowAction();
+                _checkNowStatus.Text = Strings.Get("set.checkNowStarted");
+            });
+            _checkNowStatus = new Label { AutoSize = true, Padding = P(8, 7, 0, 0), Tag = HintTag };
+            Full(Flow(_checkNow, _checkNowStatus));
+
+            Section("set.secModelList");
+            var all = _models == null ? new List<Collect.ModelEntry>() : _models();
+            var builtIn = new List<Collect.ModelEntry>();
+            var others = new List<Collect.ModelEntry>();
+            foreach (var m in all)
+                (m.Source == Collect.LimitSource.BuiltIn ? builtIn : others).Add(m);
+
+            if (others.Count > 0) Full(ModelTable(others, true));
+
+            // 組み込みは手を打つ必要がないので畳んでおく。並べると 14 行になり、
+            // 手を打つべき行（不明・手動）が埋もれる（2026-09-25、利用者の決定）。
+            if (builtIn.Count > 0)
+            {
+                var table = ModelTable(builtIn, others.Count == 0);
+                table.Visible = false;
+                var toggle = new Label
+                {
+                    AutoSize = true,
+                    Cursor = Cursors.Hand,
+                    Padding = P(0, 4, 0, 4),
+                    Text = Strings.Format("set.builtInShow", builtIn.Count),
+                };
+                toggle.Click += (s, e) =>
+                {
+                    table.Visible = !table.Visible;
+                    toggle.Text = Strings.Format(table.Visible ? "set.builtInHide" : "set.builtInShow", builtIn.Count);
+                    LayoutPages();
+                };
+                Full(toggle);
+                Full(table);
+            }
+
+            Hint("set.modelListHint");
+        }
+
+        /// <summary>
+        /// モデルの一覧。ListView はダーク配色で見出しが白く残るので、ラベルを格子に並べる
+        /// （タブ見出しを標準の TabControl で作らないのと同じ理由）。
+        /// 並びは「不明（手を打つ必要がある）→ 手動 → 公式ドキュメント → 組み込み」。
+        /// </summary>
+        private Control ModelTable(IList<Collect.ModelEntry> entries, bool withHeader)
+        {
+            var table = new TableLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 3,
+                Margin = P(0, 2, 0, 4),
+            };
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(220)));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(140)));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+            if (withHeader)
+                AddCells(table, true, Cell("set.colModel", true), Cell("set.colLimit", true), Cell("set.colSource", true));
+
+            var sorted = new List<Collect.ModelEntry>(entries);
+            sorted.Sort((a, b) =>
+            {
+                var byRank = SourceRank(a.Source).CompareTo(SourceRank(b.Source));
+                return byRank != 0 ? byRank : string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+            });
+
+            foreach (var m in sorted)
+            {
+                Control limit;
+                if (m.Source == Collect.LimitSource.Unknown || m.Source == Collect.LimitSource.Config)
+                {
+                    var picker = LimitPicker(m.Limit);
+                    _limitPickers[m.Id] = picker;
+                    limit = Place(picker);
+                }
+                else
+                {
+                    limit = PlainCell(LimitText(m.Limit));
+                }
+
+                AddCells(table, false, PlainCell(m.Id), limit, PlainCell(SourceText(m)));
+            }
+
+            return table;
+        }
+
+        /// <summary>
+        /// 「今すぐ確認」は取得がオンのときだけ押せる。
+        /// 平らなボタンは押せなくしても文字の色が変わらず、ライト配色では押せるように見えたので、
+        /// 地と文字を淡くして示す（見本の確認で分かった、2026-09-25）。
+        /// </summary>
+        private void UpdateCheckNow()
+        {
+            if (_checkNow == null) return;
+            var on = _fetchDocs.Checked;
+            _checkNow.Enabled = on;
+            _checkNow.ForeColor = on ? _theme.TextPrimary : _theme.TextSecondary;
+            _checkNow.BackColor = on
+                ? (_theme.IsDark ? ControlPaint.Light(_theme.Background, 0.25f) : Color.White)
+                : _theme.Background;
+            if (!on && _checkNowStatus != null) _checkNowStatus.Text = string.Empty;
+        }
+
+        /// <summary>「モデル」タブを前に出す（上限が分からないモデルの通知をクリックしたとき）。</summary>
+        public void ShowModelsTab()
+        {
+            if (_modelsTab >= 0) SelectTab(_modelsTab);
+        }
+
+        private static int SourceRank(Collect.LimitSource s)
+        {
+            switch (s)
+            {
+                case Collect.LimitSource.Unknown: return 0;
+                case Collect.LimitSource.Config: return 1;
+                case Collect.LimitSource.Docs: return 2;
+                default: return 3;
+            }
+        }
+
+        private static string SourceText(Collect.ModelEntry m)
+        {
+            switch (m.Source)
+            {
+                case Collect.LimitSource.Unknown: return Strings.Get("set.srcUnknown");
+                case Collect.LimitSource.Config: return Strings.Get("set.srcConfig");
+                case Collect.LimitSource.Docs:
+                    return Strings.Format("set.srcDocs", m.FetchedUtc.HasValue
+                        ? m.FetchedUtc.Value.ToLocalTime().ToString("M/d", System.Globalization.CultureInfo.InvariantCulture)
+                        : "?");
+                default: return Strings.Get("set.srcBuiltIn");
+            }
+        }
+
+        private static string LimitText(int? limit)
+        {
+            if (!limit.HasValue) return "?";
+            if (limit.Value >= 1000000 && limit.Value % 1000000 == 0) return (limit.Value / 1000000) + "M";
+            if (limit.Value % 1000 == 0) return (limit.Value / 1000) + "K";
+            return limit.Value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private ComboBox LimitPicker(int? current)
+        {
+            var c = new ThemedCombo { Width = S(130) };
+            c.Items.Add(Strings.Get("set.limitUnset"));
+            foreach (var v in LimitChoices) c.Items.Add(LimitText(v));
+            var index = 0;
+            if (current.HasValue)
+                for (var i = 0; i < LimitChoices.Length; i++)
+                    if (LimitChoices[i] == current.Value) index = i + 1;
+            c.SelectedIndex = index;
+            return Framed(c);
+        }
+
+        private Label Cell(string key, bool header)
+        {
+            var label = PlainCell(Strings.Get(key));
+            if (header) label.Tag = HintTag;
+            return label;
+        }
+
+        private Label PlainCell(string text)
+        {
+            // 組み込みだけで 9 行あるので、ほかのタブより詰める（窓の高さはいちばん長いタブで決まる）。
+            return new Label { Text = text, AutoSize = true, Padding = P(0, 3, 8, 3), Margin = new Padding(0) };
+        }
+
+        private static void AddCells(TableLayoutPanel table, bool header, params Control[] cells)
+        {
+            var row = table.RowCount;
+            for (var i = 0; i < cells.Length; i++) table.Controls.Add(cells[i], i, row);
+            table.RowCount++;
         }
 
         private void BuildGeneralPage()
@@ -912,6 +1127,9 @@ namespace CtxTray.Ui
             _themeCombo.SelectedIndex = IndexOf(c.Theme, "auto", "light", "dark");
             _language.SelectedIndex = IndexOf(c.Language, "auto", "ja", "en");
             _poll.Value = Clamp(c.PollSeconds, 1, 600);
+
+            _fetchDocs.Checked = c.FetchModelLimits;
+            UpdateCheckNow();
         }
 
         /// <summary>
@@ -969,6 +1187,15 @@ namespace CtxTray.Ui
             c.Theme = Pick(_themeCombo.SelectedIndex, "auto", "light", "dark");
             c.Language = Pick(_language.SelectedIndex, "auto", "ja", "en");
             c.PollSeconds = (int)_poll.Value;
+
+            c.FetchModelLimits = _fetchDocs.Checked;
+            // 「選んでください」に戻した行は設定から外す（組み込み・取得済みの値に戻る）。
+            foreach (var kv in _limitPickers)
+            {
+                var index = kv.Value.SelectedIndex;
+                if (index >= 1 && index <= LimitChoices.Length) c.ModelLimits[kv.Key] = LimitChoices[index - 1];
+                else c.ModelLimits.Remove(kv.Key);
+            }
 
             return c;
         }
@@ -1047,6 +1274,7 @@ namespace CtxTray.Ui
                 _grids.Clear();
                 _frames.Clear();
                 _swatches.Clear();
+                _limitPickers.Clear();
 
                 Text = Strings.Get("set.title") + " — " + AppVersion.Display;
                 Build();
@@ -1342,6 +1570,7 @@ namespace CtxTray.Ui
             UpdateTrayEnabled();
             UpdateHotkeyWarning();
             UpdateThresholdOrderWarning();
+            UpdateCheckNow();
         }
 
         private void UpdateSwatches()

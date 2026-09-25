@@ -214,19 +214,47 @@ skipped — taking one would display 0%. Subagent turns are written to separate 
 
 ### Denominators
 
-Not present in any file, so they come from a table keyed by model name:
+Not present in any file, so they come from the model name. ctxtray looks in this order:
 
-| Model | Window |
-|---|---:|
-| `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-mythos-5` | 1,000,000 |
-| `claude-opus-4-8`, `-4-7`, `-4-6`, `claude-sonnet-4-6` | 1,000,000 |
-| `claude-haiku-4-5` | 200,000 |
+1. `modelLimits` in the config (set by you, also from Settings → Models)
+2. the built-in table below
+3. values fetched from the official docs (only if `fetchModelLimits` is on)
 
-A model name also matches a longer name that starts with the key and a hyphen
-(`claude-fable-5-1`, `claude-haiku-4-5-20251001`); the longest matching key wins.
-`claude-opus-5 = 1,000,000` was confirmed against the indicator; the others follow the
-published API context windows. A model missing from the table shows no percentage at
-all; `modelLimits` in the config adds entries and takes precedence over the table.
+A model found in none of them shows no percentage (`?%`).
+
+The built-in table. Every row was checked on 2026-09-25 against the model's page in the
+official docs (`https://platform.claude.com/docs/en/models/<name>/overview.md`, the
+`Model ID` and `Context window` lines); two were also measured against Claude's own readout.
+
+| Model | Window | Also measured |
+|---|---:|---|
+| `claude-fable-5-1`, `claude-mythos-5-1` | 1,000,000 | |
+| `claude-fable-5`, `claude-mythos-5` | 1,000,000 | |
+| `claude-opus-5-5` | 1,000,000 | |
+| `claude-opus-5` | 1,000,000 | Desktop's indicator: 169k / 1M against a computed 169,046 |
+| `claude-opus-4-8`, `-4-7`, `-4-6` | 1,000,000 | |
+| `claude-opus-4-5` | 200,000 | |
+| `claude-sonnet-5` | 1,000,000 | the terminal's `/context`: 51.3k/1m |
+| `claude-sonnet-4-6` | 1,000,000 | |
+| `claude-sonnet-4-5`, `claude-haiku-4-5` | 200,000 | |
+
+Names match exactly, or when they differ only by a trailing 8-digit date
+(`claude-haiku-4-5-20251001` is `claude-haiku-4-5`). There is no prefix matching: a new
+point release such as `claude-opus-5-9` is **not** assumed to share `claude-opus-5`'s
+window. (Versions up to 0.1.7 did that, which is how `claude-opus-5-5` once showed a
+percentage before anyone had checked its window.)
+
+**Fetching from the docs** (opt-in). When a model is unknown, ctxtray drops `claude-` and
+any date to form the page name (`claude-opus-5-5` → `opus-5-5`), refuses anything but
+lowercase letters, digits, and hyphens, and requests
+`https://platform.claude.com/docs/en/models/opus-5-5/overview.md` — HTTPS only, 10-second
+timeout, no redirects to other hosts, at most 256 KB, no cookies or credentials. The value
+is used only if the page's `Model ID` (ignoring any date) equals the model name and the
+`Context window` reads between 1K and 10M tokens. Results are kept in
+`%LOCALAPPDATA%\ctxtray\model-limits.json`: a fetched window is never fetched again; a
+model that could not be found is tried again after 24 hours (or at once with **Check now**).
+The panel and `--json` (`limit_source`) say where each denominator came from.
+`--status` and `--json` never connect; they only read that file.
 
 ### Compaction point
 
@@ -277,8 +305,13 @@ a full-screen app is running, is respected. The whole behaviour is one setting
 
 ctxtray reads plain-text files that Claude Desktop and Claude Code wrote themselves,
 and does nothing else. Specifically it does not modify the application, does not
-decompile or analyse its code, does not call any Anthropic API, does not touch stored
-credentials, and makes no network connections.
+decompile or analyse its code, does not call any Anthropic API, and does not touch stored
+credentials.
+
+By default it makes no network connections. The one exception is opt-in
+(`fetchModelLimits`, off by default): for a model whose context window it does not know,
+it reads that model's public documentation page on `platform.claude.com` once, without
+cookies, tokens, or any other credentials (see Denominators above).
 
 ## 7. When it breaks
 

@@ -203,6 +203,12 @@ namespace CtxTray.Config
         /// <summary>組み込みのモデル分母表への追加・上書き。</summary>
         public Dictionary<string, int> ModelLimits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// 上限が分からないモデルを公式ドキュメントで調べる。
+        /// ctxtray は「通信しない」を約束しているので、既定はオフ（利用者の決定、2026-09-25）。
+        /// </summary>
+        public bool FetchModelLimits = false;
+
         // --------------------------------------------------------------------
 
         /// <summary>
@@ -477,6 +483,8 @@ namespace CtxTray.Config
                     if (limit > 0) ModelLimits[kv.Key] = limit;
                 }
             }
+
+            FetchModelLimits = Json.Bool(o, "fetchModelLimits", FetchModelLimits);
         }
 
         private static double Dbl(Dictionary<string, object> d, string key, double fallback)
@@ -546,7 +554,8 @@ namespace CtxTray.Config
                 .Add("externalSessions", new JObj()
                     .Add("enabled", ExternalSessionsEnabled)
                     .Add("max", ExternalSessionsMax))
-                .Add("modelLimits", modelLimits);
+                .Add("modelLimits", modelLimits)
+                .Add("fetchModelLimits", FetchModelLimits);
 
             try
             {

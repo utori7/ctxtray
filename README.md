@@ -54,7 +54,8 @@ The binary is not code-signed, so SmartScreen will warn on first run:
 on the release page. If you would rather not trust a prebuilt binary,
 [build it yourself](#building).
 
-ctxtray never talks to the network, so it cannot tell you about new versions.
+ctxtray does not check for updates (by default it makes no network connections at all; see
+[below](#what-it-reads-what-it-writes-and-what-it-does-not-do)), so it cannot tell you about new versions.
 To hear about them, use **Watch → Custom → Releases** at the top of this repository.
 
 ## Using it
@@ -139,8 +140,8 @@ not precise enough to trust, so it is not shown in the panel or the tooltip.
 
 ## Configuration
 
-Tray menu → **Settings…** opens a dialog with four tabs (panel, tray icon, thresholds and
-alerts, general). Everything is stored in `%LOCALAPPDATA%\ctxtray\config.json`; you can
+Tray menu → **Settings…** opens a dialog with five tabs (panel, tray icon, thresholds and
+alerts, models, general). Everything is stored in `%LOCALAPPDATA%\ctxtray\config.json`; you can
 also edit that file directly — **save it and changes apply immediately**, no restart.
 If the file cannot be read while ctxtray is running, the previous settings stay in effect
 until you fix it.
@@ -197,13 +198,38 @@ notifications together. There is no separate set of numbers for each.
   // 0.967 is Claude Code's default; change it if you changed /autocompact.
   "compactThreshold": 0.967,
   // Context window for models ctxtray does not know yet (tokens).
-  // Entries here take precedence over the built-in table.
-  "modelLimits": { "claude-example-6": 1000000 }
+  // Entries here take precedence over the built-in table. Use the exact model name
+  // (a name that differs only by a date, such as -20251001, counts as the same model).
+  "modelLimits": { "claude-example-6": 1000000 },
+  // Look up unknown models in the official docs (off by default; see below).
+  "fetchModelLimits": false
 }
 ```
 
 `showResets: "auto"` (the default) only shows the 5-hour reset time during the last
 30 minutes. Always-on, it just adds noise for the other four and a half hours.
+
+### Model context windows
+
+No file records the denominator of the context %, so it comes from the model name:
+your settings first, then the built-in table, then values fetched from the official docs.
+A model found in none of them **shows `?%` instead of a percentage**; hover over the row
+to see why and what you can do.
+
+The built-in table holds 14 models, each checked against its page in the official docs
+(listed in [docs/how-it-works.md](docs/how-it-works.md#denominators)).
+When you switch to a newer model, either of these brings the percentage back:
+
+- **Pick its window in Settings → Models** (200K or 1M). Other values go in `modelLimits`.
+- **Turn on "Look up unknown models in the official docs"** (off by default). Only when
+  ctxtray meets a model it doesn't know, it reads that model's public docs page on
+  `platform.claude.com` once (for example `…/docs/en/models/opus-5-5/overview.md`) and uses
+  the window only if the page's model ID matches. A model that isn't listed is checked again
+  after 24 hours. Only the page URL is requested; no conversation, account, or sign-in data is used.
+
+The first time you use a model with an unknown window, ctxtray tells you once with a
+notification (not if context notifications are off). The Models tab lists every known
+window and where it came from (built in, official docs, or set by you).
 
 ## Command line
 
@@ -252,7 +278,14 @@ It writes only its own files:
 
 - `%LOCALAPPDATA%\ctxtray\config.json` — your settings (plus `config.json.bak` if an
   unreadable file had to be set aside)
+- `%LOCALAPPDATA%\ctxtray\model-limits.json` — context windows fetched from the official
+  docs, and which unknown models you have already been told about
 - `ctxtray.lnk` in your Startup folder — only while **Start at sign-in** is on
+
+**By default it makes no network connections at all.** Only if you turn on "Look up unknown
+models in the official docs" does it read
+`https://platform.claude.com/docs/en/models/<model>/overview.md` (public documentation),
+once per unknown model.
 
 **ctxtray does not:**
 
@@ -262,7 +295,7 @@ It writes only its own files:
 - call any Anthropic API, documented or otherwise
 - read, decrypt, or use stored OAuth tokens or session cookies
 - read your conversations — only token counts, timestamps, and model names
-- talk to the network at all, including update checks
+- check for updates or send usage data (reading the docs page above is its only connection)
 - touch your `~/.claude/settings.json` (no hooks, no statusLine)
 
 ## Uninstall
@@ -285,8 +318,9 @@ It writes only its own files:
   slightly early. If you changed the point with `/autocompact`, set `compactThreshold` to
   match — ctxtray does not read Claude Code's settings. The context colours and
   notifications depend on this value.
-- **Unknown models show no percentage.** A wrong denominator is worse than an honest blank;
-  add the model to `modelLimits` to fix it.
+- **Unknown models show no percentage (`?%`).** A wrong denominator is worse than an honest
+  blank, so ctxtray does not guess from a similarly named model either. Pick the window in
+  Settings → Models, or turn on fetching from the official docs.
 - Notifications use balloon tips, so they do not persist in the Action Center and are
   suppressed by Focus Assist.
 - **The panel cannot be read by a screen reader.** It is drawn as a single surface on a

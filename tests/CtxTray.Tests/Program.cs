@@ -38,6 +38,9 @@ namespace CtxTray.Tests
                 Run("Config: tray label (letters / glyphs / percent)", TrayLabel);
                 Run("Percent text: the same rounding everywhere", PercentRounding);
                 Run("ModelLimits lookup", ModelLimitsLookup);
+                Run("Model docs: page URL and parsing", ModelDocsParsing);
+                Run("Model docs: record, 24-hour retry, one notice", ModelDocsFetching);
+                Run("Notify: a notice with its own click action", NotifyClickAction);
                 Run("Rate samples: latest org only, incomplete samples skipped", RateSamples);
                 Run("JSON writer: ASCII-only output", AsciiJson);
                 Run("Transcript: latest usage", TranscriptLatest);
@@ -130,13 +133,18 @@ namespace CtxTray.Tests
             Equal(7, c.NotifyHysteresisPts, "hysteresisPts");
             Check(c.ModelLimits.ContainsKey("claude-example-6"), "modelLimits entry is read");
             Check(!File.Exists(path + ".bak"), "no backup for a valid file");
+            // 通信しないのが既定。書いていない設定ファイルでもオフのまま。
+            Check(!c.FetchModelLimits, "fetching from the docs is off by default");
 
+            c.FetchModelLimits = true;
             Check(c.Save(), "save succeeds");
             string problem2;
             bool failed2;
             var again = AppConfig.Load(out problem2, out failed2);
             Check(!failed2, "the saved file loads again");
             Equal(123456, again.ModelLimits["claude-example-6"], "modelLimits survives a save");
+            Check(again.FetchModelLimits, "fetchModelLimits survives a save");
+            Check(again.Clone().FetchModelLimits, "fetchModelLimits is copied");
             Check(!File.Exists(path + ".tmp"), "temporary file is gone after save");
         }
 
@@ -318,10 +326,31 @@ namespace CtxTray.Tests
         {
             Equal((int?)1000000, ModelLimits.Lookup("claude-opus-5"), "exact");
             Equal((int?)200000, ModelLimits.Lookup("claude-haiku-4-5-20251001"), "dated suffix");
-            Equal((int?)1000000, ModelLimits.Lookup("claude-fable-5-1"), "point release");
             Equal((int?)null, ModelLimits.Lookup("claude-opus-4-1-20250805"), "unknown model");
             Equal((int?)null, ModelLimits.Lookup("claude-opus-4"), "a shorter name does not match a longer key");
             Equal((int?)null, ModelLimits.Lookup(null), "null");
+
+            // ★ 前方一致の推測はしない（2026-09-25）。点付きの新しい版は、確かめるまで不明。
+            Equal((int?)null, ModelLimits.Lookup("claude-fable-5-2"), "a newer point release is not guessed");
+            Equal((int?)null, ModelLimits.Lookup("claude-opus-5-9"), "not guessed from claude-opus-5 either");
+            Equal((int?)null, ModelLimits.Lookup("claude-opus-5-extra"), "only an 8-digit date counts as the same model");
+
+            // 組み込みの 14 モデル（公式ドキュメントで確認した値）。
+            var expected = new Dictionary<string, int>
+            {
+                { "claude-fable-5-1", 1000000 }, { "claude-mythos-5-1", 1000000 },
+                { "claude-fable-5", 1000000 },   { "claude-mythos-5", 1000000 },
+                { "claude-opus-5-5", 1000000 },  { "claude-opus-5", 1000000 },
+                { "claude-opus-4-8", 1000000 },  { "claude-opus-4-7", 1000000 },
+                { "claude-opus-4-6", 1000000 },  { "claude-opus-4-5-20251101", 200000 },
+                { "claude-sonnet-5", 1000000 },  { "claude-sonnet-4-6", 1000000 },
+                { "claude-sonnet-4-5-20250929", 200000 }, { "claude-haiku-4-5-20251001", 200000 },
+            };
+            foreach (var kv in expected)
+                Equal((int?)kv.Value, ModelLimits.Lookup(kv.Key), "built in: " + kv.Key);
+            var count = 0;
+            foreach (var kv in ModelLimits.BuiltIn) count++;
+            Equal(14, count, "the built-in table has 14 models");
 
             var overrides = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
             {
@@ -331,8 +360,131 @@ namespace CtxTray.Tests
             };
             Equal((int?)200000, ModelLimits.Lookup("claude-sonnet-5", overrides), "override wins over the table");
             Equal((int?)1000000, ModelLimits.Lookup("claude-opus-5", overrides), "table still used for others");
-            Equal((int?)400000, ModelLimits.Lookup("claude-new-2-20270101", overrides), "longest key wins");
-            Equal((int?)300000, ModelLimits.Lookup("claude-new-3", overrides), "shorter key when the longer does not match");
+            Equal((int?)400000, ModelLimits.Lookup("claude-new-2-20270101", overrides), "a dated name matches its key");
+            Equal((int?)null, ModelLimits.Lookup("claude-new-3", overrides), "settings are not matched by prefix either");
+
+            // 出どころと、取得済みの値の順番（設定 → 組み込み → 公式ドキュメント）。
+            var docs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "claude-future-7", 2000000 },
+                { "claude-opus-5", 5 },
+            };
+            LimitSource source;
+            Equal((int?)2000000, ModelLimits.Lookup("claude-future-7", overrides, docs, out source), "value from the docs");
+            Equal(LimitSource.Docs, source, "source: docs");
+            Equal((int?)1000000, ModelLimits.Lookup("claude-opus-5", overrides, docs, out source), "the built-in table wins over the docs");
+            Equal(LimitSource.BuiltIn, source, "source: built in");
+            ModelLimits.Lookup("claude-sonnet-5", overrides, docs, out source);
+            Equal(LimitSource.Config, source, "source: config");
+            ModelLimits.Lookup("claude-nothing-1", overrides, docs, out source);
+            Equal(LimitSource.Unknown, source, "source: unknown");
+        }
+
+        /// <summary>公式ドキュメントのページの組み立てと読み取り（通信しない）。</summary>
+        private static void ModelDocsParsing()
+        {
+            Equal("https://platform.claude.com/docs/en/models/opus-5-5/overview.md",
+                  ModelDocs.PageUrl("claude-opus-5-5"), "page URL");
+            Equal("https://platform.claude.com/docs/en/models/haiku-4-5/overview.md",
+                  ModelDocs.PageUrl("claude-haiku-4-5-20251001"), "the date is dropped");
+            Equal((string)null, ModelDocs.PageUrl("gpt-5"), "only claude- models");
+            Equal((string)null, ModelDocs.PageUrl("claude-../../x"), "no odd characters in the URL");
+            Equal((string)null, ModelDocs.PageUrl("claude-opus 5"), "no spaces");
+            Equal((string)null, ModelDocs.PageUrl(null), "null");
+
+            // 2026-09-25 に取得した実際のページの冒頭と同じ形。
+            var opus55 = "---\ntitle: Claude Opus 5.5\n---\n\n# Claude Opus 5.5\n\nModel ID: `claude-opus-5-5`\n\n"
+                       + "Context window: 1M tokens · Max output: 128K tokens · Input pricing: $4 / MTok\n";
+            Equal((int?)1000000, ModelDocs.ParsePage(opus55, "claude-opus-5-5"), "1M");
+            var haiku = "Model ID: `claude-haiku-4-5-20251001`\n\nContext window: 200K tokens · Max output: 64K tokens\n";
+            Equal((int?)200000, ModelDocs.ParsePage(haiku, "claude-haiku-4-5"), "200K, dated ID on the page");
+            Equal((int?)200000, ModelDocs.ParsePage(haiku, "claude-haiku-4-5-20251001"), "dated name too");
+            Equal((int?)1500000, ModelDocs.ParsePage("Model ID: `claude-x-1`\nContext window: 1.5M tokens", "claude-x-1"), "decimal");
+
+            Equal((int?)null, ModelDocs.ParsePage(opus55, "claude-opus-5"), "the page is for another model");
+            Equal((int?)null, ModelDocs.ParsePage("Context window: 1M tokens", "claude-opus-5-5"), "no Model ID line");
+            Equal((int?)null, ModelDocs.ParsePage("Model ID: `claude-opus-5-5`", "claude-opus-5-5"), "no window line");
+            Equal((int?)null, ModelDocs.ParsePage("Model ID: `claude-x-1`\nContext window: 500M tokens", "claude-x-1"), "out of range");
+            Equal((int?)null, ModelDocs.ParsePage("<html>Not found</html>", "claude-x-1"), "an error page");
+            Equal((int?)null, ModelDocs.ParsePage(null, "claude-x-1"), "nothing downloaded");
+        }
+
+        /// <summary>取得係: 記録・24 時間の再確認・通知は 1 回だけ（通信は差し替える）。</summary>
+        private static void ModelDocsFetching()
+        {
+            var dir = Path.Combine(_temp, "model-docs");
+            var now = new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc);
+            var requested = new List<string>();
+
+            var f = new ModelDocsFetcher(dir, "test");
+            f.Manual = true;
+            f.Clock = () => now;
+            f.Download = url =>
+            {
+                requested.Add(url);
+                return url.Contains("/future-7/") ? "Model ID: `claude-future-7`\nContext window: 2M tokens" : null;
+            };
+
+            Equal(DocsLookupState.Off, f.StateFor("claude-future-7", false), "off when the setting is off");
+
+            f.Request(new[] { "claude-future-7", "claude-missing-1", "claude-opus-5", "gpt-5" }, false);
+            Equal(DocsLookupState.Pending, f.StateFor("claude-missing-1", true), "pending while queued");
+            f.RunQueuedNow();
+
+            Equal(2, requested.Count, "built-in and non-claude models are not fetched");
+            Check(f.TakeChanged(), "a change is reported");
+            Check(!f.TakeChanged(), "and only once");
+            Equal(2000000, f.Limits()["claude-future-7"], "found value is kept");
+            Equal(DocsLookupState.NotFound, f.StateFor("claude-missing-1", true), "missing model is not found");
+
+            requested.Clear();
+            f.Request(new[] { "claude-future-7", "claude-missing-1" }, false);
+            f.RunQueuedNow();
+            Equal(0, requested.Count, "nothing again within 24 hours, and a found model is never refetched");
+
+            now = now.AddHours(24);
+            f.Request(new[] { "claude-missing-1" }, false);
+            f.RunQueuedNow();
+            Equal(1, requested.Count, "a missing model is checked again after 24 hours");
+
+            requested.Clear();
+            f.Request(new[] { "claude-missing-1" }, true);
+            f.RunQueuedNow();
+            Equal(1, requested.Count, "Check now does not wait");
+
+            Check(f.MarkNotified("claude-missing-1"), "first notice");
+            Check(!f.MarkNotified("claude-missing-1"), "no second notice");
+
+            // 記録ファイルから読み直しても同じ。
+            var again = new ModelDocsFetcher(dir, "test");
+            Equal(2000000, again.Limits()["claude-future-7"], "found value survives a restart");
+            Equal(DocsLookupState.NotFound, again.StateFor("claude-missing-1", true), "missing model survives a restart");
+            Check(!again.MarkNotified("claude-missing-1"), "notices survive a restart");
+            Check(again.UnknownSoFar().Contains("claude-missing-1"), "listed as unknown for the settings");
+            Equal(1, again.Entries().Count, "one entry from the docs");
+
+            File.WriteAllText(Path.Combine(dir, ModelDocsStore.FileName), "{ broken", new UTF8Encoding(false));
+            Equal(0, new ModelDocsFetcher(dir, "test").Limits().Count, "a broken file reads as empty");
+        }
+
+        /// <summary>通知のクリック: 動作を持つ通知はそれを返し、ほかは既定（null）。</summary>
+        private static void NotifyClickAction()
+        {
+            var n = new ThresholdNotifier((t, b, i) => { });
+            var now = new DateTime(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc);
+            n.Clock = () => now;
+
+            var opened = false;
+            n.ShowInfo("title", "body", () => opened = true);
+            var action = n.TakeClickAction();
+            Check(action != null, "the shown notice carries its action");
+            if (action != null) action();
+            Check(opened, "the action runs");
+            Check(n.TakeClickAction() == null, "taken only once");
+
+            now = now.AddSeconds(10);
+            n.ShowInfo("title", "plain");
+            Check(n.TakeClickAction() == null, "a plain notice keeps the default");
         }
 
         private static void RateSamples()

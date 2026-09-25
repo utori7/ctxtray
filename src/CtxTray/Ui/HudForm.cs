@@ -936,6 +936,13 @@ namespace CtxTray.Ui
                     pct = PercentText.Format(s.ContextPct.Value) + "%";
                     fraction = s.ContextPct.Value / 100.0;
                 }
+                else if (s.ContextTokens.HasValue)
+                {
+                    // 量は分かるが分母（モデルの上限）が分からない。「—」だと読めていないのと
+                    // 区別が付かないので、分からないのは分母だと示す。理由は札で説明する。
+                    pct = "?%";
+                    fraction = 0;
+                }
                 else
                 {
                     pct = "—";
@@ -943,7 +950,8 @@ namespace CtxTray.Ui
                 }
 
                 var tokens = _config.HudShowTokens && s.ContextTokens.HasValue
-                    ? Compact(s.ContextTokens.Value) + "/" + Compact(s.ContextLimit ?? 0)
+                    ? Compact(s.ContextTokens.Value) + "/"
+                      + (s.ContextLimit.HasValue ? Compact(s.ContextLimit.Value) : "?")
                     : null;
 
                 DrawRow(g, body, bold, y, name, null, s.IsActive,
@@ -1074,6 +1082,21 @@ namespace CtxTray.Ui
         /// セッションの行の詳細。読み取れた事実だけを並べる（推測は入れない）。
         /// 名前は行では省略されるので、ここでは全部出す。
         /// </summary>
+        /// <summary>分母が分からない理由と、利用者にできること。</summary>
+        private static string NoLimitReason(SessionRow s)
+        {
+            switch (s.DocsState)
+            {
+                case DocsLookupState.Pending:
+                    return Strings.Get("hud.tipNoLimitPending");
+                case DocsLookupState.NotFound:
+                    // 再確認は 24 時間後。時刻だけ出すと今日のことに読めるので「明日」と書く。
+                    return Strings.Get("hud.tipNoLimitNotFound");
+                default:
+                    return Strings.Get("hud.tipNoLimitOff");
+            }
+        }
+
         private System.Collections.Generic.List<TipLine> SessionTip(SessionRow s)
         {
             var lines = new System.Collections.Generic.List<TipLine>();
@@ -1106,12 +1129,21 @@ namespace CtxTray.Ui
                                                - s.ContextTokens.Value);
                     if (left > 0)
                         lines.Add(new TipLine(Strings.Format("hud.tipToCompact", Thousands(left)), false, false));
+
+                    // 組み込みの表以外から得た分母は、出どころを添える（確かめる手がかり）。
+                    if (s.LimitSource == LimitSource.Docs)
+                        lines.Add(new TipLine(Strings.Get("hud.tipLimitDocs"), true, false));
+                    else if (s.LimitSource == LimitSource.Config)
+                        lines.Add(new TipLine(Strings.Get("hud.tipLimitConfig"), true, false));
                 }
                 else
                 {
                     lines.Add(new TipLine(
                         Strings.Format("hud.tipTokensOnly", Thousands(s.ContextTokens.Value)), false, false));
-                    lines.Add(new TipLine(Strings.Get("hud.tipNoLimit"), true, false));
+                    // % が出ない理由と、利用者にできることを状況ごとに言い分ける。
+                    // 「上限が分からない」だけでは、壊れているのか待てば出るのか分からない。
+                    lines.Add(new TipLine(Strings.Get("hud.tipNoLimitHead"), false, true));
+                    lines.Add(new TipLine(NoLimitReason(s), true, false));
                 }
             }
 

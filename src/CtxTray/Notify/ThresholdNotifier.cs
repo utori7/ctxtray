@@ -38,7 +38,12 @@ namespace CtxTray.Notify
             public string Title;
             public string Text;
             public ToolTipIcon Icon;
+            /// <summary>クリックされたときにすること。無ければ呼び出し側の既定（HUD を出す）。</summary>
+            public Action OnClick;
         }
+
+        /// <summary>いま出ている（最後に出した）通知のクリック時の動作。</summary>
+        private Action _shownClick;
 
         /// <summary>
         /// バルーンは 1 つずつしか出せない。連続で ShowBalloonTip を呼ぶと
@@ -81,6 +86,23 @@ namespace CtxTray.Notify
             Show(title, text, ToolTipIcon.Info);
         }
 
+        /// <summary>クリックで onClick を呼ぶ通知（設定画面を開く、など）。</summary>
+        public void ShowInfo(string title, string text, Action onClick)
+        {
+            Show(title, text, ToolTipIcon.Info, onClick);
+        }
+
+        /// <summary>
+        /// クリックされた通知の動作を受け取る（一度だけ）。null なら既定の動作にする。
+        /// バルーンはアイコンに 1 つしか出ないので、最後に出したものがクリックされたものになる。
+        /// </summary>
+        public Action TakeClickAction()
+        {
+            var action = _shownClick;
+            _shownClick = null;
+            return action;
+        }
+
         /// <summary>
         /// 待たせている通知を 1 件だけ出す。呼び出し側から定期的に叩く。
         /// </summary>
@@ -94,6 +116,7 @@ namespace CtxTray.Notify
             {
                 var queued = _queue.Dequeue();
                 _lastShownUtc = now;
+                _shownClick = queued.OnClick;
                 _sink(queued.Title, queued.Text, queued.Icon);
                 return;
             }
@@ -104,6 +127,7 @@ namespace CtxTray.Notify
 
             var next = _queue.Dequeue();
             _lastShownUtc = now;
+            _shownClick = next.OnClick;
             ShowNow(tray, next.Title, next.Text, next.Icon);
         }
 
@@ -233,10 +257,10 @@ namespace CtxTray.Notify
         /// 表示を予約する。実際に出すのは Pump。
         /// 溜まりすぎたら捨てる（起動直後に大量に条件が揃っても連投しないため）。
         /// </summary>
-        private void Show(string title, string text, ToolTipIcon icon)
+        private void Show(string title, string text, ToolTipIcon icon, Action onClick = null)
         {
             if (_queue.Count >= MaxQueued) return;
-            _queue.Enqueue(new Pending { Title = title, Text = text, Icon = icon });
+            _queue.Enqueue(new Pending { Title = title, Text = text, Icon = icon, OnClick = onClick });
             Pump();
         }
 

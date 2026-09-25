@@ -26,6 +26,38 @@ namespace CtxTray.Collect
         Reference,
     }
 
+    /// <summary>コンテキストの分母（モデルの上限）をどこから得たか。</summary>
+    internal enum LimitSource
+    {
+        /// <summary>分からない。% を出さない。</summary>
+        Unknown,
+
+        /// <summary>利用者が設定（modelLimits）で指定した。</summary>
+        Config,
+
+        /// <summary>ctxtray に組み込みの表。</summary>
+        BuiltIn,
+
+        /// <summary>公式ドキュメントから取得して保存したもの。</summary>
+        Docs,
+    }
+
+    /// <summary>
+    /// 分母が分からないときの、公式ドキュメントの確認の状態。
+    /// % が出ない理由を HUD の札で言い分けるために持つ。
+    /// </summary>
+    internal enum DocsLookupState
+    {
+        /// <summary>取得の設定がオフ。</summary>
+        Off,
+
+        /// <summary>いま確認している。</summary>
+        Pending,
+
+        /// <summary>確認したが見つからなかった（まだ載っていない・読めなかった）。</summary>
+        NotFound,
+    }
+
     internal sealed class SessionRow
     {
         public string Title;
@@ -33,6 +65,8 @@ namespace CtxTray.Collect
         public string Cwd;
         public string Model;
         public bool ModelKnown;
+        public LimitSource LimitSource;
+        public DocsLookupState DocsState;
         public string Effort;
 
         public int? ContextTokens;
@@ -96,9 +130,9 @@ namespace CtxTray.Collect
         ///   「アクセスが拒否されました」を投げ、この症状を起こした）。
         ///   失敗は diag に残し、読めたところまでを返す。
         /// </summary>
-        /// <param name="modelLimits">設定の modelLimits。組み込みの分母表より優先する。</param>
+        /// <param name="modelLimits">分母を引くときに見るもの（設定・取得済みの値・確認の状態）。</param>
         public static Snapshot Build(bool includeExternal = true, bool includeArchived = false,
-                                     IDictionary<string, int> modelLimits = null)
+                                     LimitSources modelLimits = null)
         {
             var snap = new Snapshot { GeneratedAtUtc = DateTime.UtcNow };
             try
@@ -113,7 +147,7 @@ namespace CtxTray.Collect
         }
 
         private static void Collect(Snapshot snap, bool includeExternal, bool includeArchived,
-                                    IDictionary<string, int> modelLimits)
+                                    LimitSources modelLimits)
         {
             var diag = snap.Diag;
 
@@ -202,13 +236,24 @@ namespace CtxTray.Collect
 
         private static SessionRow BuildRow(string transcriptPath, string title, string sessionId,
                                            string cwd, string tabModel, string effort,
-                                           IDictionary<string, int> modelLimits)
+                                           LimitSources modelLimits)
         {
             var usage = Transcript.ReadLatest(transcriptPath);
 
             // transcript に書かれたモデルを優先する。タブ登録側は切り替え直後にずれうる。
             var model = (usage != null && !string.IsNullOrEmpty(usage.Model)) ? usage.Model : tabModel;
-            var limit = ModelLimits.Lookup(model, modelLimits);
+            LimitSource source;
+            var limit = ModelLimits.Lookup(model,
+                modelLimits == null ? null : modelLimits.Config,
+                modelLimits == null ? null : modelLimits.Docs,
+                out source);
+
+            // 分母が分からないときだけ、公式ドキュメントの確認がどうなっているかを持たせる
+            // （HUD の札で、% が出ない理由を言い分けるため）。
+            var docsState = DocsLookupState.Off;
+            if (!limit.HasValue && modelLimits != null && modelLimits.DocsState != null
+                && !string.IsNullOrEmpty(model))
+                docsState = modelLimits.DocsState(model);
 
             var row = new SessionRow
             {
@@ -217,6 +262,8 @@ namespace CtxTray.Collect
                 Cwd = cwd,
                 Model = model,
                 ModelKnown = limit.HasValue,
+                LimitSource = source,
+                DocsState = docsState,
                 Effort = effort,
                 TranscriptPath = transcriptPath,
                 ContextLimit = limit,

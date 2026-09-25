@@ -47,6 +47,16 @@ namespace CtxTray.Ui
         private Snapshot _lastSnapshot;
         private SettingsForm _settings;
 
+        /// <summary>
+        /// 上限が分からないモデルを公式ドキュメントで調べる係。通信するのは設定でオンにしたときだけ
+        /// （fetchModelLimits）。取得済みの値の読み出しはオフでも使う（ローカルの記録ファイル）。
+        /// </summary>
+        private readonly ModelDocsFetcher _modelDocs =
+            new ModelDocsFetcher(AppConfig.Dir, "ctxtray/" + AppVersion.Full);
+
+        /// <summary>この実行中に、上限が分からなかったモデル（設定画面の一覧に出す）。</summary>
+        private readonly HashSet<string> _unknownModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         private FileSystemWatcher _dataWatcher;
         private FileSystemWatcher _projectWatcher;
         private FileSystemWatcher _configWatcher;
@@ -136,7 +146,13 @@ namespace CtxTray.Ui
                 tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ToggleHud(); };
 
                 // 通知をクリックしたら HUD を出す（以前は何も起きなかった）。
-                tray.BalloonTipClicked += (s, e) => ShowHud();
+                // 動作を持つ通知（上限が分からないモデル → 設定の「モデル」タブ）はそちらを優先する。
+                tray.BalloonTipClicked += (s, e) =>
+                {
+                    var action = _notifier.TakeClickAction();
+                    if (action != null) action();
+                    else ShowHud();
+                };
             }
             // ここではまだどのアイコンも出さない。値ごとに分けるモードでは Windows に登録する順が
             // 並びを決めるので（RenderMulti）、先に 1 個目だけ出すと並びが崩れる。
@@ -259,6 +275,9 @@ namespace CtxTray.Ui
             // 全画面のアプリの出入りは、収集の間隔とは関係なく追いかける。
             ApplyFullscreenRule();
 
+            // 公式ドキュメントの取得が済んだら、待たずに分母を反映する。
+            if (_modelDocs.TakeChanged()) _dirty = true;
+
             var due = (DateTime.UtcNow - _lastRefreshUtc).TotalSeconds >= _config.PollSeconds;
             if (!_dirty && !due) return;
 
@@ -266,11 +285,19 @@ namespace CtxTray.Ui
             _lastRefreshUtc = DateTime.UtcNow;
 
             // 収集は例外を投げない（失敗は snap.Diag に残る）。
-            var snap = SnapshotBuilder.Build(_config.ExternalSessionsEnabled, false, _config.ModelLimits);
+            var fetch = _config.FetchModelLimits;
+            var snap = SnapshotBuilder.Build(_config.ExternalSessionsEnabled, false, new LimitSources
+            {
+                Config = _config.ModelLimits,
+                Docs = _modelDocs.Limits(),
+                DocsState = m => _modelDocs.StateFor(m, fetch),
+            });
 
             // 表示の対象を絞る。ここで一度だけ絞り、HUD・トレイ・ツールチップ・通知が
             // すべて同じ結果を見る（HUD で隠した行にトレイや通知が反応しないように）。
             SessionFilter.Apply(snap, _config, DateTime.UtcNow);
+
+            HandleUnknownModels(snap);
 
             _lastSnapshot = snap;
 
@@ -282,6 +309,86 @@ namespace CtxTray.Ui
                 _hud.SetSnapshot(snap);
 
             _notifier.Check(snap, _config);
+        }
+
+        // --- 上限が分からないモデル ---------------------------------------------
+
+        /// <summary>
+        /// 上限（分母）が分からないモデルの後始末。
+        /// 取得がオンなら公式ドキュメントへ確認に出し、分からないままなら 1 回だけ知らせる。
+        ///
+        /// 知らせるのは動いているセッションのモデルだけ（止まっている古いタブで起動のたびに鳴らさない。
+        /// 閾値の通知と同じ考え方）。取得がオンのときは、確認して見つからなかった後に知らせる
+        /// （数秒で分かるかもしれないのに先に「分からない」と言わない）。
+        /// </summary>
+        private void HandleUnknownModels(Snapshot snap)
+        {
+            var unknown = new List<string>();
+            foreach (var list in new[] { snap.Sessions, snap.HiddenSessions })
+                foreach (var s in list)
+                    if (!s.ModelKnown && !string.IsNullOrEmpty(s.Model) && !unknown.Contains(s.Model))
+                        unknown.Add(s.Model);
+
+            foreach (var m in unknown) _unknownModels.Add(m);
+            if (unknown.Count == 0) return;
+
+            if (_config.FetchModelLimits) _modelDocs.Request(unknown, false);
+
+            if (!_config.NotifyContext) return;
+            foreach (var s in snap.Sessions)
+            {
+                if (s.ModelKnown || string.IsNullOrEmpty(s.Model) || !SessionFilter.IsRunning(s)) continue;
+                if (s.DocsState == DocsLookupState.Pending) continue;
+                if (!_modelDocs.MarkNotified(s.Model)) continue;
+
+                _notifier.ShowInfo(Strings.Get("notify.unknownModel"),
+                                   Strings.Format("notify.unknownModelBody", s.Model),
+                                   () => OpenSettings(true));
+            }
+        }
+
+        /// <summary>設定画面の「モデル」タブの一覧。組み込み・取得済み・設定・分からなかったもの。</summary>
+        private IList<ModelEntry> ModelEntries()
+        {
+            var config = _config.ModelLimits;
+            var docs = _modelDocs.Limits();
+            var list = new List<ModelEntry>();
+            var listed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kv in config)
+            {
+                list.Add(new ModelEntry { Id = kv.Key, Limit = kv.Value, Source = LimitSource.Config });
+                listed.Add(kv.Key);
+            }
+            foreach (var kv in ModelLimits.BuiltIn)
+            {
+                if (!listed.Add(kv.Key)) continue;
+                list.Add(new ModelEntry { Id = kv.Key, Limit = kv.Value, Source = LimitSource.BuiltIn });
+            }
+            foreach (var e in _modelDocs.Entries())
+            {
+                if (!listed.Add(e.Id)) continue;
+                list.Add(e);
+            }
+
+            var unknown = new HashSet<string>(_unknownModels, StringComparer.OrdinalIgnoreCase);
+            foreach (var m in _modelDocs.UnknownSoFar()) unknown.Add(m);
+            foreach (var m in unknown)
+            {
+                if (listed.Contains(m) || ModelLimits.Lookup(m, config, docs).HasValue) continue;
+                listed.Add(m);
+                list.Add(new ModelEntry { Id = m, Source = LimitSource.Unknown });
+            }
+            return list;
+        }
+
+        /// <summary>「今すぐ確認」。分からないモデルを、24 時間を待たずに確かめる。</summary>
+        private void CheckModelsNow()
+        {
+            var models = new List<string>(_unknownModels);
+            models.AddRange(_modelDocs.UnknownSoFar());
+            _modelDocs.Request(models, true);
+            _dirty = true;
         }
 
         private void OnThreadException(object sender, System.Threading.ThreadExceptionEventArgs e)
@@ -819,8 +926,15 @@ namespace CtxTray.Ui
         /// </summary>
         private void OpenSettings()
         {
+            OpenSettings(false);
+        }
+
+        /// <param name="modelsTab">「モデル」タブを前に出す（上限が分からないモデルの通知から）。</param>
+        private void OpenSettings(bool modelsTab)
+        {
             if (_settings != null && !_settings.IsDisposed)
             {
+                if (modelsTab) _settings.ShowModelsTab();
                 _settings.Activate();
                 return;
             }
@@ -831,7 +945,9 @@ namespace CtxTray.Ui
             // 設定までたどり着いたなら、初回の案内はもう読まなくてよい。
             _hud.DismissWelcome();
             // 設定画面には「いまの設定を返す関数」を渡す。画面は OK の時点の最新の設定を複製して保存する。
-            _settings = new SettingsForm(() => _config, PreviewGauge, _hud.IsHotkeyAvailable);
+            _settings = new SettingsForm(() => _config, PreviewGauge, _hud.IsHotkeyAvailable,
+                                         ModelEntries, CheckModelsNow);
+            if (modelsTab) _settings.ShowModelsTab();
             _settings.ResetHudPositionRequested += (s, e) =>
             {
                 if (_hud == null || _hud.IsDisposed) _hud = CreateHud();

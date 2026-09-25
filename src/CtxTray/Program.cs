@@ -122,7 +122,15 @@ namespace CtxTray
             Snapshot snap;
             try
             {
-                snap = SnapshotBuilder.Build(includeExternal, includeArchived, config.ModelLimits);
+                // 取得済みの値は記録ファイルから読むだけ。コンソール用途では通信しない。
+                var docs = new ModelDocsFetcher(AppConfig.Dir, "ctxtray/" + AppVersion.Full);
+                var fetch = config.FetchModelLimits;
+                snap = SnapshotBuilder.Build(includeExternal, includeArchived, new LimitSources
+                {
+                    Config = config.ModelLimits,
+                    Docs = docs.Limits(),
+                    DocsState = m => docs.StateFor(m, fetch),
+                });
             }
             catch (Exception ex)
             {
@@ -607,6 +615,7 @@ namespace CtxTray
                 Title = title,
                 Model = "claude-opus-5",
                 ModelKnown = true,
+                LimitSource = LimitSource.BuiltIn,
                 ContextTokens = tokens,
                 ContextLimit = limit,
                 ContextPct = Math.Round(100.0 * tokens / limit, 1),
@@ -698,6 +707,8 @@ namespace CtxTray
                     .Add("cwd", s.Cwd)
                     .Add("model", s.Model)
                     .Add("model_known", s.ModelKnown)
+                    // 分母の出どころ（config / built_in / docs / unknown）。確かめる手がかりに出す。
+                    .Add("limit_source", LimitSourceName(s.LimitSource))
                     .Add("effort", s.Effort)
                     .Add("context_tokens", s.ContextTokens)
                     .Add("context_limit", s.ContextLimit)
@@ -715,6 +726,17 @@ namespace CtxTray
             root.Add("diag", snap.Diag.Summary);
 
             return JObj.Write(root, asciiOnly);
+        }
+
+        private static string LimitSourceName(LimitSource source)
+        {
+            switch (source)
+            {
+                case LimitSource.Config: return "config";
+                case LimitSource.BuiltIn: return "built_in";
+                case LimitSource.Docs: return "docs";
+                default: return "unknown";
+            }
         }
 
         private static string Local(DateTime utc)

@@ -184,7 +184,7 @@ notifications together. There is no separate set of numbers for each.
   },
   "display": {
     "theme": "auto",             // "light" | "dark"
-    "textSize": "normal",        // "small" | "large" | "xlarge"
+    "textSize": "normal",        // "xsmall" | "small" | "large" | "xlarge"
     "nameWidth": 180,            // width of the session-name column at normal text size; the panel is this plus the columns you turn on
     "showRateLimits": true,
     "showSessions": true,

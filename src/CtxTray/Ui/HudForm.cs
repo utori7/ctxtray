@@ -93,6 +93,8 @@ namespace CtxTray.Ui
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                      | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
 
+            ReadSystemFont();
+
             MouseDown += OnDragStart;
             MouseMove += OnHoverRow;
             // 「外れた」は、窓の出入りなどでも飛んでくる。本当に外にいるときだけ消す。
@@ -118,6 +120,7 @@ namespace CtxTray.Ui
         {
             base.OnHandleCreated(e);
             _dpiScale = Dpi.ScaleFor(Handle);
+            ReadSystemFont();
             RegisterHotkeys();
             ApplyRoundedCorners();
             EnsureLayeredAttributes();
@@ -204,6 +207,15 @@ namespace CtxTray.Ui
             if (m.Msg == NativeMethods.WM_DPICHANGED)
             {
                 _dpiScale = Dpi.ScaleFor(Handle);
+                ReadSystemFont();
+                Relayout();
+                Invalidate();
+            }
+
+            // テキストのサイズの変更。変わった場所を知らせる文字列は当てにせず、尋ね直して比べる（SettingsForm と同じ）。
+            if (m.Msg == NativeMethods.WM_SETTINGCHANGE && ReadSystemFont())
+            {
+                ClearTip();
                 Relayout();
                 Invalidate();
             }
@@ -528,7 +540,7 @@ namespace CtxTray.Ui
 
             if (_tip == null || _tip.IsDisposed) _tip = new TipForm();
             // 札はパネルの外に出す（パネルは最前面へ押し戻しているので、重ねると裏に隠れる）。
-            _tip.ShowLines(row.Lines, _theme, Factor, Bounds, PointToScreen(new Point(0, row.Top)).Y);
+            _tip.ShowLines(row.Lines, _theme, _fontFace, Factor, Bounds, PointToScreen(new Point(0, row.Top)).Y);
         }
 
         /// <summary>
@@ -592,11 +604,41 @@ namespace CtxTray.Ui
         //
         // 96 DPI・標準の文字サイズを基準にした値に Factor を掛けて使う。
         // フォントも Pixel 指定にして同じ係数を掛ける（Point 指定だと DPI 対応プロセスでは二重に拡大される）。
-        // 文字の大きさの設定も同じ係数に含めるので、文字を大きくすると列と窓の幅も同じ比率で広がる。
+        // Windows の「テキストのサイズ」と HUD の文字の大きさの設定も同じ係数に含めるので、
+        // 文字を大きくすると列と窓の幅も同じ比率で広がる。
 
         private float _dpiScale = Dpi.SystemScale;
 
-        private float Factor { get { return _dpiScale * (float)_config.HudTextScale; } }
+        /// <summary>Windows の「テキストのサイズ」（1 = 100%）。ReadSystemFont で取る。</summary>
+        private float _textScale = 1f;
+
+        /// <summary>書体。ReadSystemFont で Windows のメッセージ用フォントに合わせる。</summary>
+        private string _fontFace = Theme.FontFamily;
+
+        private float Factor { get { return _dpiScale * _textScale * (float)_config.HudTextScale; } }
+
+        /// <summary>
+        /// 書体とテキストのサイズを Windows に尋ね直す。変わっていれば true。
+        ///
+        /// ★ 設定画面と同じく Windows のメッセージ用フォント（Dpi.MessageFont）に合わせる。
+        ///   0.5.0 までは Segoe UI Variable Text の固定の大きさで、日本語は代替フォントで描かれ、
+        ///   テキストのサイズも効かなかった（2026-09-27、実寸の見本を見比べて利用者が決定）。
+        ///   メッセージ用フォントは 96dpi・テキストのサイズ 100% で 12px なので、それとの比をテキストのサイズとする。
+        /// </summary>
+        private bool ReadSystemFont()
+        {
+            var font = Dpi.MessageFont(_dpiScale);
+            var face = font.Face ?? Theme.FontFamily;
+            var textScale = font.Pixels / (12f * _dpiScale);
+            if (!(textScale >= 0.5f && textScale <= 4f)) textScale = 1f;
+
+            if (Math.Abs(textScale - _textScale) < 0.01f
+                && string.Equals(face, _fontFace, StringComparison.OrdinalIgnoreCase)) return false;
+
+            _textScale = textScale;
+            _fontFace = face;
+            return true;
+        }
 
         private int S(double v) { return (int)Math.Round(v * Factor); }
 
@@ -854,10 +896,10 @@ namespace CtxTray.Ui
             using (var border = new Pen(_theme.Border))
                 g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
 
-            using (var body = new Font(Theme.FontFamily, 12.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
-            using (var bold = new Font(Theme.FontFamily, 12.5f * Factor, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (var cap = new Font(Theme.FontFamily, 10.5f * Factor, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (var capNote = new Font(Theme.FontFamily, 10.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
+            using (var body = new Font(_fontFace, 12.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
+            using (var bold = new Font(_fontFace, 12.5f * Factor, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var cap = new Font(_fontFace, 10.5f * Factor, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var capNote = new Font(_fontFace, 10.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
             {
                 var y = PadY;
 
@@ -1062,7 +1104,7 @@ namespace CtxTray.Ui
 
                 if (TwoLine && modelText != null)
                 {
-                    using (var small = new Font(Theme.FontFamily, 10.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
+                    using (var small = new Font(_fontFace, 10.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
                         TextRenderer.DrawText(g, modelText, small,
                             new Rectangle(PadX, y + RowHeight - S(4), NameW, SubLineH + S(2)), _theme.TextSecondary,
                             TextFormatFlags.Left | TextFormatFlags.Top

@@ -42,6 +42,7 @@ namespace CtxTray.Ui
         private readonly List<TipLine> _lines = new List<TipLine>();
         private Theme _theme = Theme.Dark();
         private float _scale = 1f;
+        private string _face = Theme.FontFamily;
 
         public TipForm()
         {
@@ -83,12 +84,14 @@ namespace CtxTray.Ui
 
         /// <param name="avoid">パネルの範囲（画面座標）。ここに重ならない位置に出す。</param>
         /// <param name="anchorTop">合わせる行の上端（画面座標）。</param>
-        public void ShowLines(IList<TipLine> lines, Theme theme, float scale,
+        /// <param name="face">書体。パネルと同じもの（Windows のメッセージ用フォント）。</param>
+        public void ShowLines(IList<TipLine> lines, Theme theme, string face, float scale,
                               Rectangle avoid, int anchorTop)
         {
             if (lines == null || lines.Count == 0) { Hide(); return; }
 
             _theme = theme;
+            _face = face ?? Theme.FontFamily;
             _scale = scale;
             _lines.Clear();
             for (var i = 0; i < lines.Count; i++) _lines.Add(lines[i]);
@@ -155,12 +158,12 @@ namespace CtxTray.Ui
 
         private Font Body()
         {
-            return new Font(Theme.FontFamily, 12.5f * _scale, FontStyle.Regular, GraphicsUnit.Pixel);
+            return new Font(_face, 12.5f * _scale, FontStyle.Regular, GraphicsUnit.Pixel);
         }
 
         private Font Bold()
         {
-            return new Font(Theme.FontFamily, 12.5f * _scale, FontStyle.Bold, GraphicsUnit.Pixel);
+            return new Font(_face, 12.5f * _scale, FontStyle.Bold, GraphicsUnit.Pixel);
         }
 
         protected override void OnPaint(PaintEventArgs e)

@@ -542,7 +542,7 @@ namespace CtxTray.Ui
             // 「オフでも行の詳細には出る」の補足は、説明を短くしたときに外した（2026-09-26、利用者の指摘）。
 
             Section("set.secHudLook");
-            _textSize = Combo(Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
+            _textSize = Combo(Strings.Get("set.sizeXSmall"), Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
                               Strings.Get("set.sizeLarge"), Strings.Get("set.sizeXLarge"));
             _textSize.Width = S(120);
             Row("set.textSize", _textSize);
@@ -1711,7 +1711,7 @@ namespace CtxTray.Ui
         {
             for (var i = 0; i < AppConfig.TextSizes.Length; i++)
                 if (string.Equals(AppConfig.TextSizes[i], value, StringComparison.OrdinalIgnoreCase)) return i;
-            return 1;   // 知らない値なら「標準」
+            return Array.IndexOf(AppConfig.TextSizes, "normal");   // 知らない値なら「標準」
         }
 
         /// <summary>

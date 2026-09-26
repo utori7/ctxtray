@@ -244,6 +244,7 @@ namespace CtxTray.Config
 
             { "set.secHudLook",    new[] { "見た目",               "Look" } },
             { "set.textSize",      new[] { "文字の大きさ",          "Text size" } },
+            { "set.sizeXSmall",    new[] { "極小",                 "Extra small" } },
             { "set.sizeSmall",     new[] { "小",                   "Small" } },
             { "set.sizeNormal",    new[] { "標準",                 "Normal" } },
             { "set.sizeLarge",     new[] { "大",                   "Large" } },

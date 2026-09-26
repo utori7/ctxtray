@@ -177,7 +177,7 @@ Claude Desktop が最後に記録した値のまま灰色で表示されます�
   },
   "display": {
     "theme": "auto",             // "light" | "dark"
-    "textSize": "normal",        // "small" | "large" | "xlarge"
+    "textSize": "normal",        // "xsmall" | "small" | "large" | "xlarge"
     "nameWidth": 180,            // セッション名の欄の幅（標準の文字サイズで）。パネルの幅はこれとオンにした列の合計
     "showRateLimits": true,
     "showSessions": true,

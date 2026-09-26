@@ -168,9 +168,10 @@ namespace CtxTray.Config
         // 前面が Claude Desktop のときは隠さない（TrayApp）。
         public bool HideWhenFullscreen = true;
 
-        // 文字の大きさ。寸法もこの倍率で伸びる。
-        public string HudTextSize = "normal";       // small / normal / large / xlarge
-        public static readonly string[] TextSizes = { "small", "normal", "large", "xlarge" };
+        // 文字の大きさ。Windows のテキストのサイズに掛ける倍率で、寸法もこの倍率で伸びる。
+        // xsmall は HUD がテキストのサイズに従うようになったときに足した（2026-09-27、利用者の要望）。
+        public string HudTextSize = "normal";       // xsmall / small / normal / large / xlarge
+        public static readonly string[] TextSizes = { "xsmall", "small", "normal", "large", "xlarge" };
 
         /// <summary>
         /// セッション名の欄の幅（標準の文字サイズ・96 DPI での値）。パネルの幅はこれとオンにした列の合計
@@ -205,6 +206,7 @@ namespace CtxTray.Config
             {
                 switch ((HudTextSize ?? "").ToLowerInvariant())
                 {
+                    case "xsmall": return 0.8;
                     case "small": return 0.9;
                     case "large": return 1.15;
                     case "xlarge": return 1.3;

@@ -33,6 +33,12 @@ namespace CtxTray.Ui
         /// <summary>登録できた。</summary>
         Ok,
 
+        /// <summary>キーを決めていない（「なし」。クリック透過のキーの既定）。</summary>
+        None,
+
+        /// <summary>もう一方のキー（表示／非表示）と同じ。同じキーは 2 つに登録できない。</summary>
+        Duplicate,
+
         /// <summary>設定の文字列を読み取れない（手で書き換えた場合）。</summary>
         Unparsable,
 
@@ -46,6 +52,9 @@ namespace CtxTray.Ui
 
         /// <summary>設定画面から「そのキーが空いているか」を試すときの ID。本番の登録とぶつけない。</summary>
         private const int HotkeyProbeId = 0xC5A8;
+
+        /// <summary>クリック透過の切り替えのキー（2026-09-26）。</summary>
+        private const int ClickThroughHotkeyId = 0xC5A9;
 
         /// <summary>
         /// Desktop のタブでないセッション（ターミナル・VS Code）の名前の前に付ける印。
@@ -65,6 +74,9 @@ namespace CtxTray.Ui
         private bool _dragging;
 
         public event EventHandler HotkeyPressed;
+
+        /// <summary>クリック透過の切り替えのキーが押された。</summary>
+        public event EventHandler ClickThroughHotkeyPressed;
 
         public HudForm(AppConfig config)
         {
@@ -106,7 +118,7 @@ namespace CtxTray.Ui
         {
             base.OnHandleCreated(e);
             _dpiScale = Dpi.ScaleFor(Handle);
-            RegisterHotkey();
+            RegisterHotkeys();
             ApplyRoundedCorners();
             EnsureLayeredAttributes();
         }
@@ -150,6 +162,7 @@ namespace CtxTray.Ui
         protected override void OnHandleDestroyed(EventArgs e)
         {
             NativeMethods.UnregisterHotKey(Handle, HotkeyId);
+            NativeMethods.UnregisterHotKey(Handle, ClickThroughHotkeyId);
             // 空きを調べる登録が残っていても困らないが、念のため外す。
             NativeMethods.UnregisterHotKey(Handle, HotkeyProbeId);
             base.OnHandleDestroyed(e);
@@ -180,6 +193,13 @@ namespace CtxTray.Ui
                 return;
             }
 
+            if (m.Msg == NativeMethods.WM_HOTKEY && m.WParam.ToInt32() == ClickThroughHotkeyId)
+            {
+                var handler = ClickThroughHotkeyPressed;
+                if (handler != null) handler(this, EventArgs.Empty);
+                return;
+            }
+
             // モニタ間を移動したときに倍率を取り直す。
             if (m.Msg == NativeMethods.WM_DPICHANGED)
             {
@@ -206,31 +226,63 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// ホットキーを登録する。
+        /// ホットキー（表示／非表示と、決めてあればクリック透過）を登録する。
         ///
         /// ★ 戻り値を捨てない。ほかのアプリが同じキーを取っていると登録は失敗し、
         ///   以前はそれを黙って見逃していたので、押しても何も起きない理由が利用者に分からなかった
         ///   （2026-09-18）。結果は HotkeyStatus に残し、TrayApp が通知で知らせる。
         /// </summary>
-        private void RegisterHotkey()
+        private void RegisterHotkeys()
         {
-            uint mods, vk;
-            if (!HotkeyParser.TryParse(_config.Hotkey, out mods, out vk))
+            // 表示／非表示のキーも「なし」にできる（2026-09-26、利用者の決定）。そのときはトレイアイコンで出し入れする。
+            if (string.IsNullOrWhiteSpace(_config.Hotkey))
             {
-                _hotkeyState = HotkeyState.Unparsable;
-                return;
+                NativeMethods.UnregisterHotKey(Handle, HotkeyId);
+                _hotkeyState = HotkeyState.None;
+            }
+            else
+            {
+                _hotkeyState = Register(HotkeyId, _config.Hotkey);
             }
 
-            NativeMethods.UnregisterHotKey(Handle, HotkeyId);
-            _hotkeyState = NativeMethods.RegisterHotKey(Handle, HotkeyId,
-                                                        mods | NativeMethods.MOD_NOREPEAT, vk)
+            var clickThrough = _config.ClickThroughHotkey;
+            if (string.IsNullOrWhiteSpace(clickThrough))
+            {
+                NativeMethods.UnregisterHotKey(Handle, ClickThroughHotkeyId);
+                _clickThroughHotkeyState = HotkeyState.None;
+            }
+            else if (HotkeyParser.Same(clickThrough, _config.Hotkey))
+            {
+                // 同じキーは 2 つに登録できない。「ほかのアプリが使っている」と誤って伝えないよう分けておく。
+                NativeMethods.UnregisterHotKey(Handle, ClickThroughHotkeyId);
+                _clickThroughHotkeyState = HotkeyState.Duplicate;
+            }
+            else
+            {
+                _clickThroughHotkeyState = Register(ClickThroughHotkeyId, clickThrough);
+            }
+        }
+
+        /// <summary>その ID で登録し直す。読めない文字列なら前の登録も外す（古いキーが効き続けないように）。</summary>
+        private HotkeyState Register(int id, string combo)
+        {
+            NativeMethods.UnregisterHotKey(Handle, id);
+
+            uint mods, vk;
+            if (!HotkeyParser.TryParse(combo, out mods, out vk)) return HotkeyState.Unparsable;
+
+            return NativeMethods.RegisterHotKey(Handle, id, mods | NativeMethods.MOD_NOREPEAT, vk)
                 ? HotkeyState.Ok
                 : HotkeyState.Taken;
         }
 
         private HotkeyState _hotkeyState = HotkeyState.Ok;
+        private HotkeyState _clickThroughHotkeyState = HotkeyState.None;
 
         public HotkeyState HotkeyStatus { get { return _hotkeyState; } }
+
+        /// <summary>クリック透過のキーの登録結果。決めていなければ None。</summary>
+        public HotkeyState ClickThroughHotkeyStatus { get { return _clickThroughHotkeyState; } }
 
         /// <summary>
         /// 設定画面から呼ぶ。そのキーがいま登録できるか。
@@ -243,7 +295,9 @@ namespace CtxTray.Ui
             uint mods, vk;
             if (!HotkeyParser.TryParse(combo, out mods, out vk)) return false;
 
-            if (_hotkeyState == HotkeyState.Ok && SameHotkey(_config.Hotkey, combo)) return true;
+            if (_hotkeyState == HotkeyState.Ok && HotkeyParser.Same(_config.Hotkey, combo)) return true;
+            if (_clickThroughHotkeyState == HotkeyState.Ok
+                && HotkeyParser.Same(_config.ClickThroughHotkey, combo)) return true;
 
             // 窓がまだ無ければ確かめようがない。使えないと決めつけない。
             if (!IsHandleCreated) return true;
@@ -254,15 +308,6 @@ namespace CtxTray.Ui
 
             NativeMethods.UnregisterHotKey(Handle, HotkeyProbeId);
             return true;
-        }
-
-        /// <summary>表記の違い（"ctrl+alt+c" と "Ctrl+Alt+C"）を無視して同じキーか。</summary>
-        private static bool SameHotkey(string a, string b)
-        {
-            uint ma, va, mb, vb;
-            if (!HotkeyParser.TryParse(a, out ma, out va)) return false;
-            if (!HotkeyParser.TryParse(b, out mb, out vb)) return false;
-            return ma == mb && va == vb;
         }
 
         public Theme CurrentTheme { get { return _theme; } }
@@ -303,7 +348,7 @@ namespace CtxTray.Ui
             //   ここへ来る（再読込でも同じ値が届く）。以前は前後の設定を比べていたので常に「変わっていない」になり、
             //   窓が作り直されず、再起動するまでクリック透過が効かなかった（2026-09-19、利用者の指摘で発覚）。
             if (IsHandleCreated && HasClickThroughStyle() != _config.ClickThrough) RecreateHandle();
-            else RegisterHotkey();
+            else RegisterHotkeys();
 
             // 不透明度だけを 100% に変えた場合も、LAYERED の窓に前の透明度が残らないようにする。
             if (IsHandleCreated) EnsureLayeredAttributes();
@@ -358,34 +403,36 @@ namespace CtxTray.Ui
         private Rectangle _hiddenToggleArea = Rectangle.Empty;
 
         /// <summary>
-        /// 初めての起動のときだけ出す操作の案内。null なら出さない。
+        /// パネルの上に一時的に出す案内。null なら出さない。
         ///
-        /// 通知（バルーン）だけだと、集中モード中や通知を切っている環境では一度も出ない。
-        /// パネル自体は既定で出るので、ここにも同じ案内を置く（2026-09-20）。
-        /// 設定ファイルには何も足さない。初回に設定を保存するので、次の起動では出ない。
+        /// 1. 初めての起動のときの操作の案内。通知（バルーン）だけだと、集中モード中や通知を切っている環境では
+        ///    一度も出ない。パネル自体は既定で出るので、ここにも同じ案内を置く（2026-09-20）。
+        ///    設定ファイルには何も足さない。初回に設定を保存するので、次の起動では出ない。
+        /// 2. クリック透過を切り替えたときの知らせ（2026-09-26）。キーで切り替えると他に手がかりが無く、
+        ///    オンにすると右クリックも効かなくなるので、戻し方をここで伝える。
         /// </summary>
-        private string _welcome;
+        private string _notice;
 
         /// <summary>案内を自分で消す時刻。触らないまま残り続けないようにする。</summary>
-        private DateTime _welcomeUntilUtc = DateTime.MinValue;
+        private DateTime _noticeUntilUtc = DateTime.MinValue;
 
         /// <summary>案内が占める高さ（本文 2 行＋区切り）。★ Relayout と OnPaint で同じ値を使う。</summary>
-        private int WelcomeHeight { get { return _welcome == null ? 0 : RowHeight * 2 + SectionGap; } }
+        private int NoticeHeight { get { return _notice == null ? 0 : RowHeight * 2 + SectionGap; } }
 
-        /// <summary>初回の案内を出す。TrayApp が初めての起動のときだけ呼ぶ。</summary>
-        public void ShowWelcome(string text, int seconds)
+        /// <summary>案内を出す。前の案内が出ていれば置き換える。</summary>
+        public void ShowNotice(string text, int seconds)
         {
-            _welcome = string.IsNullOrEmpty(text) ? null : text;
-            _welcomeUntilUtc = DateTime.UtcNow.AddSeconds(seconds);
+            _notice = string.IsNullOrEmpty(text) ? null : text;
+            _noticeUntilUtc = DateTime.UtcNow.AddSeconds(seconds);
             Relayout();
             Invalidate();
         }
 
         /// <summary>案内を消す。読み終わったとき（操作したとき）と、時間が過ぎたときに呼ぶ。</summary>
-        public void DismissWelcome()
+        public void DismissNotice()
         {
-            if (_welcome == null) return;
-            _welcome = null;
+            if (_notice == null) return;
+            _notice = null;
             Relayout();
             Invalidate();
         }
@@ -443,7 +490,7 @@ namespace CtxTray.Ui
         /// </summary>
         public void Pump()
         {
-            if (_welcome != null && DateTime.UtcNow >= _welcomeUntilUtc) DismissWelcome();
+            if (_notice != null && DateTime.UtcNow >= _noticeUntilUtc) DismissNotice();
             PumpTip();
         }
 
@@ -640,7 +687,7 @@ namespace CtxTray.Ui
         {
             var sessions = VisibleRowCount;
 
-            var height = PadY * 2 + WelcomeHeight;
+            var height = PadY * 2 + NoticeHeight;
             if (ShowRates) height += CapHeight + RowHeight * 2;
             if (ShowRates && ShowSessions) height += SectionGap;
             // 行が無いときの案内は 1 段（DrawSessionRows と同じ）。
@@ -748,7 +795,7 @@ namespace CtxTray.Ui
             if (e.Button != MouseButtons.Left) return;
 
             // 触ったなら案内は読み終えたとみなす（押す場所を選ばせない）。
-            DismissWelcome();
+            DismissNotice();
 
             // 見出しの「ほか N 件を表示」はドラッグに渡さない。
             // 押した場所がそこなら、移動ではなく展開の切り替えにする。
@@ -820,10 +867,10 @@ namespace CtxTray.Ui
                     return;
                 }
 
-                if (_welcome != null)
+                if (_notice != null)
                 {
-                    // 1 行では収まらないので折り返す（高さは WelcomeHeight と揃える）。
-                    TextRenderer.DrawText(g, _welcome, body,
+                    // 1 行では収まらないので折り返す（高さは NoticeHeight と揃える）。
+                    TextRenderer.DrawText(g, _notice, body,
                         new Rectangle(PadX, y, Width - PadX * 2, RowHeight * 2), _theme.TextSecondary,
                         TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak
                         | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
@@ -832,7 +879,7 @@ namespace CtxTray.Ui
                     using (var sep = new Pen(_theme.Separator))
                         g.DrawLine(sep, PadX, lineY, Width - PadX, lineY);
 
-                    y += WelcomeHeight;
+                    y += NoticeHeight;
                 }
 
                 if (ShowSessions)

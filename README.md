@@ -42,7 +42,8 @@ until compaction, the weekly reset day — are deliberately left out.
 2. Move `ctxtray.exe` to a folder you will keep, for example `%LOCALAPPDATA%\Programs\ctxtray\`.
    The sign-in shortcut (step 4) points at this location.
 3. Run it. There is no installer and no runtime to install.
-4. Right-click the tray icon → **Start at sign-in** if you want it to run every time you sign in.
+4. Right-click the tray icon → **Start at sign-in** if you want it to run every time you sign in
+   (or turn on **Start ctxtray when you sign in to Windows** under **General** in the settings).
    If you move `ctxtray.exe` later, start it from the new place: **Start at sign-in** then shows
    unchecked (the shortcut still points at the old place), and turning it on again fixes it.
 
@@ -62,7 +63,11 @@ To hear about them, use **Watch → Custom → Releases** at the top of this rep
 
 | | |
 |---|---|
-| `Ctrl+Alt+C` | show / hide the panel (configurable) |
+| `Ctrl+Alt+C` | show / hide the panel (configurable, or none) |
+| a shortcut you choose | pass clicks through the panel, or stop (none by default; set one in the settings) |
+
+To change a shortcut, open the settings (**HUD** tab), click its box and press a key together with Ctrl, Alt, or Shift;
+Delete sets it to none. If the box does not change when you press a key, another app has already taken that key.
 | drag | move the panel |
 | hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, and when the value was recorded |
 | click the tray icon | show / hide the panel |
@@ -70,7 +75,8 @@ To hear about them, use **Watch → Custom → Releases** at the top of this rep
 
 **Pass clicks through** makes the panel ignore the mouse entirely: you can click what is
 behind it, but you can no longer drag it, hover a row for details, or right-click it.
-Turn it back off from the tray icon's menu.
+Turn it back off from the tray icon's menu, or with the click-through shortcut if you set one.
+The panel says how to undo it for a few seconds whenever you turn it on.
 
 A session name in grey means its Claude Code process is not running right now
 (for example, a tab that has been idle). Grey sessions are left out of the tray icon and
@@ -197,6 +203,7 @@ notifications together. There is no separate set of numbers for each.
     "hideWhenFullscreen": true   // hide while a full-screen app is in use
   },
   "language": "auto",            // "ja" | "en"
+  "clickThroughHotkey": "",      // e.g. "Ctrl+Alt+T" to toggle "clickThrough" from the keyboard; "" = none
   // Where auto-compaction happens, as a share of the context window.
   // 0.967 is Claude Code's default; change it if you changed /autocompact.
   "compactThreshold": 0.967,

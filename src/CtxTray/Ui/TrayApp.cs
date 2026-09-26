@@ -84,6 +84,11 @@ namespace CtxTray.Ui
 
         // ホットキーが使えないことを知らせたキー。同じキーで繰り返し知らせない。
         private string _hotkeyWarnedFor;
+        private string _clickThroughWarnedFor;
+
+        // クリック透過を切り替えたときにパネルへ出す知らせの長さ。オンのときは戻し方も読むので長めに。
+        private const int ClickThroughOnNoticeSeconds = 6;
+        private const int ClickThroughOffNoticeSeconds = 3;
 
         // 初めての起動のときにパネルへ出す案内を、何秒出しておくか。
         // 通知（5〜6 秒）より長く置く。読む前に消えるのを避けるため。
@@ -173,7 +178,7 @@ namespace CtxTray.Ui
 
                 // 通知は集中モード中や通知を切っている環境では出ないので、パネルにも同じ案内を出す。
                 // しばらくすると自分で消える（HudForm.Pump）。
-                if (_hud != null && !_hud.IsDisposed) _hud.ShowWelcome(welcome, WelcomeSeconds);
+                if (_hud != null && !_hud.IsDisposed) _hud.ShowNotice(welcome, WelcomeSeconds);
 
                 // 設定ファイルを作って、次の起動では出さないようにする。
                 _config.Save();
@@ -193,6 +198,7 @@ namespace CtxTray.Ui
         {
             var hud = new HudForm(_config);
             hud.HotkeyPressed += (s, e) => ToggleHud();
+            hud.ClickThroughHotkeyPressed += (s, e) => ToggleClickThrough();
             // OS のテーマや設定の配色が変わったら、トレイアイコンを描き直し、メニューの明暗も合わせる。
             hud.ThemeChanged += (s, e) =>
             {
@@ -222,18 +228,36 @@ namespace CtxTray.Ui
         {
             if (_hud == null || _hud.IsDisposed) return;
 
-            if (_hud.HotkeyStatus == HotkeyState.Ok)
+            if (_hud.HotkeyStatus == HotkeyState.Ok || _hud.HotkeyStatus == HotkeyState.None)
             {
                 _hotkeyWarnedFor = null;
+            }
+            else
+            {
+                var key = _config.Hotkey ?? string.Empty;
+                if (!string.Equals(_hotkeyWarnedFor, key, StringComparison.Ordinal))
+                {
+                    _hotkeyWarnedFor = key;
+                    _notifier.ShowInfo("ctxtray", Strings.Format(
+                        _hud.HotkeyStatus == HotkeyState.Taken ? "hotkey.taken" : "hotkey.unparsable", key));
+                }
+            }
+
+            // クリック透過のキー（決めていなければ何も言わない）。
+            var state = _hud.ClickThroughHotkeyStatus;
+            if (state == HotkeyState.Ok || state == HotkeyState.None)
+            {
+                _clickThroughWarnedFor = null;
                 return;
             }
 
-            var key = _config.Hotkey ?? string.Empty;
-            if (string.Equals(_hotkeyWarnedFor, key, StringComparison.Ordinal)) return;
-            _hotkeyWarnedFor = key;
-
+            var ctKey = _config.ClickThroughHotkey ?? string.Empty;
+            if (string.Equals(_clickThroughWarnedFor, ctKey, StringComparison.Ordinal)) return;
+            _clickThroughWarnedFor = ctKey;
             _notifier.ShowInfo("ctxtray", Strings.Format(
-                _hud.HotkeyStatus == HotkeyState.Taken ? "hotkey.taken" : "hotkey.unparsable", key));
+                state == HotkeyState.Taken ? "hotkey.clickThroughTaken"
+                : state == HotkeyState.Duplicate ? "hotkey.clickThroughSame"
+                : "hotkey.unparsable", ctKey));
         }
 
         // --- 更新 ---------------------------------------------------------------
@@ -838,26 +862,52 @@ namespace CtxTray.Ui
         private void ToggleHud()
         {
             if (_hud == null || _hud.IsDisposed) _hud = CreateHud();
+            SetHudVisible(!_hud.Visible);
+        }
 
-            if (_hud.Visible) _hud.Hide();
-            else { _hud.Show(); _dirty = true; }
+        /// <summary>
+        /// HUD を出す・隠す。キー・トレイ・メニュー・設定画面の「いま HUD を表示する」の「適用」から。
+        /// </summary>
+        private void SetHudVisible(bool visible)
+        {
+            if (_hud == null || _hud.IsDisposed) _hud = CreateHud();
+
+            if (!visible && _hud.Visible) _hud.Hide();
+            else if (visible && !_hud.Visible) { _hud.Show(); _dirty = true; }
 
             // 出し入れができたなら、初回の案内はもう読まなくてよい。
-            _hud.DismissWelcome();
+            _hud.DismissNotice();
 
             // 利用者の操作を優先する。全画面のために隠した印は消す
             // （利用者が出したものを次のティックで引っ込めない／隠したものを出し直さない）。
             _hiddenForFullscreen = false;
 
             UpdateMenuState();
+            SyncSettingsHud();
         }
 
         /// <summary>HUD を出す（切り替えではない）。通知をクリックしたときに使う。</summary>
         private void ShowHud()
         {
-            if (_hud == null || _hud.IsDisposed) _hud = CreateHud();
-            _hiddenForFullscreen = false;
-            ShowHudIfHidden();
+            SetHudVisible(true);
+        }
+
+        /// <summary>
+        /// 利用者が HUD を出しているつもりか。全画面のアプリのために自分で隠している間も「出している」とみなす
+        /// （全画面が終われば出し直すので）。設定画面の「いま HUD を表示する」はこれを見せる。
+        /// </summary>
+        private bool HudWanted
+        {
+            get { return _hud != null && !_hud.IsDisposed && (_hud.Visible || _hiddenForFullscreen); }
+        }
+
+        /// <summary>
+        /// 設定画面が開いていれば、「いま HUD を表示する」のチェックを合わせる。
+        /// 合わせないと、開いている間にキーやトレイで切り替えたあと OK で元に戻してしまう（クリック透過と同じ）。
+        /// </summary>
+        private void SyncSettingsHud()
+        {
+            if (_settings != null && !_settings.IsDisposed) _settings.SyncHudVisible(HudWanted);
         }
 
         private void ShowHudIfHidden()
@@ -890,6 +940,25 @@ namespace CtxTray.Ui
 
             // 設定画面が開いていれば、そのチェックも合わせる（OK で元に戻さないように）。
             if (_settings != null && !_settings.IsDisposed) _settings.SyncClickThrough(next.ClickThrough);
+
+            // 切り替わったことと戻し方をパネルに出す。キーで切り替えるとほかに手がかりが無く、
+            // オンにするとパネルの右クリックも効かなくなるため。
+            // メニューの項目の説明（Windows 標準のメニューでは出せない）の代わりも兼ねる。
+            if (_hud != null && !_hud.IsDisposed && _hud.Visible)
+            {
+                if (next.ClickThrough)
+                {
+                    var key = next.ClickThroughHotkey;
+                    _hud.ShowNotice(_hud.ClickThroughHotkeyStatus == HotkeyState.Ok && !string.IsNullOrWhiteSpace(key)
+                                        ? Strings.Format("hud.clickThroughOnKey", key)
+                                        : Strings.Get("hud.clickThroughOnMenu"),
+                                    ClickThroughOnNoticeSeconds);
+                }
+                else
+                {
+                    _hud.ShowNotice(Strings.Get("hud.clickThroughOff"), ClickThroughOffNoticeSeconds);
+                }
+            }
         }
 
         private void ToggleAutoStart()
@@ -923,10 +992,21 @@ namespace CtxTray.Ui
 
         private void UpdateMenuState()
         {
-            _hudItem.Text = Strings.Get((_hud != null && _hud.Visible) ? "menu.hideHud" : "menu.showHud");
+            // 効いているキーは項目の右端に出す（Windows のメニューの慣例。タブの後ろが右寄せになる）。
+            var hudOk = _hud != null && !_hud.IsDisposed;
+            _hudItem.Text = Strings.Get((_hud != null && _hud.Visible) ? "menu.hideHud" : "menu.showHud")
+                            + KeyLabel(hudOk && _hud.HotkeyStatus == HotkeyState.Ok, _config.Hotkey);
             _hudItem.Checked = _hud != null && _hud.Visible;
+            _clickThroughItem.Text = Strings.Get("menu.clickThrough")
+                                     + KeyLabel(hudOk && _hud.ClickThroughHotkeyStatus == HotkeyState.Ok,
+                                                _config.ClickThroughHotkey);
             _clickThroughItem.Checked = _config.ClickThrough;
             _autoStartItem.Checked = AutoStart.IsEnabled;
+        }
+
+        private static string KeyLabel(bool works, string key)
+        {
+            return works && !string.IsNullOrWhiteSpace(key) ? "\t" + key : string.Empty;
         }
 
         /// <summary>
@@ -952,10 +1032,11 @@ namespace CtxTray.Ui
             // 「いま自分が使っているキー」を正しく扱える）。
             if (_hud == null || _hud.IsDisposed) _hud = CreateHud();
             // 設定までたどり着いたなら、初回の案内はもう読まなくてよい。
-            _hud.DismissWelcome();
+            _hud.DismissNotice();
             // 設定画面には「いまの設定を返す関数」を渡す。画面は OK の時点の最新の設定を複製して保存する。
             _settings = new SettingsForm(() => _config, PreviewGauge, _hud.IsHotkeyAvailable,
-                                         ModelEntries, CheckModelsNow);
+                                         ModelEntries, CheckModelsNow,
+                                         () => HudWanted, SetHudVisible);
             if (modelsTab) _settings.ShowModelsTab();
             _settings.ResetHudPositionRequested += (s, e) =>
             {

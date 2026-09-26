@@ -67,6 +67,9 @@ namespace CtxTray.Config
         // --- 動作 -----------------------------------------------------------
         public int PollSeconds = 5;
         public string Hotkey = "Ctrl+Alt+C";
+        // クリック透過の切り替えのキー。既定は無し（空）。既定のキーを決めると、ほかのアプリと重なる環境で
+        // 起動のたびに「使えない」と知らせることになるので、使う人が選ぶ（2026-09-26）。
+        public string ClickThroughHotkey = "";
         public string Language = "auto";       // auto / ja / en
 
         // --- 表示 -----------------------------------------------------------
@@ -385,6 +388,7 @@ namespace CtxTray.Config
                 CompactThreshold = DefaultCompactThreshold;
             PollSeconds = Math.Max(1, (int)Json.Long(o, "pollSeconds", PollSeconds));
             Hotkey = Json.Str(o, "hotkey") ?? Hotkey;
+            ClickThroughHotkey = Json.Str(o, "clickThroughHotkey") ?? ClickThroughHotkey;
             Language = Json.Str(o, "language") ?? Language;
 
             var tray = Json.Obj(o, "tray");
@@ -552,6 +556,7 @@ namespace CtxTray.Config
                 .Add("compactThreshold", CompactThreshold)
                 .Add("pollSeconds", PollSeconds)
                 .Add("hotkey", Hotkey)
+                .Add("clickThroughHotkey", ClickThroughHotkey)
                 .Add("language", Language)
                 .Add("tray", new JObj()
                     .Add("mode", TrayMode)

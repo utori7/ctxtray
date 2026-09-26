@@ -61,6 +61,8 @@ namespace CtxTray.Tests
                 Run("Notify: hysteresis", NotifyHysteresis);
                 Run("Notify: same level within the quiet period", NotifyQuiet);
                 Run("Notify: spacing between balloons", NotifySpacing);
+                Run("Hotkeys: the same key however it is written", HotkeySame);
+                Run("Config: click-through key (none by default)", ClickThroughHotkeyConfig);
                 Run("AutoStart: shortcut target comparison", AutoStartTarget);
                 Run("Colors: value colours, amber/red override", ValueColors);
                 Run("Colors: the Windows contrast theme", ContrastTheme);
@@ -1154,6 +1156,51 @@ namespace CtxTray.Tests
             h.FiveHour(50);
             h.FiveHour(94, 31 * 60);
             Equal(2, h.Shown.Count, "after 30 minutes it is reported again");
+        }
+
+        // --- ホットキー --------------------------------------------------------
+
+        /// <summary>
+        /// 2 つのキー（表示／非表示・クリック透過）が同じかの判定。同じキーは 2 つに登録できないので、
+        /// 表記が違うだけの同じキーを「違う」と見誤ると、「ほかのアプリが使っている」と誤って知らせてしまう。
+        /// </summary>
+        private static void HotkeySame()
+        {
+            Check(HotkeyParser.Same("Ctrl+Alt+C", "ctrl+alt+c"), "case does not matter");
+            Check(HotkeyParser.Same("Ctrl+Alt+C", "Alt+Ctrl+C"), "modifier order does not matter");
+            Check(HotkeyParser.Same("Control+Alt+C", "Ctrl+Alt+C"), "Control is Ctrl");
+            Check(HotkeyParser.Same("Ctrl+Alt+1", "Ctrl+Alt+D1"), "a digit is the D key");
+            Check(!HotkeyParser.Same("Ctrl+Alt+C", "Ctrl+Shift+C"), "different modifiers");
+            Check(!HotkeyParser.Same("Ctrl+Alt+C", "Ctrl+Alt+T"), "different keys");
+            Check(!HotkeyParser.Same("", ""), "two empty keys are not a clash (no key chosen)");
+            Check(!HotkeyParser.Same("Ctrl+Alt+C", ""), "an empty key is never the same as a real one");
+            Check(!HotkeyParser.Same("C", "C"), "a key without a modifier is not accepted at all");
+
+            // 数字を「その番号のキー」と読まない（"1" が番号 1 = マウスの左ボタンになっていた）。
+            uint mods, vk;
+            Check(HotkeyParser.TryParse("Ctrl+Alt+1", out mods, out vk) && vk == (uint)Keys.D1,
+                  "a digit is the digit key, not the key with that number");
+            Check(!HotkeyParser.TryParse("Ctrl+Alt+65", out mods, out vk), "a key number is not accepted");
+            Check(HotkeyParser.TryParse("Ctrl+Alt+F1", out mods, out vk) && vk == (uint)Keys.F1, "F1 is still a name");
+        }
+
+        /// <summary>クリック透過のキーは既定で無し。決めたキーは保存・読み込みで残り、複製にも写る。</summary>
+        private static void ClickThroughHotkeyConfig()
+        {
+            UseConfigDir("click-through-key");
+
+            string problem;
+            bool failed;
+            var c = AppConfig.Load(out problem, out failed);
+            Equal("", c.ClickThroughHotkey, "no click-through key by default");
+
+            c.ClickThroughHotkey = "Ctrl+Alt+T";
+            Check(c.Save(), "save succeeds");
+            var again = AppConfig.Load(out problem, out failed);
+            Check(!failed, "the saved file loads again");
+            Equal("Ctrl+Alt+T", again.ClickThroughHotkey, "the key survives a save");
+            Equal("Ctrl+Alt+T", again.Clone().ClickThroughHotkey, "the key is copied");
+            Equal("Ctrl+Alt+C", again.Hotkey, "the show/hide key is unchanged");
         }
 
         // --- 自動起動 ----------------------------------------------------------

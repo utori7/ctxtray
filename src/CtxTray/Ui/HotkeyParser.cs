@@ -39,22 +39,28 @@ namespace CtxTray.Ui
             if (keyPart == null) return false;
 
             Keys key;
-            if (!Enum.TryParse(keyPart, true, out key))
-            {
-                // "1" のような数字は Keys.D1 になる。
-                if (keyPart.Length == 1 && char.IsDigit(keyPart[0]))
-                {
-                    if (!Enum.TryParse("D" + keyPart, true, out key)) return false;
-                }
-                else
-                {
-                    return false;
-                }
-            }
+            // "1" のような数字は Keys.D1 にする。
+            // ★ 先に見る。Enum.TryParse は数字の文字列を「その番号の値」として受け付けるので、
+            //   "1" が Keys.LButton（マウスの左ボタン、番号 1）になっていた（2026-09-26、試験で発見）。
+            if (keyPart.Length == 1 && char.IsDigit(keyPart[0])) keyPart = "D" + keyPart;
+            // 名前ではなく番号で書かれたもの（"65" など）も同じ理由で受けない。
+            if (char.IsDigit(keyPart[0]) || !Enum.TryParse(keyPart, true, out key)) return false;
 
             virtualKey = (uint)key;
             // 修飾キー無しのホットキーは他アプリと衝突しやすいので受け付けない。
             return modifiers != 0;
+        }
+
+        /// <summary>
+        /// 表記の違い（"ctrl+alt+c" と "Ctrl+Alt+C"、修飾キーの順番）を無視して同じキーか。
+        /// どちらかが読めない（空を含む）なら false。
+        /// </summary>
+        public static bool Same(string a, string b)
+        {
+            uint ma, va, mb, vb;
+            if (!TryParse(a, out ma, out va)) return false;
+            if (!TryParse(b, out mb, out vb)) return false;
+            return ma == mb && va == vb;
         }
     }
 }

@@ -37,6 +37,8 @@
     <Compile Include="..\..\src\CtxTray\Ui\AutoStart.cs" Link="Product\Ui\AutoStart.cs" />
     <!-- 配色は、HUD とトレイが共有する色の規則（値の色と、注意・危険の色）だけを試す。 -->
     <Compile Include="..\..\src\CtxTray\Ui\Theme.cs" Link="Product\Ui\Theme.cs" />
+    <!-- ホットキーの文字列の読み取りと、2 つのキーが同じかの判定。 -->
+    <Compile Include="..\..\src\CtxTray\Ui\HotkeyParser.cs" Link="Product\Ui\HotkeyParser.cs" />
     <!-- HUD の位置の計算は、画面の情報を引数で受け取るだけなので画面なしで試せる。 -->
     <Compile Include="..\..\src\CtxTray\Ui\HudPlacement.cs" Link="Product\Ui\HudPlacement.cs" />
   </ItemGroup>

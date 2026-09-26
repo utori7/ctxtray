@@ -134,8 +134,27 @@ namespace CtxTray.Ui
         private ComboBox _showResets, _textSize;
         private TrackBar _opacity;
         private Label _opacityValue;
+        /// <summary>
+        /// 「いま HUD を表示する」。設定ファイルには入らない、いまの表示状態（2026-09-26、利用者の決定）。
+        /// クリック透過と同じ並び（チェックボックスの直下に切り替えのキー）にして画面の作りを揃えるために置いた。
+        /// 反映は「適用」の時点。開いている間にキーやトレイで切り替えたら SyncHudVisible で合わせる。
+        /// </summary>
+        private CheckBox _showHud;
+        private readonly Func<bool> _hudVisible;
+        private readonly Action<bool> _setHudVisible;
+
+        /// <summary>利用者が「いま HUD を表示する」を押して決めた値。押していなければ null（自動起動と同じ扱い）。</summary>
+        private bool? _hudWanted;
+
+        /// <summary>表示／非表示のキーの欄。欄には「なし」も出すので、値は _hotkeyValue に持つ。</summary>
         private TextBox _hotkey;
         private Label _hotkeyWarning;
+        private string _hotkeyValue = string.Empty;
+
+        /// <summary>クリックを後ろに通すキーの欄。欄には「なし」も出すので、値は _clickThroughKeyValue に持つ。</summary>
+        private TextBox _clickThroughKey;
+        private Label _clickThroughKeyWarning;
+        private string _clickThroughKeyValue = string.Empty;
 
         // --- トレイアイコン ---
         private RadioButton _modeMulti, _modeSingle;
@@ -156,6 +175,15 @@ namespace CtxTray.Ui
         // --- 全般 ---
         private ComboBox _themeCombo, _language;
         private ThemedNumeric _poll;
+
+        /// <summary>サインイン時の自動起動。設定ファイルではなくスタートアップのショートカット（AutoStart）。</summary>
+        private CheckBox _autoStart;
+
+        /// <summary>
+        /// 利用者が自動起動のチェックを押して決めた値。押していなければ null で、「適用」で何もしない。
+        /// 組み直し（言語・文字の大きさ）の後も、押した値を残す。
+        /// </summary>
+        private bool? _autoStartWanted;
 
         // --- モデル ---
         /// <summary>一覧に出すモデル（組み込み・取得済み・設定・使ったのに不明だったもの）。</summary>
@@ -178,7 +206,8 @@ namespace CtxTray.Ui
 
         public SettingsForm(Func<AppConfig> current, Func<string, TrayGauge> gaugeFor,
                             Func<string, bool> hotkeyAvailable,
-                            Func<IList<Collect.ModelEntry>> models = null, Action checkNow = null)
+                            Func<IList<Collect.ModelEntry>> models = null, Action checkNow = null,
+                            Func<bool> hudVisible = null, Action<bool> setHudVisible = null)
         {
             _current = current;
             _config = current().Clone();
@@ -186,6 +215,8 @@ namespace CtxTray.Ui
             _hotkeyAvailable = hotkeyAvailable;
             _models = models;
             _checkNowAction = checkNow;
+            _hudVisible = hudVisible;
+            _setHudVisible = setHudVisible;
             _theme = Theme.Resolve(_config.Theme);
 
             // 倍率と置き場所は、窓を作る前にマウスのあるモニタから決める。
@@ -479,6 +510,8 @@ namespace CtxTray.Ui
         {
             BeginPage("set.tabHud");
 
+            BuildHudControls();
+
             // HUD と同じ並び（セッションごとのコンテキスト → レート枠）。
             Section("set.secHudContent");
             _hudSessions = Check("set.hudShowSessions");
@@ -506,7 +539,7 @@ namespace CtxTray.Ui
             Full(_showModel);
             Full(_showEffort);
             Full(Flow(Indent(), Text_("set.modelLayout"), _modelLayout));
-            Hint("set.modelHint");
+            // 「オフでも行の詳細には出る」の補足は、説明を短くしたときに外した（2026-09-26、利用者の指摘）。
 
             Section("set.secHudLook");
             _textSize = Combo(Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
@@ -555,27 +588,54 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// HUD の操作（キー・起動時・全画面・クリック透過・位置）。見た目ではなく振る舞いなので、
-        /// HUD タブから「全般」タブの先頭へ移した（2026-09-26、利用者の決定）。
+        /// 起動（サインイン時に ctxtray を起動するか）。全般タブの先頭。
+        ///
+        /// 自動起動は以前からトレイのメニュー（ログオン時に起動）にあったが、設定画面には無く、
+        /// 選べないように見えた（2026-09-26、利用者の指摘）。
+        /// 中身はメニューと同じ AutoStart（スタートアップフォルダのショートカット）で、設定ファイルには入らない。
+        /// 「起動したときに HUD を表示する」は HUD のことなので HUD タブの「HUD の操作」に置く。
+        /// </summary>
+        private void BuildStartup()
+        {
+            Section("set.secStartup");
+            _autoStart = Check("set.autoStart");
+            // 利用者が押したときだけ覚える。押していなければ「適用」で何もしない
+            // （開いている間にメニューで切り替えた状態を、古いチェックで上書きしないため）。
+            _autoStart.Click += (s, e) => _autoStartWanted = _autoStart.Checked;
+            Full(_autoStart);
+            Hint("set.autoStartHint");
+        }
+
+        /// <summary>
+        /// HUD の操作（表示・起動時の表示・全画面・クリック透過・位置）。HUD タブの先頭。
+        ///
+        /// 経緯：2026-09-26 午後、HUD タブがごちゃごちゃしている（利用者の指摘）のを受けて、
+        /// 「見た目ではなく振る舞い」として全般タブの先頭へ移した。同じ日の夜に「HUD を表示する」・
+        /// 切り替えのキー・「起動」の節が増えて全般タブがいちばん長くなり、HUD の項目が HUD 以外のタブにある
+        /// ちぐはぐさも目立ったので、HUD タブへ戻した（利用者の決定）。HUD タブのごちゃごちゃは
+        /// 「▸ 詳細設定」に畳んだことで主に解消している。
+        ///
+        /// キーは、それが切り替えるもののチェックボックスの直下に字下げして置く（2026-09-26、利用者の決定）。
+        /// 2 つの欄の操作（押し方・Delete で「なし」）は同じ（欄ごとに変えると、片方にしか効かない操作に見えた）。
+        /// 押し方は説明文ではなく欄の中の案内で伝える（KeyBox、2026-09-27）。
         /// </summary>
         private void BuildHudControls()
         {
             Section("set.secHudControl");
-            _hotkey = Framed(new TextBox
-            {
-                Width = S(160),
-                ReadOnly = true,
-                Cursor = Cursors.Hand,
-                // 枠は FieldFrame が描く。
-                BorderStyle = BorderStyle.None,
-            });
-            _hotkey.KeyDown += OnHotkeyKeyDown;
-            Row("set.hotkey", _hotkey);
-            Hint("set.hotkeyHint");
+
+            // 「いま HUD を表示する」とその切り替えのキー。下のクリック透過と同じ並びにする。
+            // 「起動したときに HUD を表示する」との違いは、名前（いま／起動したときに）で伝える（2026-09-27、利用者の指摘で補足文を外した）。
+            _showHud = Check("set.showHud");
+            _showHud.Click += (s, e) => _hudWanted = _showHud.Checked;
+            Full(_showHud);
+            _hotkey = KeyBox(() => _hotkeyValue);
+            _hotkey.KeyDown += (s, e) => OnKeyBoxKeyDown(e, SetHotkey);
+            Full(Flow(Indent(), Text_("set.toggleKey"), _hotkey));
             // ほかのアプリが使っているキーを選んだときだけ出す。
             _hotkeyWarning = Hint("set.hotkeyTaken");
             _hotkeyWarning.Visible = false;
 
+            // いまの表示（上）と取り違えないよう、補足で違いを書いてすぐ下に置く。
             _showAtStartup = Check("set.showAtStartup");
             Full(_showAtStartup);
 
@@ -587,6 +647,14 @@ namespace CtxTray.Ui
             _clickThrough = Check("set.clickThrough");
             Full(_clickThrough);
             Hint("set.clickThroughHint");
+
+            // クリックを後ろに通すかどうかのキー。既定は無し（AppConfig.ClickThroughHotkey の説明を参照）。
+            _clickThroughKey = KeyBox(() => _clickThroughKeyValue);
+            _clickThroughKey.KeyDown += (s, e) => OnKeyBoxKeyDown(e, SetClickThroughKey);
+            Full(Flow(Indent(), Text_("set.toggleKey"), _clickThroughKey));
+            // 表示／非表示と同じキー、またはほかのアプリが使っているキーのときだけ出す（文言は UpdateHotkeyWarning が選ぶ）。
+            _clickThroughKeyWarning = Hint(null);
+            _clickThroughKeyWarning.Visible = false;
 
             Row("set.position", Button("set.resetPosition", (s, e) =>
             {
@@ -879,7 +947,7 @@ namespace CtxTray.Ui
         {
             BeginPage("set.tabGeneral");
 
-            BuildHudControls();
+            BuildStartup();
 
             Section("set.secGeneral");
             _themeCombo = Combo(Strings.Get("set.auto"), Strings.Get("set.light"), Strings.Get("set.dark"));
@@ -1352,9 +1420,13 @@ namespace CtxTray.Ui
             _opacityValue.Text = _opacity.Value + "%";
             _clickThrough.Checked = c.ClickThrough;
 
-            _hotkey.Text = c.Hotkey;
-            UpdateHotkeyWarning();
+            SetHotkey(c.Hotkey);
+            SetClickThroughKey(c.ClickThroughHotkey);
+            // 表示状態は設定ファイルに無いので、押した値が無ければいまの状態を出す。
+            _showHud.Checked = _hudWanted ?? (_hudVisible == null || _hudVisible());
             _showAtStartup.Checked = c.HudShowAtStartup;
+            // 自動起動は設定ファイルに無いので、押した値が無ければショートカットの実際の状態を出す。
+            _autoStart.Checked = _autoStartWanted ?? AutoStart.IsEnabled;
             _hideFullscreen.Checked = c.HideWhenFullscreen;
 
             if (c.TrayMultiMode) _modeMulti.Checked = true;
@@ -1424,9 +1496,12 @@ namespace CtxTray.Ui
             c.Opacity = _opacity.Value / 100.0;
             c.ClickThrough = _clickThrough.Checked;
 
+            // どちらのキーも「なし」（空）はそのまま保存する。読めない文字列（手で書いた設定ファイル由来）は元の値を残す。
+            // 同じキー・ほかのアプリが使っているキーでも保存し、赤字と通知で知らせる。
             uint mods, vk;
-            if (HotkeyParser.TryParse(_hotkey.Text, out mods, out vk))
-                c.Hotkey = _hotkey.Text;
+            if (_hotkeyValue.Length == 0 || HotkeyParser.TryParse(_hotkeyValue, out mods, out vk))
+                c.Hotkey = _hotkeyValue;
+            c.ClickThroughHotkey = _clickThroughKeyValue;
             c.HudShowAtStartup = _showAtStartup.Checked;
             c.HideWhenFullscreen = _hideFullscreen.Checked;
 
@@ -1479,6 +1554,22 @@ namespace CtxTray.Ui
         {
             var next = FromScreen();
             if (!next.Save()) return false;
+
+            // HUD の表示もその場の状態なので別に反映する。押していなければ触らない。
+            if (_hudWanted.HasValue)
+            {
+                var wanted = _hudWanted.Value;
+                _hudWanted = null;
+                if (_setHudVisible != null && (_hudVisible == null || _hudVisible() != wanted)) _setHudVisible(wanted);
+            }
+
+            // 自動起動はショートカットなので設定ファイルとは別に反映する。押していなければ触らない。
+            if (_autoStartWanted.HasValue)
+            {
+                if (_autoStartWanted.Value != AutoStart.IsEnabled) AutoStart.SetEnabled(_autoStartWanted.Value);
+                _autoStartWanted = null;
+                _autoStart.Checked = AutoStart.IsEnabled;
+            }
 
             var languageChanged = refreshUi && !string.Equals(_config.Language, next.Language,
                                                               StringComparison.OrdinalIgnoreCase);
@@ -1568,12 +1659,22 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// トレイのメニューでクリック透過を切り替えたときに呼ばれる。
+        /// トレイのメニューやキーでクリック透過を切り替えたときに呼ばれる。
         /// 画面のチェックを合わせておかないと、OK で切り替える前の値に戻してしまう。
         /// </summary>
         public void SyncClickThrough(bool on)
         {
             if (_clickThrough != null) _clickThrough.Checked = on;
+        }
+
+        /// <summary>
+        /// キー・トレイで HUD を出し入れしたとき（「適用」で出し入れしたときも）に呼ばれる。
+        /// 押しかけの値は捨てて、いまの状態に合わせる（あとから操作した方を優先する。クリック透過と同じ）。
+        /// </summary>
+        public void SyncHudVisible(bool visible)
+        {
+            _hudWanted = null;
+            if (_showHud != null) _showHud.Checked = visible;
         }
 
         private string SelectedLabelStyle()
@@ -1686,24 +1787,96 @@ namespace CtxTray.Ui
             catch { }
         }
 
-        private void OnHotkeyKeyDown(object sender, KeyEventArgs e)
+        /// <summary>
+        /// キーの欄（押したキーを受け取るだけの、書き込めない欄）。枠は FieldFrame が描く。
+        ///
+        /// ★ 押し方は説明文に書かず、欄をクリックしたときに欄の中へ淡く出す（「Ctrl/Alt/Shift + キー」）。
+        ///   キーを押せばそのキーに変わり、何も押さずに離れれば元の値に戻る。
+        ///   以前は節の先頭に 3 文の説明を置いていたが、冗長で読みにくかった（2026-09-27、利用者の指摘）。
+        ///   Delete で「なし」は書かない（直感どおり）。「押しても欄が変わらないキーはほかのアプリが使っている」は README に書いた。
+        /// </summary>
+        /// <param name="current">いまの値（欄を離れたときに出し直す）。</param>
+        private TextBox KeyBox(Func<string> current)
+        {
+            var prompt = Strings.Get("set.keyPrompt");
+            var box = new TextBox
+            {
+                // 案内の文字が収まる幅にする（言語・文字の大きさで変わる）。
+                Width = Math.Max(S(160), TextRenderer.MeasureText(prompt, Font).Width + S(12)),
+                ReadOnly = true,
+                Cursor = Cursors.Hand,
+                BorderStyle = BorderStyle.None,
+            };
+            box.Enter += (s, e) =>
+            {
+                box.Text = prompt;
+                box.ForeColor = _theme.TextSecondary;
+                box.Select(0, 0);
+            };
+            box.Leave += (s, e) => ShowKey(box, current());
+            return Framed(box);
+        }
+
+        /// <summary>
+        /// 押したキーを "Ctrl+Alt+C" の形にする。修飾キーだけ・修飾キー無しなら null（他アプリと衝突しやすいので受けない）。
+        /// 欄に文字が入らないよう、押したキーはここで止める。
+        /// </summary>
+        private static string ComboFrom(KeyEventArgs e)
         {
             e.SuppressKeyPress = true;
             e.Handled = true;
 
             var key = e.KeyCode;
             if (key == Keys.ControlKey || key == Keys.ShiftKey || key == Keys.Menu || key == Keys.LWin || key == Keys.RWin)
-                return;
+                return null;
 
             var parts = new List<string>();
             if (e.Control) parts.Add("Ctrl");
             if (e.Alt) parts.Add("Alt");
             if (e.Shift) parts.Add("Shift");
-            if (parts.Count == 0) return;   // 修飾キー無しは他アプリと衝突しやすいので受けない
+            if (parts.Count == 0) return null;
 
             parts.Add(key.ToString());
-            _hotkey.Text = string.Join("+", parts.ToArray());
+            return string.Join("+", parts.ToArray());
+        }
+
+        /// <summary>
+        /// キーの欄でキーが押された。どちらの欄も同じ扱い（修飾キー無しの Delete・BackSpace で「なし」、
+        /// Ctrl/Alt/Shift と一緒に押したキーはそのキー）。欄によって操作を変えない。
+        /// </summary>
+        private static void OnKeyBoxKeyDown(KeyEventArgs e, Action<string> set)
+        {
+            if (e.Modifiers == Keys.None && (e.KeyCode == Keys.Delete || e.KeyCode == Keys.Back))
+            {
+                e.SuppressKeyPress = true;
+                e.Handled = true;
+                set(string.Empty);
+                return;
+            }
+
+            var combo = ComboFrom(e);
+            if (combo != null) set(combo);
+        }
+
+        private void SetHotkey(string combo)
+        {
+            _hotkeyValue = ShowKey(_hotkey, combo);
             UpdateHotkeyWarning();
+        }
+
+        private void SetClickThroughKey(string combo)
+        {
+            _clickThroughKeyValue = ShowKey(_clickThroughKey, combo);
+            UpdateHotkeyWarning();
+        }
+
+        /// <summary>欄に出す（空なら「なし」）。押し方の案内（淡い文字）はここで消える。値そのものを返す。</summary>
+        private string ShowKey(TextBox box, string combo)
+        {
+            var value = string.IsNullOrWhiteSpace(combo) ? string.Empty : combo.Trim();
+            box.Text = value.Length == 0 ? Strings.Get("set.keyNone") : value;
+            box.ForeColor = _theme.TextPrimary;
+            return value;
         }
 
         /// <summary>
@@ -1712,7 +1885,7 @@ namespace CtxTray.Ui
         /// 主に効くのは画面を開いたとき（いま設定されているキーが、後から起動したアプリに
         /// 取られていた場合など）。ほかのアプリが先に取っているキーは、押してもこの欄に届かないので、
         /// キーを押した時点での確認はまず働かない（RegisterHotKey で予約されたキーは、前面の窓に届かない）。
-        /// その場合の案内は set.hotkeyHint に書いた。
+        /// その場合の案内は README に書いた。
         /// なお、キーフックで先取りするアプリは RegisterHotKey を妨げないので、ここでも通知でも検出できない。
         /// Paint_ がラベルの色を塗り直すので、配色を適用した後にも呼ぶ。
         /// </summary>
@@ -1720,9 +1893,28 @@ namespace CtxTray.Ui
         {
             if (_hotkeyWarning == null || _hotkey == null) return;
 
-            var taken = _hotkeyAvailable != null && !_hotkeyAvailable(_hotkey.Text);
+            // 「なし」はほかのアプリと重ならない。
+            var taken = _hotkeyValue.Length > 0 && _hotkeyAvailable != null && !_hotkeyAvailable(_hotkeyValue);
             _hotkeyWarning.Visible = taken;
             if (taken) _hotkeyWarning.ForeColor = _theme.Danger;
+
+            // クリックを後ろに通すキー。無しなら何も言わない。表示／非表示と同じなら、そちらを先に言う
+            // （同じキーは 2 つに登録できないので、「ほかのアプリが使っている」と見せると誤りになる）。
+            if (_clickThroughKeyWarning == null) return;
+            string message = null;
+            if (_clickThroughKeyValue.Length > 0)
+            {
+                if (HotkeyParser.Same(_clickThroughKeyValue, _hotkeyValue))
+                    message = Strings.Get("set.clickThroughKeySame");
+                else if (_hotkeyAvailable != null && !_hotkeyAvailable(_clickThroughKeyValue))
+                    message = Strings.Get("set.hotkeyTaken");
+            }
+            _clickThroughKeyWarning.Visible = message != null;
+            if (message != null)
+            {
+                _clickThroughKeyWarning.Text = message;
+                _clickThroughKeyWarning.ForeColor = _theme.Danger;
+            }
         }
 
         // --- トレイアイコンの見本 -----------------------------------------------

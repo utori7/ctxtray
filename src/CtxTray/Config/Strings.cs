@@ -160,9 +160,22 @@ namespace CtxTray.Config
             { "app.welcome",   new[] { "{0} か通知領域のアイコンで HUD を出し入れできます。右クリックで設定。",
                                        "Press {0} or click the tray icon to show the panel. Right-click it for settings." } },
 
+            // クリックを後ろに通す設定を切り替えたとき、パネルの上に数秒だけ出す（2 行に収める）。
+            // オンにするとパネルの右クリックが効かなくなるので、戻し方を必ず添える。
+            { "hud.clickThroughOnKey",  new[] { "クリックを後ろに通します。{0} かトレイのメニューで戻せます。",
+                                                "Clicks now pass through. Press {0} or use the tray menu to undo." } },
+            { "hud.clickThroughOnMenu", new[] { "クリックを後ろに通します。トレイのメニューで戻せます。",
+                                                "Clicks now pass through. Use the tray menu to undo." } },
+            { "hud.clickThroughOff",    new[] { "クリックを後ろに通すのをやめました。",
+                                                "The panel takes clicks again." } },
+
             // ホットキーが登録できなかったとき（押しても何も起きない理由を伝える）。
             { "hotkey.taken",  new[] { "ショートカット {0} は、ほかのアプリが使っているため効きません。設定で別のキーを選んでください。",
                                        "The {0} shortcut is in use by another app, so it does nothing. Choose a different key in the settings." } },
+            { "hotkey.clickThroughTaken", new[] { "「クリックを後ろに通す」のショートカット {0} は、ほかのアプリが使っているため効きません。設定で別のキーを選んでください。",
+                                                  "The {0} click-through shortcut is in use by another app, so it does nothing. Choose a different key in the settings." } },
+            { "hotkey.clickThroughSame",  new[] { "「クリックを後ろに通す」のショートカット {0} は、「いま HUD を表示する」のキーと同じなので効きません。設定で別のキーを選んでください。",
+                                                  "The {0} click-through shortcut is the same as the \"Show the HUD now\" shortcut, so it does nothing. Choose a different key in the settings." } },
             { "hotkey.unparsable", new[] { "設定ファイルのショートカット「{0}」を読み取れません。設定で選び直してください。",
                                            "The shortcut \"{0}\" in the config file could not be read. Choose one in the settings." } },
 
@@ -179,8 +192,9 @@ namespace CtxTray.Config
             { "set.fetchDocs",     new[] { "上限が分からないモデルは、公式ドキュメントで調べる",
                                            "Look up unknown models in the official docs" } },
             // 「通信しない」を既定にしているので、オンにしたら何が起きるかを具体的に書く。
-            { "set.fetchDocsHint", new[] { "オンにすると、ctxtray が知らないモデルを見つけたときだけ、platform.claude.com の公開ドキュメント（モデルごとのページ）を 1 回読みに行きます。送るのはページの URL だけで、会話やアカウントの情報は送りません。",
-                                           "When on, ctxtray reads the public docs page for a model on platform.claude.com once, only when it meets a model it doesn't know. Only the page URL is requested; nothing about your conversations or account is sent." } },
+            // 説明文はどれも短くする（2026-09-26、利用者の指摘「冗長で読みにくい」）。ただし通信の中身は削らない。
+            { "set.fetchDocsHint", new[] { "知らないモデルのときだけ、platform.claude.com の公開ページを 1 回読みます。会話やアカウントの情報は送りません。",
+                                           "Only for a model it doesn't know: reads its public page on platform.claude.com once. Nothing about your conversations or account is sent." } },
             { "set.checkNow",      new[] { "今すぐ確認",           "Check now" } },
             { "set.checkNowStarted", new[] { "確認を始めました。結果はパネルに出ます。",
                                              "Checking. Results will show in the panel." } },
@@ -195,8 +209,8 @@ namespace CtxTray.Config
             { "set.builtInShow",   new[] { "▸ 組み込みのモデル（{0} 件）を表示", "▸ Show built-in models ({0})" } },
             { "set.builtInHide",   new[] { "▾ 組み込みのモデル（{0} 件）を隠す", "▾ Hide built-in models ({0})" } },
             { "set.limitUnset",    new[] { "未設定",               "Not set" } },
-            { "set.modelListHint", new[] { "「不明」は、使ったのに上限が分からなかったモデルです。上限を選ぶと % が出ます。200K と 1M 以外の値は設定ファイルの modelLimits に書けます。",
-                                           "\"Unknown\" means a model you used whose window ctxtray couldn't find. Choose one to see a %. For values other than 200K and 1M, use modelLimits in the config file." } },
+            { "set.modelListHint", new[] { "「不明」は上限を選ぶと % が出ます。ほかの値は設定ファイルの modelLimits で。",
+                                           "Choose a window for an \"Unknown\" model to see a %. Other values go in modelLimits in the config file." } },
 
             // 設定ダイアログ: HUD
             { "set.secHudContent", new[] { "表示する内容",          "What to show" } },
@@ -223,8 +237,6 @@ namespace CtxTray.Config
             { "set.modelLayout",   new[] { "出し方",               "Layout" } },
             { "set.layoutColumn",  new[] { "名前の後ろ（パネルが広がる）", "After the name (wider panel)" } },
             { "set.layoutTwoLine", new[] { "名前の下（行が高くなる）", "Under the name (taller rows)" } },
-            { "set.modelHint",     new[] { "行にマウスを乗せたときの詳細には、オフでも常に出ます。",
-                                           "Always shown in the details when you hover over a row, even when off." } },
             { "set.showResets",    new[] { "5時間枠のリセット時刻", "5-hour reset time" } },
             { "set.always",        new[] { "常に表示",             "Always" } },
             { "set.autoNear",      new[] { "リセットの {0} 分前から", "From {0} min before the reset" } },
@@ -243,22 +255,37 @@ namespace CtxTray.Config
                                            "Let clicks pass through to the window behind" } },
             // 透過中は窓がマウスを一切受け取らないので、ドラッグだけでなく行の詳細も右クリックも死ぬ。
             // 「ドラッグできない」としか書いていなかった頃は、残りの 2 つが壊れたように見えた（2026-09-20）。
-            { "set.clickThroughHint", new[] { "オンの間は、HUD のドラッグ・行の詳細・右クリックメニューが効きません。トレイアイコンの右クリックから戻せます。",
-                                              "While this is on, the HUD can't be dragged or hovered for details, and right-clicking it does nothing. Turn it back off from the tray icon's menu." } },
+            // 戻し方はオンにしたときパネルに出る（hud.clickThroughOnKey など）ので、ここには書かない。
+            { "set.clickThroughHint", new[] { "オンの間は HUD のドラッグ・詳細・右クリックが効きません。",
+                                              "While on, the HUD can't be dragged, hovered, or right-clicked." } },
+
+            // 起動の節（全般タブの先頭）。自動起動は以前からトレイのメニューにだけあり、設定画面で見つからなかった（2026-09-26）。
+            { "set.secStartup",    new[] { "起動",                 "Startup" } },
+            { "set.autoStart",     new[] { "Windows にサインインしたら ctxtray を起動する",
+                                           "Start ctxtray when you sign in to Windows" } },
+            { "set.autoStartHint", new[] { "スタートアップフォルダにショートカットを置きます。",
+                                           "Puts a shortcut in your Startup folder." } },
 
             { "set.secHudControl", new[] { "HUD の操作",           "HUD controls" } },
-            { "set.hotkey",        new[] { "表示／非表示のキー",    "Show/hide shortcut" } },
-            // ほかのアプリが先に取っているキーは欄に届かず、押しても何も変わらない（2026-09-18 実機で確認）。
-            // 無反応の理由をその場で分かるようにする。
-            { "set.hotkeyHint",    new[] { "欄をクリックしてから、Ctrl・Alt・Shift のどれかと一緒にキーを押します。押しても欄が変わらないキーは、ほかのアプリが先に使っています。",
-                                           "Click the box, then press a key together with Ctrl, Alt, or Shift. If the box doesn't change, another app is already using that key." } },
-            { "set.hotkeyTaken",   new[] { "このキーはほかのアプリが使っているため効きません。",
-                                           "Another app is using this key, so it will not work." } },
+            // いまの表示状態（保存しない）。クリック透過と同じ並びにするために置いた（2026-09-26、利用者の決定）。
+            // すぐ下の「起動したときに HUD を表示する」と対の名前にして、違いを補足文なしで伝える（2026-09-27、利用者の指摘）。
+            { "set.showHud",       new[] { "いま HUD を表示する",   "Show the HUD now" } },
+            // チェックボックスの直下に字下げして置くので、何の切り替えかは書かない（2 つの欄で同じ言葉）。
+            { "set.toggleKey",     new[] { "切り替えのキー",       "Shortcut" } },
+            { "set.keyNone",       new[] { "なし",                 "None" } },
+            // キーの欄をクリックしたときに欄の中へ淡く出す押し方の案内（説明文の代わり。2026-09-27）。
+            // 「押しても欄が変わらないキーは、ほかのアプリが先に使っている」（2026-09-18 実機で確認）は README に書く。
+            // 中黒（・）だと「全部」なのか「どれか」なのか分かりにくいので、英語と同じく半角スラッシュで書く（2026-09-27、利用者の指摘）。
+            { "set.keyPrompt",     new[] { "Ctrl/Alt/Shift + キー", "Ctrl/Alt/Shift + key" } },
+            { "set.clickThroughKeySame", new[] { "「いま HUD を表示する」のキーと同じです。",
+                                                 "Same as the \"Show the HUD now\" shortcut." } },
+            { "set.hotkeyTaken",   new[] { "ほかのアプリが使っているため効きません。",
+                                           "Another app uses this key, so it won't work." } },
             { "set.showAtStartup", new[] { "起動したときに HUD を表示する", "Show the HUD when ctxtray starts" } },
             { "set.hideFullscreen", new[] { "全画面のアプリを使っている間は隠す",
                                             "Hide while a full-screen app is in use" } },
-            { "set.hideFullscreenHint", new[] { "動画・発表・ゲームなどの全画面表示のあいだ HUD を隠します。Claude Desktop が前面のときは隠しません。",
-                                                "Hides the HUD while a video, presentation, or game is full-screen. It stays visible when Claude Desktop is in front." } },
+            { "set.hideFullscreenHint", new[] { "Claude Desktop が前面のときは隠しません。",
+                                                "Not while Claude Desktop is in front." } },
             { "set.position",      new[] { "位置",                 "Position" } },
             { "set.resetPosition", new[] { "右下の隅に戻す",        "Move to bottom-right corner" } },
 
@@ -278,15 +305,14 @@ namespace CtxTray.Config
             { "set.labelLetters",  new[] { "文字（C・5h・W）",      "Letters (C, 5h, W)" } },
             { "set.labelGlyphs",   new[] { "絵記号（吹き出し・時計・カレンダー）", "Symbols (bubble, clock, calendar)" } },
             { "set.labelPercent",  new[] { "数字（いまの %）",      "Numbers (current %)" } },
-            { "set.labelHint",     new[] { "C と吹き出しはコンテキスト、5h と時計は5時間枠、W とカレンダーは週間枠です。数字はパネルと同じ % で、どれが何の値かは並び（左からコンテキスト・5時間枠・週間枠）と色で見分けます。",
-                                           "C and the bubble mean context, 5h and the clock the 5-hour limit, W and the calendar the weekly limit. Numbers are the same % as the panel; tell them apart by order (context, 5-hour, weekly from the left) and colour." } },
+            { "set.labelHint",     new[] { "並びは左からコンテキスト・5時間枠・週間枠です。",
+                                           "From the left: context, 5-hour, weekly." } },
 
-            { "set.trayOverflowHint", new[] { "アイコンが通知領域の「^」の中に入ったときは、タスクバーへドラッグして出してください（最初の 1 回だけ）。正確な値はアイコンにマウスを乗せると出ます。",
-                                              "If an icon lands under the ^ overflow, drag it onto the taskbar (only needed once). Hover over an icon for the exact values." } },
+            { "set.trayOverflowHint", new[] { "「^」の中に入ったアイコンは、タスクバーへドラッグすると出せます。",
+                                              "Drag an icon out of the ^ overflow onto the taskbar to keep it visible." } },
 
             { "set.secTrayPreview",new[] { "見本",                 "Preview" } },
-            { "set.previewHint",   new[] { "今の値で描いています（左が実寸、右が 2 倍）。",
-                                           "Drawn with the current values (actual size, then 2x)." } },
+            { "set.previewHint",   new[] { "左が実寸、右が 2 倍。",  "Actual size, then 2x." } },
 
             // 設定ダイアログ: しきい値と通知
             { "set.secThreshold",  new[] { "色が変わる境目",        "When colors change" } },
@@ -294,21 +320,21 @@ namespace CtxTray.Config
             { "set.danger",        new[] { "危険",                 "Danger" } },
             { "set.ctxThreshold",  new[] { "コンテキスト",          "Context" } },
             // 圧縮点以上の値は、その色になる前に圧縮されるので起きない。値は勝手に直さず知らせる。
-            { "set.ctxOverCompact",new[] { "自動圧縮は {0:P0} で起きるので、それ以上の値では色も通知も出ません。",
-                                           "Auto-compaction happens at {0:P0}, so a value at or above it never shows its colour or notification." } },
+            { "set.ctxOverCompact",new[] { "自動圧縮（{0:P0}）以上の値では色も通知も出ません。",
+                                           "At or above auto-compaction ({0:P0}), this never shows." } },
             { "set.fhThreshold",   new[] { "5時間枠",              "5-hour limit" } },
             { "set.wkThreshold",   new[] { "週間枠",               "Weekly limit" } },
             // 判定は危険から先に見るので、注意を危険より大きくすると注意が一度も起きない。
             // 値は勝手に直さず、その場で知らせる（2026-09-20）。
-            { "set.thresholdOrder",new[] { "「注意」は「危険」より小さい値にしてください。大きいままだと、注意の色も通知も出ません。",
-                                           "Set the warn value below the danger value. While it is higher, the warn colour and its notification never appear." } },
+            { "set.thresholdOrder",new[] { "「注意」を「危険」より小さくしてください。大きいと注意が出ません。",
+                                           "Keep warn below danger, or warn never shows." } },
 
             // 色だけで示すと、赤と緑の区別が付きにくい人には通常と危険が見分けられない。
             // 通知領域のアイコンには入れない（小さすぎて、見えるようにするとうるさくなる）。
             { "set.levelMarks",    new[] { "注意・危険はパネルのバーの模様でも示す",
                                            "Also mark warn and danger on the panel's bars" } },
-            { "set.levelMarksHint",new[] { "バーに斜めの縞を入れます（注意は粗く、危険は細かく）。色の違いが分かりにくいときに。通知領域のアイコンは小さいので入れません。",
-                                           "Draws diagonal stripes on the bar - wider for warn, tighter for danger - for when the colours are hard to tell apart. The tray icon is too small for them, so it keeps colour alone." } },
+            { "set.levelMarksHint",new[] { "注意は粗い縞、危険は細かい縞。色が見分けにくいときに。",
+                                           "Wide stripes for warn, tight for danger. Helps when colours are hard to tell apart." } },
 
             { "set.secNotify",     new[] { "通知を出す",           "Send notifications for" } },
             { "set.notifyContext", new[] { "コンテキスト",          "Context" } },
@@ -334,8 +360,8 @@ namespace CtxTray.Config
             { "set.compactPoint",  new[] { "圧縮点",               "Compaction point" } },
             { "set.compactValue",  new[] { "{0:P0}（Claude Code の既定値）", "{0:P0} (Claude Code's default)" } },
             { "set.compactCustom", new[] { "{0:P0}（設定ファイルの値）", "{0:P0} (from the config file)" } },
-            { "set.compactHint",   new[] { "1M のモデルは約 967K トークンで自動圧縮されます（公式ドキュメント）。/autocompact で変えた場合は、設定ファイルの compactThreshold を合わせてください。",
-                                           "1M-context models auto-compact at about 967K tokens (per the official docs). If you changed this with /autocompact, set compactThreshold in the config file to match." } },
+            { "set.compactHint",   new[] { "/autocompact で変えたときは、設定ファイルの compactThreshold を合わせてください。",
+                                           "If you changed it with /autocompact, set compactThreshold in the config file to match." } },
             { "set.configFile",    new[] { "設定ファイル",          "Config file" } },
             { "set.open",          new[] { "開く",                 "Open" } },
 

@@ -519,7 +519,7 @@ namespace CtxTray
                 GC.KeepAlive(hud.Handle);
                 hud.SetSnapshot(SampleSnapshot(japanese, state));
                 if (state == "welcome")
-                    hud.ShowWelcome(Strings.Format("app.welcome", "Ctrl+Alt+C"), 600);
+                    hud.ShowNotice(Strings.Format("app.welcome", "Ctrl+Alt+C"), 600);
 
                 var bmp = new Bitmap(hud.Width, hud.Height);
                 hud.DrawToBitmap(bmp, new Rectangle(0, 0, hud.Width, hud.Height));
@@ -573,7 +573,7 @@ namespace CtxTray
         /// danger … コンテキストも枠も危険。色と（あれば）形の出方を見る
         /// reference … Claude Desktop が起動していない。レート枠が淡く、見出しに「参考値」
         /// stopped … 止まっているセッションが混ざっている
-        /// welcome … 初めての起動の案内（呼び出し側が ShowWelcome する）
+        /// welcome … 初めての起動の案内（呼び出し側が ShowNotice する）
         /// </param>
         private static Snapshot SampleSnapshot(bool japanese, string state = "normal")
         {

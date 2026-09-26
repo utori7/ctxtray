@@ -40,10 +40,14 @@ namespace CtxTray.Tests
                 Run("ModelLimits lookup", ModelLimitsLookup);
                 Run("Model docs: page URL and parsing", ModelDocsParsing);
                 Run("Model docs: record, 24-hour retry, one notice", ModelDocsFetching);
+                Run("Model docs: names for records from 0.2.0", ModelDocsNameBackfill);
                 Run("Notify: a notice with its own click action", NotifyClickAction);
                 Run("Rate samples: latest org only, incomplete samples skipped", RateSamples);
                 Run("JSON writer: ASCII-only output", AsciiJson);
                 Run("Transcript: latest usage", TranscriptLatest);
+                Run("Effort: transcript first, then the tab record", TranscriptEffort);
+                Run("HUD widths: the name width, every column widens the panel", HudWidths);
+                Run("Model names: checked names only, no guessing", ModelDisplayNames);
                 Run("Sessions: a Desktop tab keeps its Desktop process", TabProcessChoice);
                 Run("Levels with slack", LevelsSlack);
                 Run("Tray: running sessions only", TrayPicksRunning);
@@ -255,6 +259,36 @@ namespace CtxTray.Tests
                   "the three settings survive a save");
             Equal(40, back.HudY, "the saved position survives too");
 
+            // モデルとエフォート（2026-09-26）: 既定はオフ・専用の列。知らない形は既定のまま。
+            Check(!old.HudShowModel && !old.HudShowEffort, "model and effort are off by default");
+            Equal("column", old.HudModelLayout, "the column layout by default");
+            File.WriteAllText(path, "{ \"display\": { \"showModel\": true, \"showEffort\": true, \"modelLayout\": \"twoline\" } }",
+                              new UTF8Encoding(false));
+            var model = AppConfig.Load(out problem, out failed);
+            Check(model.HudShowModel && model.HudShowEffort, "showModel / showEffort are read");
+            Equal("twoLine", model.HudModelLayout, "the layout is read (case-insensitive)");
+            Check(model.Save(), "save succeeds");
+            var modelBack = AppConfig.Load(out problem, out failed);
+            Check(modelBack.HudShowModel && modelBack.HudShowEffort && modelBack.HudModelLayout == "twoLine",
+                  "and survives a save");
+            File.WriteAllText(path, "{ \"display\": { \"modelLayout\": \"sideways\" } }", new UTF8Encoding(false));
+            Equal("column", AppConfig.Load(out problem, out failed).HudModelLayout, "an unknown layout keeps the default");
+
+            // 名前の幅（2026-09-26）: 既定 180。0.2.0 までの hudWidth は同じ見た目になるよう換算する。
+            Equal(HudLayout.DefaultNameWidth, old.HudNameWidth, "the name width defaults to 180");
+            File.WriteAllText(path, "{ \"display\": { \"hudWidth\": 352, \"showBar\": true, \"showTokens\": true } }",
+                              new UTF8Encoding(false));
+            var fromPanel = AppConfig.Load(out problem, out failed);
+            Equal(112, fromPanel.HudNameWidth, "an old hudWidth is converted (352 with tokens -> 112)");
+            Check(fromPanel.Save(), "save succeeds");
+            var savedText = File.ReadAllText(path);
+            Check(savedText.Contains("\"nameWidth\"") && !savedText.Contains("\"hudWidth\""),
+                  "only nameWidth is written back");
+            Equal(112, AppConfig.Load(out problem, out failed).HudNameWidth, "and it survives a save");
+            File.WriteAllText(path, "{ \"display\": { \"nameWidth\": 5, \"hudWidth\": 900 } }", new UTF8Encoding(false));
+            Equal(HudLayout.MinNameWidth, AppConfig.Load(out problem, out failed).HudNameWidth,
+                  "nameWidth wins over hudWidth and is clamped");
+
             // 形の手がかり（thresholds.marks）は既定でオン。古い設定にも無いので既定が効く。
             Check(old.LevelMarks, "the shape marks are on by default");
             File.WriteAllText(path, "{ \"thresholds\": { \"marks\": false } }", new UTF8Encoding(false));
@@ -407,6 +441,18 @@ namespace CtxTray.Tests
             Equal((int?)null, ModelDocs.ParsePage("Model ID: `claude-x-1`\nContext window: 500M tokens", "claude-x-1"), "out of range");
             Equal((int?)null, ModelDocs.ParsePage("<html>Not found</html>", "claude-x-1"), "an error page");
             Equal((int?)null, ModelDocs.ParsePage(null, "claude-x-1"), "nothing downloaded");
+
+            // 名前は front matter の title（2026-09-26 に 14 モデルのページで確認した形）。
+            Equal("Claude Opus 5.5", ModelDocs.ParseName(opus55, "claude-opus-5-5"), "title from the front matter");
+            Equal("Claude Opus 5.5", ModelDocs.ParseName(opus55.Replace("\n", "\r\n"), "claude-opus-5-5"), "CRLF");
+            Equal("Claude X 1", ModelDocs.ParseName("---\ntitle: \"Claude X 1\"\n---\nModel ID: `claude-x-1`", "claude-x-1"),
+                  "quotes are removed");
+            Equal((string)null, ModelDocs.ParseName(opus55, "claude-opus-5"), "the page is for another model");
+            Equal((string)null, ModelDocs.ParseName(haiku, "claude-haiku-4-5"), "no front matter");
+            Equal((string)null, ModelDocs.ParseName("---\nurl: x\n---\ntitle: Body\nModel ID: `claude-x-1`", "claude-x-1"),
+                  "a title outside the front matter is ignored");
+            Equal((string)null, ModelDocs.ParseName("---\ntitle: " + new string('x', 60) + "\n---\nModel ID: `claude-x-1`",
+                  "claude-x-1"), "too long");
         }
 
         /// <summary>取得係: 記録・24 時間の再確認・通知は 1 回だけ（通信は差し替える）。</summary>
@@ -422,7 +468,8 @@ namespace CtxTray.Tests
             f.Download = url =>
             {
                 requested.Add(url);
-                return url.Contains("/future-7/") ? "Model ID: `claude-future-7`\nContext window: 2M tokens" : null;
+                return url.Contains("/future-7/")
+                    ? "---\ntitle: Claude Future 7\n---\nModel ID: `claude-future-7`\nContext window: 2M tokens" : null;
             };
 
             Equal(DocsLookupState.Off, f.StateFor("claude-future-7", false), "off when the setting is off");
@@ -435,6 +482,7 @@ namespace CtxTray.Tests
             Check(f.TakeChanged(), "a change is reported");
             Check(!f.TakeChanged(), "and only once");
             Equal(2000000, f.Limits()["claude-future-7"], "found value is kept");
+            Equal("Claude Future 7", f.Names()["claude-future-7"], "and the page title with it");
             Equal(DocsLookupState.NotFound, f.StateFor("claude-missing-1", true), "missing model is not found");
 
             requested.Clear();
@@ -458,6 +506,7 @@ namespace CtxTray.Tests
             // 記録ファイルから読み直しても同じ。
             var again = new ModelDocsFetcher(dir, "test");
             Equal(2000000, again.Limits()["claude-future-7"], "found value survives a restart");
+            Equal("Claude Future 7", again.Names()["claude-future-7"], "the name survives a restart");
             Equal(DocsLookupState.NotFound, again.StateFor("claude-missing-1", true), "missing model survives a restart");
             Check(!again.MarkNotified("claude-missing-1"), "notices survive a restart");
             Check(again.UnknownSoFar().Contains("claude-missing-1"), "listed as unknown for the settings");
@@ -465,6 +514,72 @@ namespace CtxTray.Tests
 
             File.WriteAllText(Path.Combine(dir, ModelDocsStore.FileName), "{ broken", new UTF8Encoding(false));
             Equal(0, new ModelDocsFetcher(dir, "test").Limits().Count, "a broken file reads as empty");
+        }
+
+        /// <summary>
+        /// 0.2.0 の記録（名前なし）: 名前を埋めるために 1 回だけ読み直す。上限は取り直さない。
+        /// 失敗したら 24 時間おく。読めたら title が無くても以後は読まない。
+        /// </summary>
+        private static void ModelDocsNameBackfill()
+        {
+            var dir = Path.Combine(_temp, "model-docs-names");
+            Directory.CreateDirectory(dir);
+            // 0.2.0 が書いた形（name・nameChecked が無い）。
+            File.WriteAllText(Path.Combine(dir, ModelDocsStore.FileName),
+                "{ \"version\": 1, \"fetched\": {"
+                + " \"claude-future-7\": { \"limit\": 2000000, \"fetchedAt\": \"2026-09-25T12:00:00Z\", \"url\": \"u\" },"
+                + " \"claude-future-8\": { \"limit\": 1000000, \"fetchedAt\": \"2026-09-25T12:00:00Z\", \"url\": \"u\" },"
+                + " \"claude-future-9\": { \"limit\": 1000000, \"fetchedAt\": \"2026-09-25T12:00:00Z\", \"url\": \"u\" } },"
+                + " \"notFound\": {}, \"notified\": [] }",
+                new UTF8Encoding(false));
+
+            var now = new DateTime(2026, 9, 26, 12, 0, 0, DateTimeKind.Utc);
+            var requested = new List<string>();
+            var online = false;
+            var f = new ModelDocsFetcher(dir, "test");
+            f.Manual = true;
+            f.Clock = () => now;
+            f.Download = url =>
+            {
+                requested.Add(url);
+                if (url.Contains("/future-7/"))
+                    return "---\ntitle: Claude Future 7\n---\nModel ID: `claude-future-7`\nContext window: 1M tokens";
+                if (url.Contains("/future-8/"))   // title の無いページ
+                    return "Model ID: `claude-future-8`\nContext window: 1M tokens";
+                return online ? "---\ntitle: Claude Future 9\n---\nModel ID: `claude-future-9`\nContext window: 1M tokens" : null;
+            };
+
+            Equal(0, f.Names().Count, "the old record has no names");
+            f.RequestNames(new[] { "claude-future-7", "claude-future-8", "claude-future-9", "claude-unknown-1" });
+            f.RunQueuedNow();
+
+            Equal(3, requested.Count, "each nameless model is read once (unknown models are not touched here)");
+            Equal("Claude Future 7", f.Names()["claude-future-7"], "the name is filled in");
+            Equal(2000000, f.Limits()["claude-future-7"], "the window is kept, not refetched (the page says 1M)");
+            Check(!f.Names().ContainsKey("claude-future-8"), "a page without a title leaves no name");
+            Equal(1000000, f.Limits()["claude-future-9"], "a failed read keeps the window");
+            Check(!f.UnknownSoFar().Contains("claude-future-9"), "and is not listed as unknown");
+
+            requested.Clear();
+            f.RequestNames(new[] { "claude-future-7", "claude-future-8", "claude-future-9" });
+            f.RunQueuedNow();
+            Equal(0, requested.Count, "no second read: found, no title, or failed within 24 hours");
+
+            now = now.AddHours(24);
+            online = true;
+            f.RequestNames(new[] { "claude-future-7", "claude-future-8", "claude-future-9" });
+            f.RunQueuedNow();
+            Equal(1, requested.Count, "only the failed one is tried again after 24 hours");
+            Equal("Claude Future 9", f.Names()["claude-future-9"], "and gets its name");
+
+            var again = new ModelDocsFetcher(dir, "test");
+            Equal(2, again.Names().Count, "names survive a restart");
+            requested.Clear();
+            again.Manual = true;
+            again.Download = url => { requested.Add(url); return null; };
+            again.RequestNames(new[] { "claude-future-7", "claude-future-8", "claude-future-9" });
+            again.RunQueuedNow();
+            Equal(0, requested.Count, "the checked mark survives a restart too");
         }
 
         /// <summary>通知のクリック: 動作を持つ通知はそれを返し、ほかは既定（null）。</summary>
@@ -553,6 +668,96 @@ namespace CtxTray.Tests
             Equal(6000, latest.PromptTokens, "input + cache creation + cache read (output excluded)");
             Equal("claude-opus-5", latest.Model, "model of the last real turn");
             Equal(new DateTime(2026, 9, 16, 12, 1, 0, DateTimeKind.Utc), latest.AtUtc, "timestamp");
+        }
+
+        /// <summary>
+        /// 幅は名前の幅。どの列もオンにした分だけパネルが広がり、名前は縮まない（2026-09-26）。
+        /// </summary>
+        private static void HudWidths()
+        {
+            Equal(352, HudLayout.PanelWidth(180, true, false, 0), "the default panel is 352, as before");
+            Equal(352 + 68, HudLayout.PanelWidth(180, true, true, 0), "token counts widen the panel");
+            Equal(352 + 132, HudLayout.PanelWidth(180, true, false, HudLayout.ModelColumn(true, true)),
+                  "so does the model column");
+            Equal(352 - 92, HudLayout.PanelWidth(180, false, false, 0), "turning the bar off narrows it");
+            Equal(28 + 70 + 8 + 44, HudLayout.PanelWidth(10, false, false, 0), "the name is never narrower than 70");
+
+            Equal(124, HudLayout.ModelColumn(true, true), "model and effort");
+            Equal(72, HudLayout.ModelColumn(true, false), "model only");
+            Equal(52, HudLayout.ModelColumn(false, true), "effort only");
+            Equal(0, HudLayout.ModelColumn(false, false), "neither");
+
+            // 0.2.0 までの hudWidth からの換算は、当時と同じ見た目になる。
+            Equal(180, HudLayout.NameWidthFromPanel(352, true, false), "default settings");
+            Equal(112, HudLayout.NameWidthFromPanel(352, true, true), "with token counts (the name was squeezed)");
+            Equal(352 + 132, HudLayout.PanelWidth(HudLayout.NameWidthFromPanel(352, true, true), true, true,
+                  HudLayout.ModelColumn(true, true)), "the same panel width as 0.2.x with every column on (484)");
+            Equal(70, HudLayout.NameWidthFromPanel(240, true, true), "too narrow becomes 70");
+        }
+
+        /// <summary>
+        /// エフォート: transcript の行のトップレベルから読み、無ければタブ記録の値（2026-09-26）。
+        /// モデル名: 確かめた表示名があればそれ、無ければ null（画面は ID のまま）。
+        /// </summary>
+        private static void TranscriptEffort()
+        {
+            var path = Path.Combine(_temp, "session-effort.jsonl");
+            var lines = new[]
+            {
+                Usage("2026-09-26T09:00:00Z", "claude-opus-5-5", 10, 20, 30, 5).Replace("{\"type\"", "{\"effort\":\"medium\",\"type\""),
+                Usage("2026-09-26T09:01:00Z", "claude-opus-5-5", 10, 20, 30, 5).Replace("{\"type\"", "{\"effort\":\"xhigh\",\"type\""),
+            };
+            File.WriteAllText(path, string.Join("\n", lines) + "\n", new UTF8Encoding(false));
+
+            var latest = Transcript.ReadLatest(path);
+            Equal("xhigh", latest == null ? null : latest.Effort, "effort of the last turn (switched mid-session)");
+
+            var row = SnapshotBuilder.BuildRow(path, "t", "id", "c", "claude-opus-5", "high", null);
+            Equal("xhigh", row.Effort, "the transcript wins over the tab record");
+            Equal("claude-opus-5-5", row.Model, "and so does the model");
+            Equal("Opus 5.5", row.ModelName, "a checked display name");
+
+            // 古い版の行（effort が無い）なら、タブ記録の値を使う。外部セッションはタブ記録も無いので空。
+            var oldPath = Path.Combine(_temp, "session-no-effort.jsonl");
+            File.WriteAllText(oldPath, Usage("2026-09-26T09:00:00Z", "claude-example-6", 10, 20, 30, 5) + "\n",
+                              new UTF8Encoding(false));
+            var old = SnapshotBuilder.BuildRow(oldPath, "t", "id", "c", null, "high", null);
+            Equal("high", old.Effort, "falls back to the tab record");
+            Equal((string)null, SnapshotBuilder.BuildRow(oldPath, "t", "id", "c", null, null, null).Effort,
+                  "nothing to show without either");
+            Equal((string)null, old.ModelName, "an unchecked model has no display name (the ID is shown)");
+        }
+
+        /// <summary>表示名の照合（分母と同じ規則）と、行・札に出す文字列。</summary>
+        private static void ModelDisplayNames()
+        {
+            Equal("Opus 5.5", ModelLimits.DisplayName("claude-opus-5-5"), "built-in name");
+            Equal("Haiku 4.5", ModelLimits.DisplayName("claude-haiku-4-5-20251001"), "dated ID");
+            Equal("Opus 5", ModelLimits.DisplayName("claude-opus-5"), "not a prefix match (claude-opus-5 is its own entry)");
+            Equal((string)null, ModelLimits.DisplayName("claude-opus-5-9"), "no guessing for an unknown point release");
+            Equal((string)null, ModelLimits.DisplayName(null), "null");
+
+            var docs = new Dictionary<string, string> { { "claude-future-7", "Claude Future 7" } };
+            Equal("Future 7", ModelLimits.DisplayName("claude-future-7", docs), "a name from the docs");
+            Equal("Opus 5.5", ModelLimits.DisplayName("claude-opus-5-5", new Dictionary<string, string>
+                  { { "claude-opus-5-5", "Claude Something Else" } }), "the built-in table comes first");
+
+            Equal("Claude", ModelLimits.ShortName("Claude"), "a bare Claude is kept");
+            Equal("Example", ModelLimits.ShortName("Example"), "names without the prefix are kept");
+
+            foreach (var kv in ModelLimits.BuiltIn)
+                Check(ModelLimits.DisplayName(kv.Key) != null, "every built-in model has a name: " + kv.Key);
+
+            var both = new SessionRow { Model = "claude-opus-5-5", ModelName = "Opus 5.5", Effort = "high" };
+            Equal("Opus 5.5 · high", ModelText.Format(both), "name and effort");
+            Equal("Opus 5.5", ModelText.Format(both, true, false), "model only (setting)");
+            Equal("high", ModelText.Format(both, false, true), "effort only (setting)");
+            Equal((string)null, ModelText.Format(both, false, false), "both off");
+            Equal("claude-example-6 · high", ModelText.Format(new SessionRow
+                  { Model = "claude-example-6", Effort = "high" }), "the ID when there is no name");
+            Equal("Opus 5.5", ModelText.Format(new SessionRow
+                  { Model = "claude-opus-5-5", ModelName = "Opus 5.5" }), "no effort recorded");
+            Equal((string)null, ModelText.Format(new SessionRow()), "neither recorded");
         }
 
         private static string Usage(string at, string model, int input, int creation, int read, int output)

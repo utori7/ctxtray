@@ -64,6 +64,8 @@ namespace CtxTray.Collect
         public string CliSessionId;
         public string Cwd;
         public string Model;
+        /// <summary>画面に出すモデル名（Opus 5.5 など）。確かめた名前が無ければ null（ID をそのまま出す）。</summary>
+        public string ModelName;
         public bool ModelKnown;
         public LimitSource LimitSource;
         public DocsLookupState DocsState;
@@ -234,14 +236,19 @@ namespace CtxTray.Collect
             snap.Freshness = JudgeFreshness(snap, latestTranscriptWriteUtc);
         }
 
-        private static SessionRow BuildRow(string transcriptPath, string title, string sessionId,
-                                           string cwd, string tabModel, string effort,
+        /// <summary>1 行を組む。internal は試験のため（transcript とタブ記録のどちらを採るか）。</summary>
+        internal static SessionRow BuildRow(string transcriptPath, string title, string sessionId,
+                                           string cwd, string tabModel, string tabEffort,
                                            LimitSources modelLimits)
         {
             var usage = Transcript.ReadLatest(transcriptPath);
 
             // transcript に書かれたモデルを優先する。タブ登録側は切り替え直後にずれうる。
             var model = (usage != null && !string.IsNullOrEmpty(usage.Model)) ? usage.Model : tabModel;
+
+            // エフォートもモデルと同じ順。transcript なら Desktop 以外のセッションにも値がある
+            // （タブ記録が無いので、以前は常に空だった）。
+            var effort = (usage != null && !string.IsNullOrEmpty(usage.Effort)) ? usage.Effort : tabEffort;
             LimitSource source;
             var limit = ModelLimits.Lookup(model,
                 modelLimits == null ? null : modelLimits.Config,
@@ -261,6 +268,7 @@ namespace CtxTray.Collect
                 CliSessionId = sessionId,
                 Cwd = cwd,
                 Model = model,
+                ModelName = ModelLimits.DisplayName(model, modelLimits == null ? null : modelLimits.DocsNames),
                 ModelKnown = limit.HasValue,
                 LimitSource = source,
                 DocsState = docsState,

@@ -129,6 +129,7 @@ namespace CtxTray
                 {
                     Config = config.ModelLimits,
                     Docs = docs.Limits(),
+                    DocsNames = docs.Names(),
                     DocsState = m => docs.StateFor(m, fetch),
                 });
             }
@@ -706,6 +707,7 @@ namespace CtxTray
                     .Add("cli_session_id", s.CliSessionId)
                     .Add("cwd", s.Cwd)
                     .Add("model", s.Model)
+                    .Add("model_name", s.ModelName)
                     .Add("model_known", s.ModelKnown)
                     // 分母の出どころ（config / built_in / docs / unknown）。確かめる手がかりに出す。
                     .Add("limit_source", LimitSourceName(s.LimitSource))

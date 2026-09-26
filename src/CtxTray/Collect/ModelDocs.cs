@@ -21,6 +21,7 @@ namespace CtxTray.Collect
     ///   Context window: 1M tokens · Max output: …
     /// の行がある（2026-09-25 に 14 モデルのページで確認）。
     /// ID がモデル名と一致しないページ、値が読めないページは採用しない。
+    /// 同じページの front matter の title（"Claude Opus 5.5"）も、HUD に出すモデル名として残す。
     /// </summary>
     internal static class ModelDocs
     {
@@ -78,6 +79,41 @@ namespace CtxTray.Collect
             if (limit < MinLimit || limit > MaxLimit) return null;
             return (int)Math.Round(limit);
         }
+
+        /// <summary>
+        /// ページからモデル名を読む。先頭の front matter（--- で囲んだ部分）の title
+        /// （例 "Claude Opus 5.5"。2026-09-26 に 14 モデルのページで確認）。
+        /// ParsePage と同じく、ページの Model ID がモデル名と一致しなければ null。
+        /// </summary>
+        public static string ParseName(string text, string model)
+        {
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(model)) return null;
+
+            var id = IdLine.Match(text);
+            if (!id.Success) return null;
+            if (!string.Equals(ModelLimits.BaseName(id.Groups[1].Value), ModelLimits.BaseName(model),
+                               StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            // 本文の途中にある「title:」を拾わないよう、先頭の front matter の中だけを見る。
+            var normalized = text.Replace("\r\n", "\n");
+            if (!normalized.StartsWith("---\n", StringComparison.Ordinal)) return null;
+            var end = normalized.IndexOf("\n---", 4, StringComparison.Ordinal);
+            if (end < 0) return null;
+
+            var title = TitleLine.Match(normalized.Substring(4, end - 4));
+            if (!title.Success) return null;
+
+            var name = title.Groups[1].Value.Trim().Trim('"', '\'').Trim();
+            if (name.Length == 0 || name.Length > MaxNameLength) return null;
+            foreach (var c in name) if (char.IsControl(c)) return null;
+            return name;
+        }
+
+        /// <summary>これより長い名前は読み違いとみなす（HUD に出すので）。</summary>
+        public const int MaxNameLength = 40;
+
+        private static readonly Regex TitleLine = new Regex(@"(?m)^title:[ \t]*(.+?)[ \t]*$", RegexOptions.CultureInvariant);
 
         /// <summary>
         /// ページを取ってくる。取れなければ null（例外は投げない）。
@@ -161,6 +197,17 @@ namespace CtxTray.Collect
             public int Limit;
             public DateTime FetchedUtc;
             public string Url;
+            /// <summary>ページの title。読めなかった・0.2.0 までの記録では null。</summary>
+            public string Name;
+
+            /// <summary>
+            /// 名前を読みにページを開けたか（title が無いページでも立てる。以後は読み直さない）。
+            /// 0.2.0 までの記録には無いので false として読み、名前を埋めるために 1 回だけ読み直す。
+            /// </summary>
+            public bool NameChecked;
+
+            /// <summary>名前の読み直しに失敗した時刻（通信の失敗など）。24 時間おいてから試し直す。</summary>
+            public DateTime? NameTriedUtc;
         }
 
         public readonly Dictionary<string, Found> Fetched =
@@ -181,13 +228,39 @@ namespace CtxTray.Collect
             return d;
         }
 
-        /// <summary>見に行くべきか。取得済みなら行かない。見つからなかったものは 24 時間おく。</summary>
+        /// <summary>取得できたモデル名（ModelLimits.DisplayName に渡す形）。</summary>
+        public Dictionary<string, string> Names()
+        {
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in Fetched)
+                if (!string.IsNullOrEmpty(kv.Value.Name)) d[kv.Key] = kv.Value.Name;
+            return d;
+        }
+
+        /// <summary>
+        /// 見に行くべきか。見つからなかったものは 24 時間おく。
+        /// 取得済みのものは行かない。ただし名前を記録していない（0.2.0 までの）記録だけは、
+        /// 名前を埋めるためにもう 1 回だけ行く（失敗したら 24 時間おく）。
+        /// </summary>
         public bool ShouldCheck(string model, DateTime nowUtc, bool force)
         {
-            if (Fetched.ContainsKey(model)) return false;
+            Found found;
+            if (Fetched.TryGetValue(model, out found))
+            {
+                if (found.Name != null || found.NameChecked) return false;
+                if (force) return true;
+                return !found.NameTriedUtc.HasValue || nowUtc - found.NameTriedUtc.Value >= RetryAfter;
+            }
             if (force) return true;
             DateTime last;
             return !Missing.TryGetValue(model, out last) || nowUtc - last >= RetryAfter;
+        }
+
+        /// <summary>名前を埋めるために読み直す必要があるか（呼び出し側が確認に出すかの判定）。</summary>
+        public bool NeedsName(string model)
+        {
+            Found found;
+            return Fetched.TryGetValue(model, out found) && found.Name == null && !found.NameChecked;
         }
 
         /// <summary>読めなければ空の記録を返す（例外は投げない）。</summary>
@@ -213,6 +286,9 @@ namespace CtxTray.Collect
                             Limit = limit,
                             FetchedUtc = ParseTime(Json.Str(e, "fetchedAt")) ?? DateTime.MinValue,
                             Url = Json.Str(e, "url"),
+                            Name = ValidName(Json.Str(e, "name")),
+                            NameChecked = Json.Bool(e, "nameChecked"),
+                            NameTriedUtc = ParseTime(Json.Str(e, "nameTriedAt")),
                         };
                     }
                 }
@@ -244,7 +320,10 @@ namespace CtxTray.Collect
                 fetched.Add(kv.Key, new JObj()
                     .Add("limit", kv.Value.Limit)
                     .Add("fetchedAt", Time(kv.Value.FetchedUtc))
-                    .Add("url", kv.Value.Url));
+                    .Add("url", kv.Value.Url)
+                    .Add("name", kv.Value.Name)
+                    .Add("nameChecked", kv.Value.NameChecked)
+                    .Add("nameTriedAt", kv.Value.NameTriedUtc.HasValue ? Time(kv.Value.NameTriedUtc.Value) : null));
 
             var missing = new JObj();
             foreach (var kv in Missing) missing.Add(kv.Key, Time(kv.Value));
@@ -268,6 +347,16 @@ namespace CtxTray.Collect
             {
                 return false;
             }
+        }
+
+        /// <summary>記録ファイルは手で書き換えられうるので、読むときも ParseName と同じ条件で確かめる。</summary>
+        private static string ValidName(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return null;
+            s = s.Trim();
+            if (s.Length == 0 || s.Length > ModelDocs.MaxNameLength) return null;
+            foreach (var c in s) if (char.IsControl(c)) return null;
+            return s;
         }
 
         private static string Time(DateTime utc)
@@ -324,6 +413,26 @@ namespace CtxTray.Collect
         public Dictionary<string, int> Limits()
         {
             lock (_lock) return _store.Limits();
+        }
+
+        /// <summary>取得できたモデル名の複製。</summary>
+        public Dictionary<string, string> Names()
+        {
+            lock (_lock) return _store.Names();
+        }
+
+        /// <summary>
+        /// 名前を記録していない取得済みのモデル（0.2.0 までの記録）。1 回だけ読み直して名前を埋める。
+        /// 取得の設定がオンのときだけ呼ぶこと（オフなら通信しない約束）。
+        /// </summary>
+        public void RequestNames(IEnumerable<string> models)
+        {
+            if (models == null) return;
+            var need = new List<string>();
+            lock (_lock)
+                foreach (var m in models)
+                    if (!string.IsNullOrEmpty(m) && _store.NeedsName(m)) need.Add(m);
+            if (need.Count > 0) Request(need, false);
         }
 
         /// <summary>取得できたモデルの一覧（設定画面用）。</summary>
@@ -435,19 +544,41 @@ namespace CtxTray.Collect
 
                 var url = ModelDocs.PageUrl(model);
                 int? limit = null;
+                string name = null;
                 try
                 {
                     var text = url == null ? null : Download(url);
                     limit = ModelDocs.ParsePage(text, model);
+                    // 名前は分母が読めたときだけ残す（同じページの同じ確認を通ったもの）。
+                    if (limit.HasValue) name = ModelDocs.ParseName(text, model);
                 }
                 catch { }
 
                 lock (_lock)
                 {
                     var now = Clock();
-                    if (limit.HasValue)
+                    ModelDocsStore.Found existing;
+                    if (_store.Fetched.TryGetValue(model, out existing))
                     {
-                        _store.Fetched[model] = new ModelDocsStore.Found { Limit = limit.Value, FetchedUtc = now, Url = url };
+                        // 名前を埋めるための読み直し。上限は前に取った値のまま（取得済みの値は取り直さない約束）。
+                        // 読めたら、title が無いページでも以後は読み直さない。読めなければ 24 時間後にもう一度。
+                        if (limit.HasValue)
+                        {
+                            existing.Name = name;
+                            existing.NameChecked = true;
+                            existing.NameTriedUtc = null;
+                        }
+                        else
+                        {
+                            existing.NameTriedUtc = now;
+                        }
+                    }
+                    else if (limit.HasValue)
+                    {
+                        _store.Fetched[model] = new ModelDocsStore.Found
+                        {
+                            Limit = limit.Value, FetchedUtc = now, Url = url, Name = name, NameChecked = true,
+                        };
                         _store.Missing.Remove(model);
                     }
                     else

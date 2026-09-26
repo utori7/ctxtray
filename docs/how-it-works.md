@@ -212,6 +212,24 @@ Lines whose model is `<synthetic>` (interrupted or errored turns, all-zero usage
 skipped — taking one would display 0%. Subagent turns are written to separate files
 (`<sessionId>/subagents/…`) and do not affect the main session's number.
 
+The same line also gives the model (`message.model`) and the effort (a top-level `effort`
+field, for example `"high"`). Both are taken from the transcript first and from the tab
+record (`local_*.json`) only when the line has none, so a switch mid-session shows up from
+the next response, and terminal and VS Code sessions — which have no tab record — get an
+effort too. Checked on 2026-09-26: across ten Desktop tabs the tab record and the last
+response agreed (including one tab switched from `medium` to `high`), and terminal and
+VS Code transcripts carry `effort` on every real response; only `<synthetic>` lines lack it.
+
+### Model names
+
+Shown in the row details, and on the row if **Model** is turned on. The name is the page
+`title` from the official docs with the leading "Claude " removed (`Claude Opus 5.5` →
+`Opus 5.5`). The 14 built-in models carry their titles in the same table as their windows
+(checked on 2026-09-26); for a model fetched from the docs, the title from that page's
+front matter is kept alongside the window. Matching follows the same rules as the
+denominators. **A name is never built from the ID** — any other model is shown as its
+`claude-…` ID.
+
 ### Denominators
 
 Not present in any file, so they come from the model name. ctxtray looks in this order:
@@ -250,9 +268,12 @@ lowercase letters, digits, and hyphens, and requests
 `https://platform.claude.com/docs/en/models/opus-5-5/overview.md` — HTTPS only, 10-second
 timeout, no redirects to other hosts, at most 256 KB, no cookies or credentials. The value
 is used only if the page's `Model ID` (ignoring any date) equals the model name and the
-`Context window` reads between 1K and 10M tokens. Results are kept in
+`Context window` reads between 1K and 10M tokens; the page `title` in the front matter is
+kept as the model name (up to 40 characters). Results are kept in
 `%LOCALAPPDATA%\ctxtray\model-limits.json`: a fetched window is never fetched again; a
 model that could not be found is tried again after 24 hours (or at once with **Check now**).
+Records written by 0.2.0 have no name, so for those models the page is read once more to
+fill it in — the window already recorded is kept; a failed read waits 24 hours.
 The panel and `--json` (`limit_source`) say where each denominator came from.
 `--status` and `--json` never connect; they only read that file.
 

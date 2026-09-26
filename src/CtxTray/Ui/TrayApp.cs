@@ -290,6 +290,7 @@ namespace CtxTray.Ui
             {
                 Config = _config.ModelLimits,
                 Docs = _modelDocs.Limits(),
+                DocsNames = _modelDocs.Names(),
                 DocsState = m => _modelDocs.StateFor(m, fetch),
             });
 
@@ -324,10 +325,18 @@ namespace CtxTray.Ui
         private void HandleUnknownModels(Snapshot snap)
         {
             var unknown = new List<string>();
+            var nameless = new List<string>();
             foreach (var list in new[] { snap.Sessions, snap.HiddenSessions })
                 foreach (var s in list)
+                {
                     if (!s.ModelKnown && !string.IsNullOrEmpty(s.Model) && !unknown.Contains(s.Model))
                         unknown.Add(s.Model);
+                    // 0.2.0 で上限だけ取得したモデルは名前の記録が無い。取得がオンなら 1 回だけ読み直す。
+                    if (s.LimitSource == LimitSource.Docs && s.ModelName == null && !nameless.Contains(s.Model))
+                        nameless.Add(s.Model);
+                }
+
+            if (_config.FetchModelLimits) _modelDocs.RequestNames(nameless);
 
             foreach (var m in unknown) _unknownModels.Add(m);
             if (unknown.Count == 0) return;

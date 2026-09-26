@@ -24,6 +24,9 @@ namespace CtxTray.Collect
         /// <summary>公式ドキュメントから取得して保存した値。</summary>
         public IDictionary<string, int> Docs { get; set; }
 
+        /// <summary>公式ドキュメントから取得して保存したモデル名（ページの title）。</summary>
+        public IDictionary<string, string> DocsNames { get; set; }
+
         /// <summary>分母が分からないモデルの確認の状態。無ければ「オフ」。</summary>
         public Func<string, DocsLookupState> DocsState { get; set; }
     }
@@ -68,6 +71,76 @@ namespace CtxTray.Collect
                 { "claude-sonnet-4-5",  200000 },   // 公式ドキュメント（2026-09-25 確認、ページの ID は -20250929 付き）
                 { "claude-haiku-4-5",   200000 },   // 公式ドキュメント（2026-09-25 確認、ページの ID は -20251001 付き）
             };
+
+        /// <summary>
+        /// 組み込みの表示名。公式ドキュメントのモデルのページの先頭にある title をそのまま載せる
+        /// （14 件とも 2026-09-26 確認。Model ID の行が上の表のモデルと一致することも確かめた）。
+        /// 画面では先頭の「Claude 」を外して出す（ShortName）。
+        ///
+        /// ★ ID から名前を組み立てない（claude-opus-5-5 → Opus 5.5 のような整形）。
+        ///   命名の規則が変われば黙って誤った名前を出すので、分母と同じく確かめたものだけにする
+        ///   （2026-09-26、利用者の決定）。どこにも無ければ ID のまま出す。
+        /// </summary>
+        private static readonly Dictionary<string, string> NameTable =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "claude-fable-5-1",  "Claude Fable 5.1" },
+                { "claude-mythos-5-1", "Claude Mythos 5.1" },
+                { "claude-fable-5",    "Claude Fable 5" },
+                { "claude-mythos-5",   "Claude Mythos 5" },
+                { "claude-opus-5-5",   "Claude Opus 5.5" },
+                { "claude-opus-5",     "Claude Opus 5" },
+                { "claude-opus-4-8",   "Claude Opus 4.8" },
+                { "claude-opus-4-7",   "Claude Opus 4.7" },
+                { "claude-opus-4-6",   "Claude Opus 4.6" },
+                { "claude-opus-4-5",   "Claude Opus 4.5" },
+                { "claude-sonnet-5",   "Claude Sonnet 5" },
+                { "claude-sonnet-4-6", "Claude Sonnet 4.6" },
+                { "claude-sonnet-4-5", "Claude Sonnet 4.5" },
+                { "claude-haiku-4-5",  "Claude Haiku 4.5" },
+            };
+
+        /// <summary>
+        /// 画面に出すモデル名。組み込みの表 → 公式ドキュメントから取得した名前 → 無ければ null
+        /// （呼び出し側は ID をそのまま出す）。照合は分母と同じ「同じ名前」か「日付だけ違う名前」。
+        /// </summary>
+        public static string DisplayName(string model, IDictionary<string, string> fromDocs = null)
+        {
+            if (string.IsNullOrEmpty(model)) return null;
+            var name = FindName(NameTable, model) ?? FindName(fromDocs, model);
+            return ShortName(name);
+        }
+
+        /// <summary>
+        /// 「Claude Opus 5.5」→「Opus 5.5」。HUD の幅は狭く、どのモデルも Claude なので外す。
+        /// 「Claude 」で始まらない名前はそのまま。
+        /// </summary>
+        public static string ShortName(string title)
+        {
+            if (string.IsNullOrEmpty(title)) return null;
+            var t = title.Trim();
+            const string Prefix = "Claude ";
+            if (t.Length > Prefix.Length && t.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
+                t = t.Substring(Prefix.Length).Trim();
+            return t.Length == 0 ? null : t;
+        }
+
+        private static string FindName(IDictionary<string, string> table, string model)
+        {
+            if (table == null || table.Count == 0) return null;
+
+            string exact;
+            if (table.TryGetValue(model, out exact) && !string.IsNullOrEmpty(exact)) return exact;
+
+            var name = BaseName(model);
+            foreach (var kv in table)
+            {
+                if (string.IsNullOrEmpty(kv.Value) || string.IsNullOrEmpty(kv.Key)) continue;
+                if (string.Equals(BaseName(kv.Key), name, StringComparison.OrdinalIgnoreCase))
+                    return kv.Value;
+            }
+            return null;
+        }
 
         /// <summary>末尾の日付（-20251001 など）。同じモデルの版の違いを表す。</summary>
         private static readonly Regex DateSuffix = new Regex(@"-\d{8}$", RegexOptions.CultureInvariant);

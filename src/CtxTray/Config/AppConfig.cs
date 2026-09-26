@@ -136,6 +136,19 @@ namespace CtxTray.Config
         public bool HudShowBar = true;
         public bool HudShowTokens = false;
 
+        // セッションの行にモデル名とエフォートを出すか（札には常に出る）。既定はオフ
+        // （更新した人の HUD の大きさを勝手に変えない。2026-09-26 利用者の決定）。
+        public bool HudShowModel = false;
+        public bool HudShowEffort = false;
+
+        /// <summary>
+        /// 行に出すときの形。column = 名前の後ろに専用の列（その分パネルを広げる）、
+        /// twoLine = 名前の下に小さく 2 段目（幅は変えず、行が高くなる）。
+        /// 実寸の見本で 4 案を見比べ、この 2 つを選べるようにした（2026-09-26 利用者の決定）。
+        /// </summary>
+        public string HudModelLayout = "column";
+        public static readonly string[] ModelLayouts = { "column", "twoLine" };
+
         // しばらく使っていないセッションを隠す。何週間も触っていないタブが並ぶと
         // 行が増えるだけで役に立たないため（利用者の指摘、2026-09-15）。
         // 隠したものはトレイと通知の対象からも外す（Core/SessionFilter.cs）。
@@ -155,11 +168,11 @@ namespace CtxTray.Config
         public string HudTextSize = "normal";       // small / normal / large / xlarge
         public static readonly string[] TextSizes = { "small", "normal", "large", "xlarge" };
 
-        // 標準の文字サイズ・96 DPI での幅。
-        public const int DefaultHudWidth = 352;
-        public const int MinHudWidth = 240;
-        public const int MaxHudWidth = 1200;
-        public int HudWidth = DefaultHudWidth;
+        /// <summary>
+        /// セッション名の欄の幅（標準の文字サイズ・96 DPI での値）。パネルの幅はこれとオンにした列の合計
+        /// （Core/HudLayout.cs）。0.2.0 まではパネルの幅（hudWidth）を設定していた（2026-09-26 に置き換え）。
+        /// </summary>
+        public int HudNameWidth = Core.HudLayout.DefaultNameWidth;
 
         public bool HudShowAtStartup = true;
 
@@ -446,7 +459,6 @@ namespace CtxTray.Config
                 HudShowBar = Json.Bool(display, "showBar", HudShowBar);
                 HideIdleSessions = Json.Bool(display, "hideIdleSessions", HideIdleSessions);
                 IdleHours = Math.Max(1, (int)Json.Long(display, "idleHours", IdleHours));
-                HudWidth = Clamp((int)Json.Long(display, "hudWidth", HudWidth), MinHudWidth, MaxHudWidth);
 
                 var size = Json.Str(display, "textSize");
                 foreach (var known in TextSizes)
@@ -458,9 +470,23 @@ namespace CtxTray.Config
                 HudShowTokens = display.ContainsKey("showTokens")
                     ? Json.Bool(display, "showTokens", HudShowTokens)
                     : string.Equals(Json.Str(display, "density"), "detailed", StringComparison.OrdinalIgnoreCase);
+                HudShowModel = Json.Bool(display, "showModel", HudShowModel);
+                HudShowEffort = Json.Bool(display, "showEffort", HudShowEffort);
+                // 知らない値は既定のまま（手で書き換えた設定で行が描けなくならないように）。
+                var layout = Json.Str(display, "modelLayout");
+                foreach (var l in ModelLayouts)
+                    if (string.Equals(l, layout, StringComparison.OrdinalIgnoreCase)) HudModelLayout = l;
                 HudShowAtStartup = display.ContainsKey("showAtStartup")
                     ? Json.Bool(display, "showAtStartup", HudShowAtStartup)
                     : Json.Bool(display, "hudVisible", HudShowAtStartup);
+
+                // 名前の幅。0.2.0 までの設定（パネルの幅 hudWidth だけ）は、同じ見た目になる名前の幅に換算する。
+                // バーとトークン数の設定を読んだ後でないと換算できないので、ここで読む。
+                if (display.ContainsKey("nameWidth"))
+                    HudNameWidth = Core.HudLayout.ClampName((int)Json.Long(display, "nameWidth", HudNameWidth));
+                else if (display.ContainsKey("hudWidth"))
+                    HudNameWidth = Core.HudLayout.NameWidthFromPanel(
+                        (int)Json.Long(display, "hudWidth", 0), HudShowBar, HudShowTokens);
 
                 var lead = Json.Obj(display, "resetLeadMinutes");
                 if (lead != null)
@@ -535,7 +561,7 @@ namespace CtxTray.Config
                     .Add("opacity", Opacity)
                     .Add("clickThrough", ClickThrough)
                     .Add("textSize", HudTextSize)
-                    .Add("hudWidth", HudWidth)
+                    .Add("nameWidth", HudNameWidth)
                     .Add("showRateLimits", HudShowRateLimits)
                     .Add("showSessions", HudShowSessions)
                     .Add("hideIdleSessions", HideIdleSessions)
@@ -544,6 +570,9 @@ namespace CtxTray.Config
                     .Add("hideWhenFullscreen", HideWhenFullscreen)
                     .Add("showBar", HudShowBar)
                     .Add("showTokens", HudShowTokens)
+                    .Add("showModel", HudShowModel)
+                    .Add("showEffort", HudShowEffort)
+                    .Add("modelLayout", HudModelLayout)
                     .Add("showResets", ShowResets)
                     .Add("resetLeadMinutes", new JObj()
                         .Add("fiveHour", ResetLeadFiveHourMinutes))

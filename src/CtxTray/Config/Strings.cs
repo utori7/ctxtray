@@ -206,7 +206,8 @@ namespace CtxTray.Config
             { "set.hudShowRate",   new[] { "レート枠（5時間枠・週間枠）", "Rate limits (5-hour and weekly)" } },
             { "set.hudShowSessions", new[] { "セッションごとのコンテキスト", "Context for each session" } },
 
-            { "set.secHudSessions",new[] { "セッション",            "Sessions" } },
+            { "set.moreShow",      new[] { "▸ 詳細設定を表示",     "▸ Show more settings" } },
+            { "set.moreHide",      new[] { "▾ 詳細設定を隠す",     "▾ Hide more settings" } },
             // 語順が日英で違うので、数値の前後を別の文言にする。
             { "set.hideIdlePre",   new[] { "",                     "Hide sessions not used for" } },
             { "set.hideIdlePost",  new[] { "時間以上使っていないセッションは隠す", "hours or more" } },
@@ -217,25 +218,30 @@ namespace CtxTray.Config
             { "set.externalMaxPre",  new[] { "最大",               "Up to" } },
             { "set.externalMaxPost", new[] { "件",                 "sessions" } },
 
-            { "set.secHudColumns", new[] { "列",                   "Columns" } },
+            { "set.secHudColumns", new[] { "行に出すもの",          "On each row" } },
             { "set.showBar",       new[] { "バー",                 "Bar" } },
             { "set.showTokens",    new[] { "トークン数（例: 284k / 1M）", "Token count (e.g. 284k / 1M)" } },
+            { "set.showModel",     new[] { "モデル（例: Opus 5.5）",  "Model (e.g. Opus 5.5)" } },
+            { "set.showEffort",    new[] { "エフォート（例: high）",  "Effort (e.g. high)" } },
+            { "set.modelLayout",   new[] { "出し方",               "Layout" } },
+            { "set.layoutColumn",  new[] { "名前の後ろ（パネルが広がる）", "After the name (wider panel)" } },
+            { "set.layoutTwoLine", new[] { "名前の下（行が高くなる）", "Under the name (taller rows)" } },
+            { "set.modelHint",     new[] { "行にマウスを乗せたときの詳細には、オフでも常に出ます。",
+                                           "Always shown in the details when you hover over a row, even when off." } },
             { "set.showResets",    new[] { "5時間枠のリセット時刻", "5-hour reset time" } },
             { "set.always",        new[] { "常に表示",             "Always" } },
             { "set.autoNear",      new[] { "リセットの {0} 分前から", "From {0} min before the reset" } },
             { "set.never",         new[] { "表示しない",           "Never" } },
 
-            { "set.secHudLook",    new[] { "大きさと見た目",        "Size and look" } },
+            { "set.secHudLook",    new[] { "見た目",               "Look" } },
             { "set.textSize",      new[] { "文字の大きさ",          "Text size" } },
             { "set.sizeSmall",     new[] { "小",                   "Small" } },
             { "set.sizeNormal",    new[] { "標準",                 "Normal" } },
             { "set.sizeLarge",     new[] { "大",                   "Large" } },
             { "set.sizeXLarge",    new[] { "特大",                 "Extra large" } },
-            { "set.hudWidth",      new[] { "幅",                   "Width" } },
-            { "set.hudWidthUnit",  new[] { "（標準は {0}）",        "(default {0})" } },
+            { "set.nameWidth",     new[] { "名前の幅",             "Name width" } },
+            { "set.nameWidthUnit", new[] { "（標準は {0}）",        "(default {0})" } },
             { "set.opacity",       new[] { "不透明度",             "Opacity" } },
-            { "set.opacityHint",   new[] { "100% にすると後ろが透けなくなります。",
-                                           "At 100%, nothing shows through." } },
             { "set.clickThrough",  new[] { "クリックを後ろのウィンドウに通す",
                                            "Let clicks pass through to the window behind" } },
             // 透過中は窓がマウスを一切受け取らないので、ドラッグだけでなく行の詳細も右クリックも死ぬ。
@@ -243,7 +249,7 @@ namespace CtxTray.Config
             { "set.clickThroughHint", new[] { "オンの間は、HUD のドラッグ・行の詳細・右クリックメニューが効きません。トレイアイコンの右クリックから戻せます。",
                                               "While this is on, the HUD can't be dragged or hovered for details, and right-clicking it does nothing. Turn it back off from the tray icon's menu." } },
 
-            { "set.secHudPlace",   new[] { "表示と位置",           "Showing and position" } },
+            { "set.secHudControl", new[] { "HUD の操作",           "HUD controls" } },
             { "set.hotkey",        new[] { "表示／非表示のキー",    "Show/hide shortcut" } },
             // ほかのアプリが先に取っているキーは欄に届かず、押しても何も変わらない（2026-09-18 実機で確認）。
             // 無反応の理由をその場で分かるようにする。

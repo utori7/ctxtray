@@ -64,7 +64,7 @@ To hear about them, use **Watch → Custom → Releases** at the top of this rep
 |---|---|
 | `Ctrl+Alt+C` | show / hide the panel (configurable) |
 | drag | move the panel |
-| hover over a row | details: the full name, the model, token counts, how much is left before auto-compaction, and when the value was recorded |
+| hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, and when the value was recorded |
 | click the tray icon | show / hide the panel |
 | right-click the tray icon or the panel | show / hide panel, pass clicks through, start at sign-in, settings, refresh now, open config file, about, exit |
 
@@ -179,7 +179,7 @@ notifications together. There is no separate set of numbers for each.
   "display": {
     "theme": "auto",             // "light" | "dark"
     "textSize": "normal",        // "small" | "large" | "xlarge"
-    "hudWidth": 352,             // panel width at normal text size
+    "nameWidth": 180,            // width of the session-name column at normal text size; the panel is this plus the columns you turn on
     "showRateLimits": true,
     "showSessions": true,
     "hideIdleSessions": true,
@@ -187,6 +187,9 @@ notifications together. There is no separate set of numbers for each.
     "hideStoppedSessions": false, // hide the grey rows (sessions that are not running)
     "showBar": true,
     "showTokens": false,         // e.g. 284k/1M
+    "showModel": false,          // model name on the row (e.g. Opus 5.5)
+    "showEffort": false,         // effort on the row (e.g. high)
+    "modelLayout": "column",     // "column" (own column, wider panel) | "twoLine" (under the name, taller rows)
     "showResets": "auto",        // "always" | "auto" | "never" (5-hour reset time)
     "opacity": 0.9,
     "clickThrough": false,
@@ -208,6 +211,23 @@ notifications together. There is no separate set of numbers for each.
 
 `showResets: "auto"` (the default) only shows the 5-hour reset time during the last
 30 minutes. Always-on, it just adds noise for the other four and a half hours.
+
+### Model and effort
+
+Each session's model and effort always appear in the details when you hover over a row
+(for example `Opus 5.5 · high`). Turn on **Model** and **Effort** under "On each row" on the
+HUD tab of the settings to show them on the row as well (off by default), either in their own
+column after the name or in a small second line under the name (the rows get taller).
+
+The panel's width is the session-name column ("Name width" under "More settings") plus whatever
+you turn on — the bar, token counts, the model column. Turning any of them on never squeezes
+the names; the panel gets wider instead.
+
+- The values are what Claude Code recorded for the session's last response. If you switch
+  mid-session, the new value appears from the next response
+- Model names are shown only when checked against the official docs; any other model is shown
+  by its `claude-…` ID (ctxtray does not build a name from the ID)
+- Effort is shown exactly as recorded (`medium`, `high`, `xhigh`, …)
 
 ### Model context windows
 
@@ -267,7 +287,7 @@ opened read-only. Details in [docs/how-it-works.md](docs/how-it-works.md).
 |---|---|
 | `plan-usage-history.json` | 5-hour and weekly percentages |
 | `claude-code-sessions/**/local_*.json` | which tabs are open, and their model and working directory |
-| `~/.claude/projects/**/*.jsonl` | token counts from the `usage` field |
+| `~/.claude/projects/**/*.jsonl` | token counts from the `usage` field, and the model and effort of that response |
 | `~/.claude/sessions/<pid>.json` | which Claude Code processes are actually running |
 
 It also asks Windows whether a full-screen app is in use, and which program owns the
@@ -278,8 +298,8 @@ It writes only its own files:
 
 - `%LOCALAPPDATA%\ctxtray\config.json` — your settings (plus `config.json.bak` if an
   unreadable file had to be set aside)
-- `%LOCALAPPDATA%\ctxtray\model-limits.json` — context windows fetched from the official
-  docs, and which unknown models you have already been told about
+- `%LOCALAPPDATA%\ctxtray\model-limits.json` — context windows and model names fetched from
+  the official docs, and which unknown models you have already been told about
 - `ctxtray.lnk` in your Startup folder — only while **Start at sign-in** is on
 
 **By default it makes no network connections at all.** Only if you turn on "Look up unknown
@@ -294,7 +314,7 @@ once per unknown model.
 - decompile or analyse Claude Desktop's code
 - call any Anthropic API, documented or otherwise
 - read, decrypt, or use stored OAuth tokens or session cookies
-- read your conversations — only token counts, timestamps, and model names
+- read your conversations — only token counts, timestamps, model names, and effort
 - check for updates or send usage data (reading the docs page above is its only connection)
 - touch your `~/.claude/settings.json` (no hooks, no statusLine)
 

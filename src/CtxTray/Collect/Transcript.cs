@@ -11,6 +11,7 @@ namespace CtxTray.Collect
     {
         public DateTime AtUtc;
         public string Model;
+        public string Effort;        // その応答のエフォート（行のトップレベルの effort）。古い版の行には無い
         public int PromptTokens;     // そのリクエストで実際に送ったプロンプト長
         public int OutputTokens;     // 参考。コンテキスト量には足さない
     }
@@ -207,6 +208,8 @@ namespace CtxTray.Collect
                 {
                     AtUtc = ParseTimestamp(Json.Str(o, "timestamp")),
                     Model = model,
+                    // message の中ではなく行のトップレベルにある（2026-09-26、Desktop・CLI・VS Code の実データで確認）。
+                    Effort = Json.Str(o, "effort"),
                     PromptTokens = prompt,
                     OutputTokens = (int)Json.Long(usage, "output_tokens"),
                 });

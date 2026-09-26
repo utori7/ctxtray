@@ -6,6 +6,7 @@ using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using CtxTray.Config;
+using CtxTray.Core;
 using CtxTray.Native;
 
 namespace CtxTray.Ui
@@ -88,7 +89,12 @@ namespace CtxTray.Ui
         // --- HUD ---
         private CheckBox _hudRate, _hudSessions, _hideIdle, _hideStopped, _external;
         private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen;
-        private NumericUpDown _idleHours, _externalMax, _hudWidth;
+        private CheckBox _showModel, _showEffort;
+        private ComboBox _modelLayout;
+        private NumericUpDown _idleHours, _externalMax, _nameWidth;
+
+        /// <summary>BeginGroup で行き先を入れ子の表に差し替えている間、元の表を覚えておく。</summary>
+        private TableLayoutPanel _groupParent;
         private ComboBox _showResets, _textSize;
         private TrackBar _opacity;
         private Label _opacityValue;
@@ -317,7 +323,53 @@ namespace CtxTray.Ui
             Full(_hudSessions);
             Full(_hudRate);
 
-            Section("set.secHudSessions");
+            // 行に出すもの。どれもオンにした分だけパネルが広がる（名前は縮まない。Core/HudLayout.cs）。
+            Section("set.secHudColumns");
+            _showBar = Check("set.showBar");
+            Full(_showBar);
+            _showTokens = Check("set.showTokens");
+            Full(_showTokens);
+
+            // モデル名とエフォート。出し方は実寸の見本で選んだ 2 つ（2026-09-26）。
+            _showModel = Check("set.showModel");
+            _showEffort = Check("set.showEffort");
+            _modelLayout = Combo(Strings.Get("set.layoutColumn"), Strings.Get("set.layoutTwoLine"));
+            EventHandler syncLayout = (s, e) => _modelLayout.Enabled = _showModel.Checked || _showEffort.Checked;
+            _showModel.CheckedChanged += syncLayout;
+            _showEffort.CheckedChanged += syncLayout;
+            Full(_showModel);
+            Full(_showEffort);
+            Full(Flow(Indent(), Text_("set.modelLayout"), _modelLayout));
+            Hint("set.modelHint");
+
+            Section("set.secHudLook");
+            _textSize = Combo(Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
+                              Strings.Get("set.sizeLarge"), Strings.Get("set.sizeXLarge"));
+            _textSize.Width = S(120);
+            Row("set.textSize", _textSize);
+
+            _opacity = new TrackBar
+            {
+                Minimum = 20, Maximum = 100, TickFrequency = 10,
+                SmallChange = 5, LargeChange = 10, Width = S(200), AutoSize = false, Height = S(34),
+            };
+            _opacityValue = new Label { AutoSize = true, Padding = P(4, 8, 0, 0) };
+            _opacity.ValueChanged += (s, e) => _opacityValue.Text = _opacity.Value + "%";
+            Row("set.opacity", Flow(_opacity, _opacityValue));
+
+            // 普段は触らないものは畳んでおく（2026-09-26、利用者の決定。画面から外すものは無し）。
+            var more = BeginGroup();
+
+            _nameWidth = Number(HudLayout.MinNameWidth, HudLayout.MaxNameWidth);
+            Row("set.nameWidth", Flow(_nameWidth, Unit(Strings.Format("set.nameWidthUnit", HudLayout.DefaultNameWidth))));
+
+            _showResets = Combo(Strings.Get("set.always"),
+                                Strings.Format("set.autoNear", _config.ResetLeadFiveHourMinutes),
+                                Strings.Get("set.never"));
+            // リセット時刻はレート枠の行にだけ出るので、レート枠を出さないときは押せなくする。
+            _hudRate.CheckedChanged += (s, e) => _showResets.Enabled = _hudRate.Checked;
+            Row("set.showResets", _showResets);
+
             _hideIdle = new CheckBox { AutoSize = true, Margin = BareCheckMargin };
             _idleHours = Number(1, 8760);
             _hideIdle.CheckedChanged += (s, e) => _idleHours.Enabled = _hideIdle.Checked;
@@ -333,41 +385,16 @@ namespace CtxTray.Ui
             Full(_external);
             Full(Flow(Indent(), Text_("set.externalMaxPre"), _externalMax, Text_("set.externalMaxPost")));
 
-            Section("set.secHudColumns");
-            _showBar = Check("set.showBar");
-            Full(_showBar);
-            _showTokens = Check("set.showTokens");
-            Full(_showTokens);
-            _showResets = Combo(Strings.Get("set.always"),
-                                Strings.Format("set.autoNear", _config.ResetLeadFiveHourMinutes),
-                                Strings.Get("set.never"));
-            Row("set.showResets", _showResets);
+            EndGroup(more, "set.moreShow", "set.moreHide");
+        }
 
-            Section("set.secHudLook");
-            _textSize = Combo(Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
-                              Strings.Get("set.sizeLarge"), Strings.Get("set.sizeXLarge"));
-            _textSize.Width = S(120);
-            Row("set.textSize", _textSize);
-
-            _hudWidth = Number(AppConfig.MinHudWidth, AppConfig.MaxHudWidth);
-            Row("set.hudWidth", Flow(_hudWidth, Unit(Strings.Format("set.hudWidthUnit", AppConfig.DefaultHudWidth))));
-
-            _opacity = new TrackBar
-            {
-                Minimum = 20, Maximum = 100, TickFrequency = 10,
-                SmallChange = 5, LargeChange = 10, Width = S(200), AutoSize = false, Height = S(34),
-            };
-            _opacityValue = new Label { AutoSize = true, Padding = P(4, 8, 0, 0) };
-            _opacity.ValueChanged += (s, e) => _opacityValue.Text = _opacity.Value + "%";
-            Row("set.opacity", Flow(_opacity, _opacityValue));
-            Hint("set.opacityHint");
-
-            // チェックボックスの文は折り返せないので、長い注意書きは補足の行に分ける。
-            _clickThrough = Check("set.clickThrough");
-            Full(_clickThrough);
-            Hint("set.clickThroughHint");
-
-            Section("set.secHudPlace");
+        /// <summary>
+        /// HUD の操作（キー・起動時・全画面・クリック透過・位置）。見た目ではなく振る舞いなので、
+        /// HUD タブから「全般」タブの先頭へ移した（2026-09-26、利用者の決定）。
+        /// </summary>
+        private void BuildHudControls()
+        {
+            Section("set.secHudControl");
             _hotkey = Framed(new TextBox
             {
                 Width = S(160),
@@ -389,6 +416,11 @@ namespace CtxTray.Ui
             _hideFullscreen = Check("set.hideFullscreen");
             Full(_hideFullscreen);
             Hint("set.hideFullscreenHint");
+
+            // チェックボックスの文は折り返せないので、長い注意書きは補足の行に分ける。
+            _clickThrough = Check("set.clickThrough");
+            Full(_clickThrough);
+            Hint("set.clickThroughHint");
 
             Row("set.position", Button("set.resetPosition", (s, e) =>
             {
@@ -679,6 +711,8 @@ namespace CtxTray.Ui
         {
             BeginPage("set.tabGeneral");
 
+            BuildHudControls();
+
             Section("set.secGeneral");
             _themeCombo = Combo(Strings.Get("set.auto"), Strings.Get("set.light"), Strings.Get("set.dark"));
             // 見本はタスクバーの配色で描くので、配色を変えたら描き直す。
@@ -888,7 +922,8 @@ namespace CtxTray.Ui
                 Text = Strings.Get(labelKey),
                 AutoSize = true,
                 // 英語のラベルは長いので、列からはみ出さず折り返させる。
-                MaximumSize = new Size(S(LabelColumn - 8), 0),
+                // 折りたたみの中（BeginGroup）は字下げの分だけ列が狭いので、いまの表の列の幅から決める。
+                MaximumSize = new Size(Math.Max(S(40), (int)_grid.ColumnStyles[0].Width - S(8)), 0),
                 Padding = P(0, 7, 8, 0),
             };
             _grid.Controls.Add(label, 0, row);
@@ -1031,6 +1066,56 @@ namespace CtxTray.Ui
             return label;
         }
 
+        /// <summary>
+        /// 折りたたむ行の組み立てを始める。EndGroup までの Row・Full・Hint は入れ子の表に入る。
+        /// 入れ子の表は字下げし、ラベルの列はその分だけ狭めて、入力欄の位置を外の表と揃える。
+        /// </summary>
+        private TableLayoutPanel BeginGroup()
+        {
+            var indent = S(18);
+            var group = new TableLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 2,
+                Margin = new Padding(0),
+                Padding = new Padding(indent, 0, 0, 0),
+                Visible = false,
+            };
+            group.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(LabelColumn) - indent));
+            group.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+            _groupParent = _grid;
+            _grid = group;
+            return group;
+        }
+
+        /// <summary>
+        /// 折りたたむ行の組み立てを終え、開閉の見出し（モデルタブの「▸ 組み込みのモデルを表示」と同じ作り）と
+        /// 入れ子の表を元の表に置く。開いたかどうかは記憶しない（設定画面を開くたびに閉じている）。
+        /// </summary>
+        private void EndGroup(TableLayoutPanel group, string showKey, string hideKey)
+        {
+            _grid = _groupParent;
+            _groupParent = null;
+
+            var toggle = new Label
+            {
+                AutoSize = true,
+                Cursor = Cursors.Hand,
+                Padding = P(0, 10, 0, 4),
+                Text = Strings.Get(showKey),
+            };
+            toggle.Click += (s, e) =>
+            {
+                group.Visible = !group.Visible;
+                toggle.Text = Strings.Get(group.Visible ? hideKey : showKey);
+                LayoutPages();
+            };
+            Full(toggle);
+            Full(group);
+        }
+
         private Control Indent()
         {
             return new Label { AutoSize = false, Width = S(18), Height = 1, Margin = new Padding(0) };
@@ -1082,10 +1167,15 @@ namespace CtxTray.Ui
 
             _showBar.Checked = c.HudShowBar;
             _showTokens.Checked = c.HudShowTokens;
+            _showModel.Checked = c.HudShowModel;
+            _showEffort.Checked = c.HudShowEffort;
+            _modelLayout.SelectedIndex = IndexOf(c.HudModelLayout, AppConfig.ModelLayouts);
+            _modelLayout.Enabled = c.HudShowModel || c.HudShowEffort;
             _showResets.SelectedIndex = IndexOf(c.ShowResets, "always", "auto", "never");
 
             _textSize.SelectedIndex = TextSizeIndex(c.HudTextSize);
-            _hudWidth.Value = Clamp(c.HudWidth, AppConfig.MinHudWidth, AppConfig.MaxHudWidth);
+            _nameWidth.Value = Clamp(c.HudNameWidth, HudLayout.MinNameWidth, HudLayout.MaxNameWidth);
+            _showResets.Enabled = c.HudShowRateLimits;
             _opacity.Value = Clamp((int)Math.Round(c.Opacity * 100), 20, 100);
             _opacityValue.Text = _opacity.Value + "%";
             _clickThrough.Checked = c.ClickThrough;
@@ -1153,10 +1243,13 @@ namespace CtxTray.Ui
 
             c.HudShowBar = _showBar.Checked;
             c.HudShowTokens = _showTokens.Checked;
+            c.HudShowModel = _showModel.Checked;
+            c.HudShowEffort = _showEffort.Checked;
+            c.HudModelLayout = Pick(_modelLayout.SelectedIndex, AppConfig.ModelLayouts);
             c.ShowResets = Pick(_showResets.SelectedIndex, "always", "auto", "never");
 
             c.HudTextSize = Pick(_textSize.SelectedIndex, AppConfig.TextSizes);
-            c.HudWidth = (int)_hudWidth.Value;
+            c.HudNameWidth = (int)_nameWidth.Value;
             c.Opacity = _opacity.Value / 100.0;
             c.ClickThrough = _clickThrough.Checked;
 

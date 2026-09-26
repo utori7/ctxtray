@@ -54,9 +54,6 @@ namespace CtxTray.Ui
         /// </summary>
         private const string ExternalMark = ">_ ";
 
-        /// <summary>名前の列の最小幅（96 DPI・標準の文字サイズでの値）。これより狭いと名前が読めない。</summary>
-        private const int MinNameWidth = 70;
-
         private AppConfig _config;
         private Theme _theme;
         private Snapshot _snapshot;
@@ -516,7 +513,7 @@ namespace CtxTray.Ui
             HideTip();
         }
 
-        private void AddTipRow(int y, System.Collections.Generic.List<TipLine> lines)
+        private void AddTipRow(int y, System.Collections.Generic.List<TipLine> lines, int height = 0)
         {
             if (lines == null || lines.Count == 0) return;
 
@@ -526,7 +523,7 @@ namespace CtxTray.Ui
             _tipRows.Add(new TipRow
             {
                 Top = y,
-                Bottom = y + RowHeight,
+                Bottom = y + (height > 0 ? height : RowHeight),
                 Lines = lines,
                 Text = joined.ToString(),
             });
@@ -568,22 +565,65 @@ namespace CtxTray.Ui
         /// <summary>両方オフにされても空の箱にはしない。そのときはセッションを出す。</summary>
         private bool ShowSessions { get { return _config.HudShowSessions || !_config.HudShowRateLimits; } }
 
-        private int BarW { get { return _config.HudShowBar ? S(84) : 0; } }
-        private int PctW { get { return S(44); } }
-        private int TokensW { get { return _config.HudShowTokens ? S(60) : 0; } }
+        private int BarW { get { return _config.HudShowBar ? S(HudLayout.Bar) : 0; } }
+        private int PctW { get { return S(HudLayout.Pct); } }
+        private int TokensW { get { return _config.HudShowTokens ? S(HudLayout.Tokens) : 0; } }
 
+        // --- モデルとエフォート（設定 showModel / showEffort / modelLayout）-----------
+        //
+        // column  … 名前の後ろに専用の列（その分パネルを広げる。名前の幅は変えない）
+        // twoLine … 名前の下に小さく 2 段目（幅は変えない。セッションの行が高くなる）
+        // 名前の列の右端に寄せる案は、名前が 3〜5 文字に縮んで読めなくなるので採らなかった
+        // （2026-09-26、実寸の見本で利用者が判断）。
+
+        private bool ModelRowOn { get { return _config.HudShowModel || _config.HudShowEffort; } }
+
+        private bool TwoLine
+        {
+            get { return ModelRowOn && string.Equals(_config.HudModelLayout, "twoLine", StringComparison.Ordinal); }
+        }
+
+        /// <summary>行に出す文字列。出さない設定なら null。</summary>
+        private string ModelRowText(SessionRow s)
+        {
+            if (!ModelRowOn) return null;
+            return ModelText.Format(s, _config.HudShowModel, _config.HudShowEffort);
+        }
+
+        /// <summary>専用の列の幅（標準の文字サイズでの値。名前の下に出すときは 0）。</summary>
+        private int ModelColBase
+        {
+            get
+            {
+                if (!ModelRowOn || TwoLine) return 0;
+                return HudLayout.ModelColumn(_config.HudShowModel, _config.HudShowEffort);
+            }
+        }
+
+        private int ModelColW { get { return S(ModelColBase); } }
+
+        /// <summary>2 段目の高さ。★ Relayout・DrawSessionRows・札の当たり判定で同じ値を使う。</summary>
+        private int SubLineH { get { return TwoLine ? S(15) : 0; } }
+
+        private int SessionRowHeight { get { return RowHeight + SubLineH; } }
+
+        /// <summary>
+        /// パネルの幅は、設定した名前の幅とオンにした列の合計（Core/HudLayout.cs）。
+        /// どの列もオンにした分だけ広がり、名前は縮まない。
+        /// </summary>
         private int PanelWidth
         {
             get
             {
-                // 設定の幅は標準の文字サイズでの値。出す列の合計より狭くはしない。
-                var minimum = 14 * 2 + MinNameWidth + 8 + 44
-                            + (_config.HudShowBar ? 84 + 8 : 0)
-                            + (_config.HudShowTokens ? 8 + 60 : 0);
-                return S(Math.Max(minimum, _config.HudWidth));
+                return S(HudLayout.PanelWidth(_config.HudNameWidth, _config.HudShowBar,
+                                              _config.HudShowTokens, ModelColBase));
             }
         }
 
+        /// <summary>
+        /// 名前の欄。倍率を掛けた後の丸めで列の合計とパネルの幅が 1px ずれないよう、
+        /// パネルの幅から他の列を引いて求める。
+        /// </summary>
         private int NameW
         {
             get
@@ -591,7 +631,8 @@ namespace CtxTray.Ui
                 var used = PadX * 2 + Gap + PctW;
                 if (BarW > 0) used += BarW + Gap;
                 if (TokensW > 0) used += Gap + TokensW;
-                return Math.Max(S(MinNameWidth), PanelWidth - used);
+                if (ModelColW > 0) used += ModelColW + Gap;
+                return Math.Max(S(HudLayout.MinNameWidth), PanelWidth - used);
             }
         }
 
@@ -602,7 +643,9 @@ namespace CtxTray.Ui
             var height = PadY * 2 + WelcomeHeight;
             if (ShowRates) height += CapHeight + RowHeight * 2;
             if (ShowRates && ShowSessions) height += SectionGap;
-            if (ShowSessions) height += CapHeight + RowHeight * sessions;
+            // 行が無いときの案内は 1 段（DrawSessionRows と同じ）。
+            if (ShowSessions)
+                height += CapHeight + (HasSessionRows ? SessionRowHeight * sessions : RowHeight);
 
             var size = new Size(PanelWidth, height);
             if (Size != size) Size = size;
@@ -902,10 +945,20 @@ namespace CtxTray.Ui
             }
         }
 
+        /// <summary>描くセッションの行があるか（無ければ案内の 1 行）。★ Relayout と DrawSessionRows で同じ判定。</summary>
+        private bool HasSessionRows
+        {
+            get
+            {
+                return _snapshot != null
+                    && (_snapshot.Sessions.Count > 0 || (_showHidden && HiddenRows.Count > 0));
+            }
+        }
+
         /// <summary>セッションの行を描き、次の行の y を返す（行が無くても案内の 1 行分進める。Relayout と同じ）。</summary>
         private int DrawSessionRows(Graphics g, Font body, Font bold, int y)
         {
-            if (_snapshot.Sessions.Count == 0 && !(_showHidden && HiddenRows.Count > 0))
+            if (!HasSessionRows)
             {
                 // 読み取りに失敗しているなら、その理由をここに出す。
                 // 「セッションなし」とだけ出すと、使っていないだけなのか
@@ -954,12 +1007,24 @@ namespace CtxTray.Ui
                       + (s.ContextLimit.HasValue ? Compact(s.ContextLimit.Value) : "?")
                     : null;
 
+                var modelText = ModelRowText(s);
+
                 DrawRow(g, body, bold, y, name, null, s.IsActive,
                         fraction, "context", Levels.ForContext(s, _config), !s.ProcessAlive,
-                        pct, tokens);
-                AddTipRow(y, SessionTip(s));
+                        pct, tokens, modelText);
 
-                y += RowHeight;
+                if (TwoLine && modelText != null)
+                {
+                    using (var small = new Font(Theme.FontFamily, 10.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
+                        TextRenderer.DrawText(g, modelText, small,
+                            new Rectangle(PadX, y + RowHeight - S(4), NameW, SubLineH + S(2)), _theme.TextSecondary,
+                            TextFormatFlags.Left | TextFormatFlags.Top
+                            | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                }
+
+                AddTipRow(y, SessionTip(s), SessionRowHeight);
+
+                y += SessionRowHeight;
             }
 
             return y;
@@ -976,7 +1041,7 @@ namespace CtxTray.Ui
         private void DrawRow(Graphics g, Font body, Font bold, int y,
                              string name, string note, bool emphasise,
                              double fraction, string value, Level level, bool dimmed,
-                             string pct, string tokens)
+                             string pct, string tokens, string model = null)
         {
             // 淡く出す行（止まっているセッション、参考値のレート枠）は色で区別しない。
             var valueColor = dimmed ? _theme.TextSecondary : _theme.ColorFor(value, level);
@@ -995,6 +1060,13 @@ namespace CtxTray.Ui
 
             DrawLeft(g, emphasise ? bold : body, name, nameColor, PadX, y, nameW);
             var x = PadX + NameW + Gap;
+
+            // 専用の列（レート枠の行では空）。
+            if (ModelColW > 0)
+            {
+                DrawLeft(g, body, model, _theme.TextSecondary, x, y, ModelColW);
+                x += ModelColW + Gap;
+            }
 
             if (BarW > 0)
             {
@@ -1114,7 +1186,10 @@ namespace CtxTray.Ui
                     lines.Add(new TipLine(Strings.Get("hud.tipVsCode"), true, false));
             }
 
-            if (!string.IsNullOrEmpty(s.Model)) lines.Add(new TipLine(s.Model, true, false));
+            // モデルとエフォートを 1 行に。表示名が無いモデルは ID のまま出る。
+            // 表示名の下に ID も出していたが、重複して不要と利用者の判断で外した（2026-09-26）。
+            var modelLine = ModelText.Format(s);
+            if (modelLine != null) lines.Add(new TipLine(modelLine, false, false));
 
             if (s.ContextTokens.HasValue)
             {

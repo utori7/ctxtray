@@ -37,10 +37,10 @@ namespace CtxTray.Ui
 
         private readonly Timer _timer = new Timer();
         private readonly ThresholdNotifier _notifier;
-        private readonly ToolStripMenuItem _hudItem;
-        private readonly ToolStripMenuItem _clickThroughItem;
-        private readonly ToolStripMenuItem _autoStartItem;
-        private readonly ContextMenuStrip _menu;
+        private readonly MenuItem _hudItem;
+        private readonly MenuItem _clickThroughItem;
+        private readonly MenuItem _autoStartItem;
+        private readonly TrayMenu _menu;
 
         private AppConfig _config;
         private HudForm _hud;
@@ -108,33 +108,28 @@ namespace CtxTray.Ui
 
             Strings.Apply(_config.Language);
 
-            // HUD の項目は表示状態で文言が変わるので、Tag を付けず UpdateMenuState で付ける。
-            _hudItem = new ToolStripMenuItem(Strings.Get("menu.showHud"), null, (s, e) => ToggleHud());
-            _clickThroughItem = MenuItem("menu.clickThrough", ToggleClickThrough);
-            _autoStartItem = MenuItem("menu.autoStart", ToggleAutoStart);
-
-            _menu = new ContextMenuStrip();
-            // 透過をオンにすると HUD がマウスを一切受け取らなくなる。押す前に分かるよう、
-            // この項目にだけ説明を出す（ToolStripDropDownMenu は既定で説明を出さない）。
-            _menu.ShowItemToolTips = true;
+            // Windows 標準のメニュー（見た目・倍率・テキストのサイズを Windows に任せる。TrayMenu の説明を参照）。
+            _menu = new TrayMenu();
             // 開くたびにチェックを付け直す。ショートカットを利用者が消したり、exe を移したりしても
             // 古い表示のままにならないように。
             _menu.Opening += (s, e) => UpdateMenuState();
-            _menu.Items.Add(_hudItem);
-            _menu.Items.Add(_clickThroughItem);
-            _menu.Items.Add(_autoStartItem);
-            _menu.Items.Add(new ToolStripSeparator());
-            _menu.Items.Add(MenuItem("menu.settings", OpenSettings));
-            _menu.Items.Add(MenuItem("menu.refresh", () => { _dirty = true; Tick(null, null); }));
-            _menu.Items.Add(MenuItem("menu.openConfig", OpenConfig));
-            _menu.Items.Add(MenuItem("menu.about", ShowAbout));
-            _menu.Items.Add(new ToolStripSeparator());
-            _menu.Items.Add(MenuItem("menu.exit", ExitApp));
+            // HUD の項目は表示状態で文言が変わるので、Tag を付けず UpdateMenuState で付ける。
+            _hudItem = _menu.Add(Strings.Get("menu.showHud"), ToggleHud);
+            _clickThroughItem = AddItem("menu.clickThrough", ToggleClickThrough);
+            _autoStartItem = AddItem("menu.autoStart", ToggleAutoStart);
+            _menu.AddSeparator();
+            AddItem("menu.settings", OpenSettings);
+            AddItem("menu.refresh", () => { _dirty = true; Tick(null, null); });
+            AddItem("menu.openConfig", OpenConfig);
+            AddItem("menu.about", ShowAbout);
+            _menu.AddSeparator();
+            AddItem("menu.exit", ExitApp);
+            TrayMenu.ApplyTheme(Theme.Resolve(_config.Theme));
 
             // メニューとクリックの扱いは全スロットで共有する。
             foreach (var tray in _trays)
             {
-                tray.ContextMenuStrip = _menu;
+                tray.ContextMenu = _menu.Menu;
                 tray.Text = "ctxtray";
                 // 最初の描画までの仮のアイコン。Windows の汎用アイコンだと、
                 // 起動直後の一瞬だけ別のアプリに見える。
@@ -198,13 +193,17 @@ namespace CtxTray.Ui
         {
             var hud = new HudForm(_config);
             hud.HotkeyPressed += (s, e) => ToggleHud();
-            // OS のテーマが変わったら、トレイアイコンも描き直す。
-            hud.ThemeChanged += (s, e) => { if (_lastSnapshot != null) SetTrayIcon(_lastSnapshot); };
+            // OS のテーマや設定の配色が変わったら、トレイアイコンを描き直し、メニューの明暗も合わせる。
+            hud.ThemeChanged += (s, e) =>
+            {
+                TrayMenu.ApplyTheme(hud.CurrentTheme);
+                if (_lastSnapshot != null) SetTrayIcon(_lastSnapshot);
+            };
             hud.RestorePosition();
 
             // トレイと同じメニューを HUD の右クリックでも出す。
             // アイコンが「隠れているインジケーター」に入っていると、設定や終了に届きにくいため（2026-09-18）。
-            hud.ContextMenuStrip = _menu;
+            hud.MouseUp += (s, e) => { if (e.Button == MouseButtons.Right) _menu.ShowAt(hud, Cursor.Position); };
 
             // ホットキーは HUD のウィンドウに登録される。起動時に HUD を出さない設定でも
             // ホットキーで出せるよう、表示せずにハンドルだけ作っておく。
@@ -906,7 +905,7 @@ namespace CtxTray.Ui
         /// </summary>
         private void RefreshMenuTexts()
         {
-            foreach (ToolStripItem item in _menu.Items)
+            foreach (MenuItem item in _menu.Menu.MenuItems)
             {
                 var key = item.Tag as string;
                 if (key != null) item.Text = Strings.Get(key);
@@ -914,9 +913,12 @@ namespace CtxTray.Ui
             UpdateMenuState();
         }
 
-        private ToolStripMenuItem MenuItem(string key, Action onClick)
+        /// <summary>メニューの末尾に足す。言語の切り替えで付け直せるよう、Tag に文言のキーを持たせる。</summary>
+        private MenuItem AddItem(string key, Action onClick)
         {
-            return new ToolStripMenuItem(Strings.Get(key), null, (s, e) => onClick()) { Tag = key };
+            var item = _menu.Add(Strings.Get(key), onClick);
+            item.Tag = key;
+            return item;
         }
 
         private void UpdateMenuState()
@@ -924,8 +926,6 @@ namespace CtxTray.Ui
             _hudItem.Text = Strings.Get((_hud != null && _hud.Visible) ? "menu.hideHud" : "menu.showHud");
             _hudItem.Checked = _hud != null && _hud.Visible;
             _clickThroughItem.Checked = _config.ClickThrough;
-            // 言語を変えても付け直されるよう、メニューを開くたびに入れる。
-            _clickThroughItem.ToolTipText = Strings.Get("menu.clickThroughTip");
             _autoStartItem.Checked = AutoStart.IsEnabled;
         }
 
@@ -1018,6 +1018,7 @@ namespace CtxTray.Ui
 
                 foreach (var tray in _trays) tray.Dispose();
                 foreach (var icon in _icons) if (icon != null) icon.Dispose();
+                _menu.Dispose();
             }
             base.Dispose(disposing);
         }

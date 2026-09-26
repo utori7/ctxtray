@@ -53,9 +53,6 @@ namespace CtxTray.Config
             { "menu.hideHud",     new[] { "HUD を隠す",        "Hide HUD" } },
             // 透過中は HUD をドラッグできず右クリックも届かないので、メニューからも切り替えられるようにする。
             { "menu.clickThrough",new[] { "クリックを後ろに通す", "Pass clicks through" } },
-            // 透過中に何が効かなくなるかは、押す前に分かる場所にも置く（設定画面の補足と同じ内容）。
-            { "menu.clickThroughTip", new[] { "オンの間は、HUD のドラッグ・行の詳細・右クリックが効きません。戻すのはこのメニューから。",
-                                              "While on, the HUD can't be dragged or hovered and won't take right-clicks. Turn it back off here." } },
             { "menu.autoStart",   new[] { "ログオン時に起動",   "Start at sign-in" } },
             { "menu.settings",    new[] { "設定…",              "Settings…" } },
             { "menu.refresh",     new[] { "今すぐ更新",         "Refresh now" } },

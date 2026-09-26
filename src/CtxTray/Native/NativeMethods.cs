@@ -161,6 +161,39 @@ namespace CtxTray.Native
         [DllImport("user32.dll", SetLastError = true)]
         public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int processId);
 
+        // --- メニュー（Windows 標準のポップアップメニュー）---------------------
+        //
+        // HUD の右クリックで出すときに使う。トレイからは NotifyIcon が同じことをする。
+        // 前面にしないと、メニューの外を押しても閉じない（TrackPopupMenu の既知の動き）。
+        public const uint TPM_RIGHTBUTTON = 0x0002;
+        public const uint TPM_RETURNCMD = 0x0100;
+        public const int WM_NULL = 0x0000;
+        public const int WM_CONTEXTMENU = 0x007B;
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern int TrackPopupMenuEx(IntPtr menu, uint flags, int x, int y, IntPtr hWnd, IntPtr tpm);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        // Windows 標準のメニューの明暗。公開されていない関数で、名前ではなく番号でしか呼べない
+        // （Windows 10 1903 以降の uxtheme.dll。#135 = SetPreferredAppMode、#136 = FlushMenuThemes）。
+        // 無い・効かない版では例外か無反応になるだけで、メニューは白で出る。
+        public const int AppModeDefault = 0;
+        public const int AppModeForceDark = 2;
+        public const int AppModeForceLight = 3;
+
+        [DllImport("uxtheme.dll", EntryPoint = "#135")]
+        public static extern int SetPreferredAppMode(int mode);
+
+        [DllImport("uxtheme.dll", EntryPoint = "#136")]
+        public static extern void FlushMenuThemes();
+
         // --- アイコン後始末 ---------------------------------------------------
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

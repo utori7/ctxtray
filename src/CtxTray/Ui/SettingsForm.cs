@@ -127,7 +127,7 @@ namespace CtxTray.Ui
         private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen;
         private CheckBox _showModel, _showEffort;
         private ComboBox _modelLayout;
-        private NumericUpDown _idleHours, _externalMax, _nameWidth;
+        private ThemedNumeric _idleHours, _externalMax, _nameWidth;
 
         /// <summary>BeginGroup で行き先を入れ子の表に差し替えている間、元の表を覚えておく。</summary>
         private TableLayoutPanel _groupParent;
@@ -146,8 +146,8 @@ namespace CtxTray.Ui
         private PictureBox _preview;
 
         // --- しきい値と通知 ---
-        private NumericUpDown _ctxWarn, _ctxDanger, _fhWarn, _fhDanger, _wkWarn, _wkDanger;
-        private NumericUpDown _hysteresis, _minRepeat;
+        private ThemedNumeric _ctxWarn, _ctxDanger, _fhWarn, _fhDanger, _wkWarn, _wkDanger;
+        private ThemedNumeric _hysteresis, _minRepeat;
         private Label _thresholdOrderWarning;
         private Label _ctxOverCompactWarning;
         private CheckBox _levelMarks;
@@ -155,7 +155,7 @@ namespace CtxTray.Ui
 
         // --- 全般 ---
         private ComboBox _themeCombo, _language;
-        private NumericUpDown _poll;
+        private ThemedNumeric _poll;
 
         // --- モデル ---
         /// <summary>一覧に出すモデル（組み込み・取得済み・設定・使ったのに不明だったもの）。</summary>
@@ -1168,12 +1168,12 @@ namespace CtxTray.Ui
         }
 
         // 数値欄は 4 桁（8760 時間）まで入れば足りる。70 だと「注意／危険」の行が右端からはみ出した。
-        private NumericUpDown Number(int min, int max)
+        private ThemedNumeric Number(int min, int max)
         {
             return Framed(new ThemedNumeric(_s) { Minimum = min, Maximum = max, Width = S(60) });
         }
 
-        private NumericUpDown Percent()
+        private ThemedNumeric Percent()
         {
             return Framed(new ThemedNumeric(_s) { Minimum = 0, Maximum = 100, Width = S(56) });
         }
@@ -1252,7 +1252,7 @@ namespace CtxTray.Ui
             return new Label { AutoSize = false, Width = S(18), Height = 1, Margin = new Padding(0) };
         }
 
-        private Control WarnDanger(NumericUpDown warn, NumericUpDown danger)
+        private Control WarnDanger(ThemedNumeric warn, ThemedNumeric danger)
         {
             return Flow(Unit(Strings.Get("set.warn")), warn, Unit("%"),
                         Unit(Strings.Get("set.danger")), danger, Unit("%"));

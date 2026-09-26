@@ -230,6 +230,29 @@ namespace CtxTray.Native
         [DllImport("uxtheme.dll", EntryPoint = "#136")]
         public static extern void FlushMenuThemes();
 
+        // --- 自前の描画（標準の描画を通さない）-------------------------------
+        //
+        // 設定画面のドロップダウンは、Windows に描かせてから上塗りするとちらつくので、
+        // WM_PAINT を自分で受けて描く（ThemedCombo）。
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PAINTSTRUCT
+        {
+            public IntPtr hdc;
+            public int fErase;
+            public int left, top, right, bottom;
+            public int fRestore;
+            public int fIncUpdate;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+            public byte[] rgbReserved;
+        }
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr BeginPaint(IntPtr hWnd, ref PAINTSTRUCT paint);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool EndPaint(IntPtr hWnd, ref PAINTSTRUCT paint);
+
         // --- アイコン後始末 ---------------------------------------------------
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

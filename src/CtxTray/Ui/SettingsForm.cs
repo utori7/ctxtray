@@ -213,10 +213,13 @@ namespace CtxTray.Ui
             // 作った時点から開くモニタの上に置く（あとで FitToContent が高さを決めて置き直す）。
             CenterOnScreen();
 
+            // 並べるのは OnLoad の FitToContent で 1 回だけ（Hold の説明を参照）。
+            SuspendLayout();
             Build();
             Load_(_config);
             ApplyTheme();
             SelectTab(0);
+            ResumeLayout(false);
         }
 
         /// <summary>
@@ -424,6 +427,10 @@ namespace CtxTray.Ui
             // 窓の高さが決まった後や、表示倍率が変わった後にも追随させる。
             _pageHost.Resize += (s, e) => LayoutPages();
 
+            Hold(root);
+            Hold(_tabStrip);
+            Hold(_pageHost);
+
             BuildHudPage();
             BuildTrayPage();
             BuildThresholdPage();
@@ -435,7 +442,27 @@ namespace CtxTray.Ui
             root.Controls.Add(_tabStrip, 0, 0);
             root.Controls.Add(_pageHost, 0, 1);
             root.Controls.Add(_buttons, 0, 2);
+
+            // 並べるのは、全部そろってから 1 回だけ（FitToContent）。
+            foreach (var c in _held) c.ResumeLayout(false);
+            _held.Clear();
             Controls.Add(root);
+        }
+
+        /// <summary>組み立て中、並べ直しを止めている入れ物。Build の最後に止めたまま戻す。</summary>
+        private readonly List<Control> _held = new List<Control>();
+
+        /// <summary>
+        /// 組み立てが終わるまで、この入れ物の並べ直しを止める。
+        ///
+        /// ★ 止めないと、表に部品を 1 個足すたびに表全体を並べ直し（文字の大きさを測り直す）、
+        ///   部品が増えるほど遅くなる。0.4.0 までは開くのに 1 秒以上かかり、その半分近くがこれだった
+        ///   （2026-09-26 実測：数値の欄を作り直した後の 0.7 秒が、止めると 0.38 秒。並びは同じ）。
+        /// </summary>
+        private void Hold(Control c)
+        {
+            c.SuspendLayout();
+            _held.Add(c);
         }
 
         private void BuildHudPage()
@@ -962,6 +989,7 @@ namespace CtxTray.Ui
             };
             _grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(LabelColumn)));
             _grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            Hold(_grid);
 
             // 自前の細いスクロールバー。Windows 標準のものは配色に追従せず古く見える
             // （利用者の指摘、2026-09-20）。タブ見出しを標準の TabControl で作らないのと同じ理由。
@@ -1215,6 +1243,7 @@ namespace CtxTray.Ui
             };
             group.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(LabelColumn) - indent));
             group.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            Hold(group);
 
             _groupParent = _grid;
             _grid = group;

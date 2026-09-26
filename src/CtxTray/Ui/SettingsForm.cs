@@ -254,8 +254,6 @@ namespace CtxTray.Ui
             // 画面の値は、倍率を変える前（いまの部品があるうち）に読み取る。
             var values = FromScreen();
             ApplyTextSize(font);
-            // 幅は組み立てで決まらない（コンストラクタで決めている）ので、新しい倍率で決め直す。高さは Rebuild が合わせる。
-            ClientSize = new Size(S(ContentWidth), ClientSize.Height);
             Rebuild(values);
         }
 
@@ -351,8 +349,13 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// 窓の高さを、いちばん長いタブが収まる高さに合わせる。
+        /// 窓の幅を中身に、高さをいちばん長いタブが収まる高さに合わせる。
         /// 画面より高くなる場合だけ画面の 9 割で止め、タブの中をスクロールさせる。
+        ///
+        /// ★ 幅は決め打ち（ContentWidth）を下限にし、上のタブ見出しの列と下のボタンの列が収まるまで広げる。
+        ///   英語の見出しは日本語より長く、決め打ちの幅では「General」の右端が切れ、
+        ///   あおりで下の「Apply」も窓の外へはみ出していた（2026-09-26、利用者の指摘。0.4.0 から）。
+        ///   この 2 列は折り返さないので、窓の方を合わせる。表の中身は折り返すので幅の計算に入れない。
         /// </summary>
         /// <param name="center">
         /// 開いたときは中央へ置く。開いたあとの組み直し（言語・文字の大きさ・倍率）では、
@@ -360,6 +363,10 @@ namespace CtxTray.Ui
         /// </param>
         private void FitToContent(bool center)
         {
+            var width = Math.Max(S(ContentWidth),
+                                 Math.Max(_tabStrip.GetPreferredSize(Size.Empty).Width,
+                                          _buttons.GetPreferredSize(Size.Empty).Width));
+            ClientSize = new Size(Math.Min(width, (int)(_screen.WorkingArea.Width * 0.9)), ClientSize.Height);
             PerformLayout();
 
             var inner = ClientSize.Width - S(16) * 2;
@@ -411,6 +418,9 @@ namespace CtxTray.Ui
                 Padding = new Padding(0),
             };
             var root = _root;
+            // 列は窓の幅ちょうど。指定しないと列が中身のいちばん広いもの（タブ見出しの列）に合わせて窓より広がり、
+            // 同じ列にある下のボタンまで窓の外へ押し出された。
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -934,8 +944,10 @@ namespace CtxTray.Ui
                 Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2,
                 Padding = P(16, 8, 16, 12),
             };
-            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            // 左は「既定に戻す」の幅だけ、右が残りを取って右端に寄せる。
+            // 半分ずつに分けると、右の 3 つが半分に収まらない言語（英語）で右端がはみ出した。
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             bar.Controls.Add(left, 0, 0);
             bar.Controls.Add(right, 1, 0);
 

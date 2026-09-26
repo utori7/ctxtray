@@ -296,10 +296,9 @@ namespace CtxTray.Config
             { "set.warn",          new[] { "注意",                 "Warn" } },
             { "set.danger",        new[] { "危険",                 "Danger" } },
             { "set.ctxThreshold",  new[] { "コンテキスト",          "Context" } },
-            // 画面に出る % はウィンドウに対する消費率で、ここで入れる % とは分母が違う。
-            // 「75 にしたのに 73% で色が変わる」と見えるので、画面側の値も一緒に書く（2026-09-20）。
-            { "set.ctxHint",       new[] { "圧縮が起きる点を 100% とした割合です。1M のモデルなら 注意 {0:N0} ／ 危険 {1:N0} トークンで、パネルの表示では {2:0} % ／ {3:0} % にあたります。",
-                                           "Measured against the point where compaction happens (100%). On a 1M model: warn at {0:N0}, danger at {1:N0} tokens, which the panel shows as {2:0}% and {3:0}%." } },
+            // 圧縮点以上の値は、その色になる前に圧縮されるので起きない。値は勝手に直さず知らせる。
+            { "set.ctxOverCompact",new[] { "自動圧縮は {0:P0} で起きるので、それ以上の値では色も通知も出ません。",
+                                           "Auto-compaction happens at {0:P0}, so a value at or above it never shows its colour or notification." } },
             { "set.fhThreshold",   new[] { "5時間枠",              "5-hour limit" } },
             { "set.wkThreshold",   new[] { "週間枠",               "Weekly limit" } },
             // 判定は危険から先に見るので、注意を危険より大きくすると注意が一度も起きない。

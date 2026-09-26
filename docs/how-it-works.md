@@ -287,8 +287,8 @@ The compaction point is **0.967 of the window**, taken from the Claude Code docu
 ([Default auto-compact thresholds](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)):
 models running with a native 1M window compact "at about 967K tokens by default", which is
 also what Claude Desktop shows (97%). The same page says other sessions (for example 200K
-models) compact at the model's context limit, so for those ctxtray reaches 100% about
-3 points early. One value is used for every model; a window changed with `/autocompact`,
+models) compact at the model's context limit, so for those the "tokens until
+auto-compaction" figure is about 3 points of the window low. One value is used for every model; a window changed with `/autocompact`,
 `autoCompactWindow` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is not picked up, because ctxtray
 does not read Claude Code's settings — set `compactThreshold` in the config to match.
 
@@ -300,9 +300,13 @@ stored 0.92 is therefore read as "not set" and replaced with the documented valu
 Detecting compactions (a drop of 30% or more) and recording the pre-drop peak is still
 designed but not implemented; it would only matter for a changed window.
 
-Because that point can move, context thresholds are expressed as progress toward it rather
-than as a fixed percentage of the window. A hardcoded "85% is dangerous" would fire
-*after* compaction if the point were moved to 80%.
+Context thresholds use the same percentage as the panel: a share of the window. Up to
+0.3.0 they were measured as progress toward the compaction point, so that a threshold would
+keep its meaning if the point moved. In practice that made "warn at 75" change colour at
+73% on the panel, and ctxtray cannot notice a moved point anyway — the user has to set
+`compactThreshold` by hand. After 0.3.0 the stored numbers are read as a share of the
+window (same numbers, not converted), and the settings dialog warns in red when a context
+threshold is at or above the compaction point, because such a colour would never appear.
 
 ## 5. Getting out of the way of full-screen apps
 

@@ -111,9 +111,10 @@ Two arrangements, switchable in settings:
 
 You choose which values to show, and the choice applies to both arrangements.
 
-Where an icon shows context, it uses the **running** session **closest to compaction** —
-chosen by how close it is to its own compaction point, not by raw percentage, because
-models have different context windows. Hidden and grey sessions are not considered; if
+Where an icon shows context, it uses the **running** session with the **highest percentage**.
+The percentage is a share of that model's own context window, and auto-compaction happens
+at the same share for every model, so this is also the session closest to compaction.
+Hidden and grey sessions are not considered; if
 no session is running, the context bar is empty.
 
 ### Reading the rate limits
@@ -155,9 +156,8 @@ notifications together. There is no separate set of numbers for each.
 ```jsonc
 {
   "thresholds": {
-    // Context is expressed as progress toward the compaction point, not as a
-    // raw percentage of the window — the compaction point can change, and a
-    // fixed "85% = red" would turn red *after* compaction if you moved it to 80%.
+    // Context is a fraction of the window (0.75 = 75% on the panel).
+    // A value at or above auto-compaction (97% by default) is never reached.
     "context":  { "warn": 0.75, "danger": 0.90 },
     "fiveHour": { "warn": 80,   "danger": 95 },
     "weekly":   { "warn": 80,   "danger": 95 }
@@ -334,10 +334,12 @@ once per unknown model.
 - **The compaction point is Claude Code's documented default (0.967).** Models with a 1M
   context window auto-compact at about 967K tokens
   ([Claude Code docs](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)).
-  Models that compact only at the full window (such as 200K models) therefore reach 100%
-  slightly early. If you changed the point with `/autocompact`, set `compactThreshold` to
-  match — ctxtray does not read Claude Code's settings. The context colours and
-  notifications depend on this value.
+  For models that compact only at the full window (such as 200K models), the "tokens until
+  auto-compaction" figure is therefore slightly low. If you changed the point with
+  `/autocompact`, set `compactThreshold` to match — ctxtray does not read Claude Code's
+  settings. This value drives the "tokens until auto-compaction" figure and the settings
+  warning for thresholds at or above it; the context colours themselves use the panel's
+  percentage (up to 0.3.0 they were measured against this point).
 - **Unknown models show no percentage (`?%`).** A wrong denominator is worse than an honest
   blank, so ctxtray does not guess from a similarly named model either. Pick the window in
   Settings → Models, or turn on fetching from the official docs.

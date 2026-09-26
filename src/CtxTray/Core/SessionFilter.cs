@@ -75,22 +75,23 @@ namespace CtxTray.Core
         /// <summary>
         /// トレイとツールチップに出す、動いている中で最も圧縮に近いセッション。無ければ null。
         ///
-        /// 選ぶ基準は % ではなく圧縮点への到達率。分母の違うモデル (1M と 200k) が
-        /// 混ざっても、圧縮に近い方を選べるようにしておく。
+        /// 選ぶ基準はトークン数ではなくウィンドウに対する割合。分母の違うモデル (1M と 200k) が
+        /// 混ざっても、上限に近い方を選べるようにしておく（圧縮点は全モデル共通の割合なので、
+        /// 圧縮に近い順とも同じ）。
         /// </summary>
         public static SessionRow MostPressed(Snapshot snap, AppConfig config)
         {
             if (snap == null || config == null) return null;
 
             SessionRow worst = null;
-            var worstReach = double.MinValue;
+            var worstRatio = double.MinValue;
             foreach (var s in snap.Sessions)
             {
                 if (!IsRunning(s)) continue;
 
-                var reach = Levels.ContextReach(s, config);
-                if (!reach.HasValue) continue;
-                if (reach.Value > worstReach) { worstReach = reach.Value; worst = s; }
+                var ratio = Levels.ContextRatio(s);
+                if (!ratio.HasValue) continue;
+                if (ratio.Value > worstRatio) { worstRatio = ratio.Value; worst = s; }
             }
             return worst;
         }

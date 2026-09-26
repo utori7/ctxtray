@@ -50,6 +50,7 @@ namespace CtxTray.Tests
                 Run("Model names: checked names only, no guessing", ModelDisplayNames);
                 Run("Sessions: a Desktop tab keeps its Desktop process", TabProcessChoice);
                 Run("Levels with slack", LevelsSlack);
+                Run("Levels: context thresholds use the same % as the panel", LevelsContextWindowScale);
                 Run("Tray: running sessions only", TrayPicksRunning);
                 Run("Sessions: hide the ones that are not running", HideStoppedSessions);
                 Run("Sessions: the filtered-out rows are kept for the panel", HiddenSessionsKept);
@@ -822,11 +823,37 @@ namespace CtxTray.Tests
             Equal(Level.Warn, Levels.ForFiveHour(r, cfg), "85 is warn");
             Equal(Level.Danger, Levels.ForFiveHour(r, cfg, 10), "85 is still danger with 10 points of slack");
 
-            // 到達率 0.804（境目ちょうどの浮動小数点誤差を避けて、少しだけ上にする）
-            var s = new SessionRow { ContextTokens = 740000, ContextLimit = 1000000 };
-            var c = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90, CompactThreshold = 0.92 };
-            Equal(Level.Warn, Levels.ForContext(s, c), "context reach 0.804 is warn");
-            Equal(Level.Danger, Levels.ForContext(s, c, 10), "slack is applied in percentage points of reach");
+            // ウィンドウに対する 81%（境目ちょうどの浮動小数点誤差を避けて、少しだけ上にする）
+            var s = new SessionRow { ContextTokens = 810000, ContextLimit = 1000000 };
+            var c = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90 };
+            Equal(Level.Warn, Levels.ForContext(s, c), "context 81% of the window is warn");
+            Equal(Level.Danger, Levels.ForContext(s, c, 10), "slack is applied in percentage points of the window");
+        }
+
+        /// <summary>
+        /// コンテキストの閾値はパネルに出る % と同じ基準（ウィンドウに対する割合）。
+        /// 0.3.0 までは圧縮点に対する到達率で、設定の 75 がパネルの 73 で色が変わっていた（2026-09-26）。
+        /// </summary>
+        private static void LevelsContextWindowScale()
+        {
+            var c = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90, CompactThreshold = 0.967 };
+
+            Equal(Level.Normal, Levels.ForContext(new SessionRow { ContextTokens = 740000, ContextLimit = 1000000 }, c),
+                  "74% is normal (it was warn as a reach of 76.5%)");
+            Equal(Level.Warn, Levels.ForContext(new SessionRow { ContextTokens = 750000, ContextLimit = 1000000 }, c),
+                  "75% of the window is warn");
+            Equal(Level.Warn, Levels.ForContext(new SessionRow { ContextTokens = 890000, ContextLimit = 1000000 }, c),
+                  "89% is still warn (it was danger as a reach of 92%)");
+            Equal(Level.Danger, Levels.ForContext(new SessionRow { ContextTokens = 180000, ContextLimit = 200000 }, c),
+                  "90% of a 200K window is danger");
+
+            var lowered = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90, CompactThreshold = 0.80 };
+            Equal(Level.Warn, Levels.ForContext(new SessionRow { ContextTokens = 760000, ContextLimit = 1000000 }, lowered),
+                  "the compaction point does not move the thresholds");
+
+            Equal(Level.Normal, Levels.ForContext(new SessionRow { ContextTokens = 950000 }, c), "no limit, no level");
+            Check(!Levels.ContextRatio(new SessionRow { ContextTokens = 1, ContextLimit = 0 }).HasValue, "zero limit gives no ratio");
+            Equal(0.5, Levels.ContextRatio(new SessionRow { ContextTokens = 100000, ContextLimit = 200000 }).Value, "ratio is tokens over the limit");
         }
 
         private sealed class Harness
@@ -888,10 +915,10 @@ namespace CtxTray.Tests
             Equal("running-50", picked == null ? null : picked.CliSessionId,
                   "the highest running session, not the stopped one");
 
-            // 分母が違っても、圧縮点に近い方を選ぶ（200K の 60% は 1M の 50% より近い）。
+            // 分母が違っても、割合の高い方を選ぶ（200K の 60% は 1M の 50% より上限に近い）。
             snap.Sessions.Add(Row("running-200k-60", 120000, 200000, true));
             picked = SessionFilter.MostPressed(snap, cfg);
-            Equal("running-200k-60", picked == null ? null : picked.CliSessionId, "compared by reach");
+            Equal("running-200k-60", picked == null ? null : picked.CliSessionId, "compared by share of the window");
 
             var allStopped = new Snapshot();
             allStopped.Sessions.Add(Row("stopped-a", 900000, 1000000, false));

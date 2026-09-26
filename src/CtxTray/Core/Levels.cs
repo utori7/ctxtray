@@ -21,18 +21,18 @@ namespace CtxTray.Core
     internal static class Levels
     {
         /// <summary>
-        /// コンテキストの「圧縮点までの到達率」。
-        /// 1.0 で auto-compact が走る想定。分母不明なら null。
+        /// コンテキストの「ウィンドウに対する割合」（1.0 = 上限）。分母不明なら null。
+        ///
+        /// トレイ・HUD・通知に出す % と同じ基準。閾値もこれと比べる。
+        /// 以前は「圧縮点までの到達率」で比べていたが、設定の 75 がパネルでは 73 で色が変わり、
+        /// 分かりにくかった（2026-09-26 利用者の提案で変更）。
         /// </summary>
-        public static double? ContextReach(SessionRow s, AppConfig cfg)
+        public static double? ContextRatio(SessionRow s)
         {
             if (s == null || !s.ContextTokens.HasValue || !s.ContextLimit.HasValue) return null;
             if (s.ContextLimit.Value <= 0) return null;
 
-            var compactPoint = cfg.CompactThreshold * s.ContextLimit.Value;
-            if (compactPoint <= 0) return null;
-
-            return s.ContextTokens.Value / compactPoint;
+            return (double)s.ContextTokens.Value / s.ContextLimit.Value;
         }
 
         // slackPts は通知の「下がった」判定（ヒステリシス）でだけ使う。
@@ -41,12 +41,12 @@ namespace CtxTray.Core
 
         public static Level ForContext(SessionRow s, AppConfig cfg, double slackPts = 0)
         {
-            var reach = ContextReach(s, cfg);
-            if (!reach.HasValue) return Level.Normal;
+            var ratio = ContextRatio(s);
+            if (!ratio.HasValue) return Level.Normal;
 
-            // 到達率は 1.0 = 100% で持つので、ポイントは 1/100 にして下げる。
+            // 割合は 1.0 = 100% で持つので、ポイントは 1/100 にして下げる。
             var slack = slackPts / 100.0;
-            return ForPct(reach.Value, cfg.ContextWarn - slack, cfg.ContextDanger - slack);
+            return ForPct(ratio.Value, cfg.ContextWarn - slack, cfg.ContextDanger - slack);
         }
 
         public static Level ForPct(double pct, double warn, double danger)

@@ -147,8 +147,7 @@ namespace CtxTray.Notify
                     // 高いまま再開すれば、動き出した時点でここを通って知らせる。
                     if (!SessionFilter.IsRunning(s)) continue;
 
-                    var reach = Levels.ContextReach(s, config);
-                    if (!reach.HasValue) continue;
+                    if (!Levels.ContextRatio(s).HasValue) continue;
 
                     var level = Levels.ForContext(s, config);
                     var title = string.IsNullOrEmpty(s.Title) ? Strings.Get("hud.untitled") : s.Title;

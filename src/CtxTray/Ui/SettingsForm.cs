@@ -112,8 +112,8 @@ namespace CtxTray.Ui
         // --- しきい値と通知 ---
         private NumericUpDown _ctxWarn, _ctxDanger, _fhWarn, _fhDanger, _wkWarn, _wkDanger;
         private NumericUpDown _hysteresis, _minRepeat;
-        private Label _ctxHint;
         private Label _thresholdOrderWarning;
+        private Label _ctxOverCompactWarning;
         private CheckBox _levelMarks;
         private CheckBox _notifyContext, _notifyFh, _notifyWk;
 
@@ -477,10 +477,12 @@ namespace CtxTray.Ui
             Section("set.secThreshold");
             _ctxWarn = Percent();
             _ctxDanger = Percent();
-            _ctxWarn.ValueChanged += (s, e) => UpdateContextHint();
-            _ctxDanger.ValueChanged += (s, e) => UpdateContextHint();
             Row("set.ctxThreshold", WarnDanger(_ctxWarn, _ctxDanger));
-            _ctxHint = Hint(null);
+            // 補足文は置かない。% はパネルと同じ基準なので説明が要らない
+            // （基準が違った 0.3.0 までは、換算した % とトークン数を添えていた）。
+            // 圧縮点以上の値は、その色になる前に圧縮されるので起きない。
+            // 圧縮点は /autocompact で変わりうる（設定ファイルの compactThreshold）ので、ここで知らせる。
+            _ctxOverCompactWarning = Hint(null);
 
             _fhWarn = Percent();
             _fhDanger = Percent();
@@ -1204,7 +1206,6 @@ namespace CtxTray.Ui
             _fhDanger.Value = Clamp(c.FiveHourDanger, 0, 100);
             _wkWarn.Value = Clamp(c.WeeklyWarn, 0, 100);
             _wkDanger.Value = Clamp(c.WeeklyDanger, 0, 100);
-            UpdateContextHint();
             UpdateThresholdOrderWarning();
             _levelMarks.Checked = c.LevelMarks;
 
@@ -1465,24 +1466,9 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// 圧縮点への到達率は分かりにくいので、1M モデルでの実トークン数を添える。
-        ///
-        /// あわせて、パネルに出る % も書く。パネルの % は「ウィンドウに対する消費率」で
-        /// ここで入れる % と分母が違うため、「75 にしたのに 73% で色が変わった」と見えていた（2026-09-20）。
-        /// </summary>
-        private void UpdateContextHint()
-        {
-            var point = _config.CompactThreshold * 1000000.0;
-            _ctxHint.Text = Strings.Format("set.ctxHint",
-                point * (double)_ctxWarn.Value / 100.0,
-                point * (double)_ctxDanger.Value / 100.0,
-                (double)_ctxWarn.Value * _config.CompactThreshold,
-                (double)_ctxDanger.Value * _config.CompactThreshold);
-        }
-
-        /// <summary>
         /// 「注意」が「危険」より大きい組があれば赤字で知らせる。
         /// Levels.ForPct は危険から先に判定するので、その状態では注意が一度も起きない。
+        /// コンテキストの値が自動圧縮の点以上のときも赤字で知らせる（その色になる前に圧縮される）。
         /// Paint_ がラベルの色を塗り直すので、配色を適用した後にも呼ぶ。
         /// </summary>
         private void UpdateThresholdOrderWarning()
@@ -1495,6 +1481,16 @@ namespace CtxTray.Ui
 
             _thresholdOrderWarning.Visible = inverted;
             if (inverted) _thresholdOrderWarning.ForeColor = _theme.Danger;
+
+            if (_ctxOverCompactWarning == null) return;
+            var compactPct = (decimal)(_config.CompactThreshold * 100.0);
+            var over = _ctxWarn.Value >= compactPct || _ctxDanger.Value >= compactPct;
+            _ctxOverCompactWarning.Visible = over;
+            if (over)
+            {
+                _ctxOverCompactWarning.Text = Strings.Format("set.ctxOverCompact", _config.CompactThreshold);
+                _ctxOverCompactWarning.ForeColor = _theme.Danger;
+            }
         }
 
         /// <summary>

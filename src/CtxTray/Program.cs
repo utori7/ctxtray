@@ -597,10 +597,10 @@ namespace CtxTray
                 },
             };
 
-            // 744K は圧縮点（967K）の 77%。既定の注意（75%）を超え、値の色が黄に替わる例になる。
-            // 危険の見本は 940K（圧縮点の 97%）。
+            // 770K は 77%。既定の注意（75%）を超え、値の色が黄に替わる例になる。
+            // 危険の見本は 940K（94%）。
             snap.Sessions.Add(SampleRow(japanese ? "認証まわりの整理" : "Refactor auth module",
-                                        danger ? 940000 : 744000, true, false, true));
+                                        danger ? 940000 : 770000, true, false, true));
             snap.Sessions.Add(SampleRow(japanese ? "不安定なテストの修正" : "Fix flaky tests",
                                         338000, false, false, state != "stopped"));
             snap.Sessions.Add(SampleRow("my-project", 221000, false, true, true));

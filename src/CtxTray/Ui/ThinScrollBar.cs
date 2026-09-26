@@ -88,7 +88,7 @@ namespace CtxTray.Ui
     /// </summary>
     internal sealed class ThinScrollBar : Control
     {
-        private readonly float _s = Dpi.SystemScale;
+        private readonly float _s;
 
         private ScrollPage _page;
         private Theme _theme;
@@ -98,8 +98,9 @@ namespace CtxTray.Ui
         /// <summary>つまみのどこをつかんだか（つまみの上端からの距離）。</summary>
         private int _grab;
 
-        public ThinScrollBar()
+        public ThinScrollBar(float scale)
         {
+            _s = scale;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint
                      | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             // 自分にフォーカスを持たせない。Tab の巡回に入ると設定項目の間に割り込む。

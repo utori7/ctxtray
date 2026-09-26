@@ -112,6 +112,9 @@ namespace CtxTray.Native
         /// <summary>ライト/ダークの切り替えは WM_SETTINGCHANGE で飛んでくる。</summary>
         public const int WM_SETTINGCHANGE = 0x001A;
         public const int WM_DPICHANGED = 0x02E0;
+        // 窓のドラッグ（移動・大きさの変更）の始まりと終わり。
+        public const int WM_ENTERSIZEMOVE = 0x0231;
+        public const int WM_EXITSIZEMOVE = 0x0232;
 
         /// <summary>
         /// コントラストテーマ（ハイコントラスト）の入り切り。
@@ -141,6 +144,39 @@ namespace CtxTray.Native
         // Windows 8.1 以降。対象は Windows 10 1903+ なので必ずあるが、念のため呼び出し側で try する。
         [DllImport("shcore.dll")]
         public static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
+
+        // --- Windows の文字の大きさ -------------------------------------------
+        //
+        // タイトルバー・メニュー・ダイアログの本文の書体と大きさ。表示倍率と、アクセシビリティの
+        // 「テキストのサイズ」の両方が入った値を、指定した倍率で返してくれる（Windows 10 1607 以降）。
+        public const uint SPI_GETNONCLIENTMETRICS = 0x0029;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct LOGFONT
+        {
+            public int lfHeight, lfWidth, lfEscapement, lfOrientation, lfWeight;
+            public byte lfItalic, lfUnderline, lfStrikeOut, lfCharSet,
+                        lfOutPrecision, lfClipPrecision, lfQuality, lfPitchAndFamily;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string lfFaceName;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct NONCLIENTMETRICS
+        {
+            public int cbSize, iBorderWidth, iScrollWidth, iScrollHeight, iCaptionWidth, iCaptionHeight;
+            public LOGFONT lfCaptionFont;
+            public int iSmCaptionWidth, iSmCaptionHeight;
+            public LOGFONT lfSmCaptionFont;
+            public int iMenuWidth, iMenuHeight;
+            public LOGFONT lfMenuFont, lfStatusFont, lfMessageFont;
+            public int iPaddedBorderWidth;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SystemParametersInfoForDpi(uint action, uint param,
+                                                             ref NONCLIENTMETRICS metrics, uint winIni, uint dpi);
 
         // --- 全画面のアプリの検出 ---------------------------------------------
         //

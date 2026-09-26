@@ -74,15 +74,16 @@ namespace CtxTray.Ui
     /// </summary>
     internal sealed class FieldFrame : Panel
     {
-        private readonly float _s = Dpi.SystemScale;
+        private readonly float _s;
         private readonly Control _inner;
 
         private Theme _theme;
         private bool _focused;
         private bool _hot;
 
-        public FieldFrame(Control inner)
+        public FieldFrame(Control inner, float scale)
         {
+            _s = scale;
             _inner = inner;
 
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint
@@ -162,7 +163,7 @@ namespace CtxTray.Ui
     /// </summary>
     internal sealed class ThemedNumeric : NumericUpDown
     {
-        private readonly float _s = Dpi.SystemScale;
+        private readonly float _s;
         private readonly Control _buttons;
         private readonly Control _edit;
 
@@ -171,8 +172,9 @@ namespace CtxTray.Ui
         /// <summary>マウスが乗っているのは上下どちらか（0=なし、1=上、2=下）。</summary>
         private int _hotHalf;
 
-        public ThemedNumeric()
+        public ThemedNumeric(float scale)
         {
+            _s = scale;
             BorderStyle = BorderStyle.None;
 
             foreach (Control c in Controls)
@@ -266,12 +268,13 @@ namespace CtxTray.Ui
     {
         private const int WM_PAINT = 0x000F;
 
-        private readonly float _s = Dpi.SystemScale;
+        private readonly float _s;
         private Theme _theme;
         private bool _hot;
 
-        public ThemedCombo()
+        public ThemedCombo(float scale)
         {
+            _s = scale;
             DropDownStyle = ComboBoxStyle.DropDownList;
             FlatStyle = FlatStyle.Flat;
             DrawMode = DrawMode.OwnerDrawFixed;

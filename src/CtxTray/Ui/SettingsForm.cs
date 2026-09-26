@@ -29,8 +29,14 @@ namespace CtxTray.Ui
     /// </summary>
     internal sealed class SettingsForm : Form
     {
-        /// <summary>行ラベルの列の幅（96 DPI 基準）。</summary>
+        /// <summary>行ラベルの列の幅（S で掛ける前の値）。</summary>
         private const int LabelColumn = 180;
+
+        /// <summary>
+        /// 窓の中の幅（S で掛ける前の値）。
+        /// 560 では英語のラベルや「注意／危険」の行が右端で切れたので広げた。
+        /// </summary>
+        private const int ContentWidth = 600;
 
         /// <summary>補助説明のラベルに付ける印。配色で淡くするものを見分ける。</summary>
         private const string HintTag = "hint";
@@ -52,15 +58,45 @@ namespace CtxTray.Ui
         private Theme _theme;
 
         /// <summary>
-        /// 部品の大きさに掛ける倍率。窓を作る前に決まっている必要があるので、
+        /// 開いたモニタの表示倍率。窓を作る前に決まっている必要があるので、
         /// 開く場所（マウスのあるモニタ）から引く。プライマリの倍率で固定していた頃は、
         /// 倍率の違う 2 枚目で開くと大きさが合わなかった（2026-09-20）。
-        /// 開いたあとに別のモニタへ動かしたときは作り直さない（利用者の決定）。
+        /// 開いたあとに倍率が変わったとき（別のモニタへ動かした・Windows の設定を変えた）は、
+        /// その倍率で作り直す（OnDpiChanged）。2026-09-20 には「作り直さない」と決めていたが、
+        /// 窓枠だけ Windows が新しい倍率に変え、中身は古い倍率のまま残る半端な状態になったので、
+        /// 2026-09-26 に利用者と相談して変えた。
         /// </summary>
-        private readonly float _s;
+        private float _dpiScale;
 
-        /// <summary>開いたモニタ。大きさを決めたあとの中央寄せも、この画面の中で行う。</summary>
-        private readonly Screen _screen;
+        /// <summary>
+        /// レイアウトの数値（幅・余白・欄の大きさ）の基準にした本文の大きさ（px）。
+        /// 数値は、0.4.0 までの利用者の画面（本文 27px・倍率 1.5）で調整したものなので、27 / 1.5 = 18px を 1 倍とする。
+        /// </summary>
+        private const float DesignFontPixels = 18f;
+
+        /// <summary>
+        /// 部品の大きさに掛ける倍率。本文の大きさ ÷ DesignFontPixels。
+        ///
+        /// ★ 表示倍率ではなく文字の大きさに比例させる（Windows のダイアログ単位と同じ考え方）。
+        ///   テキストのサイズだけを上げたときも、ラベルの列や欄の幅が文字と一緒に広がり、はみ出さない。
+        ///   テキストのサイズが変わったときは作り直すので readonly にしない（OnSettingChange）。
+        /// </summary>
+        private float _s;
+
+        /// <summary>本文の文字の大きさ（px）。Windows のメッセージ用フォントのもの。</summary>
+        private float _fontPixels;
+
+        /// <summary>
+        /// 開いたモニタ。大きさを決めたあとの中央寄せも、この画面の中で行う。
+        /// 別のモニタへ動かして作り直したときは、そのモニタに替える。
+        /// </summary>
+        private Screen _screen;
+
+        /// <summary>利用者が窓をドラッグ（移動・大きさの変更）している最中か。</summary>
+        private bool _moving;
+
+        /// <summary>ドラッグ中に倍率が変わった。離したら作り直す。</summary>
+        private bool _rescalePending;
 
         /// <summary>「右下の隅に戻す」が押された。</summary>
         public event EventHandler ResetHudPositionRequested;
@@ -154,7 +190,7 @@ namespace CtxTray.Ui
 
             // 倍率と置き場所は、窓を作る前にマウスのあるモニタから決める。
             var origin = Cursor.Position;
-            _s = Dpi.ScaleForPoint(origin);
+            _dpiScale = Dpi.ScaleForPoint(origin);
             _screen = Screen.FromPoint(origin);
 
             // 題名に版を出す。不具合の報告でどの版か分かるように（2026-09-18）。
@@ -172,9 +208,8 @@ namespace CtxTray.Ui
             // 倍率は自分で掛ける。WinForms の自動スケールに任せると、
             // .NET Framework では DeviceDpi が 96 のままなので効かない（Dpi.cs 参照）。
             AutoScaleMode = AutoScaleMode.None;
-            Font = new Font(Theme.FontFamily, 9f * _s);
-            // 幅 560 では英語のラベルや「注意／危険」の行が右端で切れたので広げた。
-            ClientSize = new Size(S(600), S(600));
+            ApplyTextSize(Dpi.MessageFont(_dpiScale));
+            ClientSize = new Size(S(ContentWidth), S(600));
             // 作った時点から開くモニタの上に置く（あとで FitToContent が高さを決めて置き直す）。
             CenterOnScreen();
 
@@ -184,10 +219,67 @@ namespace CtxTray.Ui
             SelectTab(0);
         }
 
+        /// <summary>
+        /// 本文の文字をタイトルバーと同じ系統（Windows のメッセージ用フォント）の大きさにし、部品の倍率を合わせる。
+        ///
+        /// ★ フォントはピクセル単位で作る。ポイントで作ると WinForms がサインイン時の倍率で換算し直し、
+        ///   倍率が二重に掛かる（0.4.0 まで。Dpi.MessageFont の説明を参照）。
+        /// ★ 書体も Windows のもの（日本語の Windows なら Yu Gothic UI）。HUD と同じ Theme.FontFamily だと、
+        ///   日本語が代替フォントで描かれ、同じ大きさでもタイトルバーより一回り大きく見えた
+        ///   （2026-09-26、実寸の見本を見比べて利用者が決定）。取れなかったときだけ Theme.FontFamily。
+        /// </summary>
+        private void ApplyTextSize(SystemFont font)
+        {
+            _fontPixels = font.Pixels;
+            _s = _fontPixels / DesignFontPixels;
+            Font = new Font(font.Face ?? Theme.FontFamily, _fontPixels, FontStyle.Regular, GraphicsUnit.Pixel);
+        }
+
+        /// <summary>
+        /// Windows の設定が変わった。テキストのサイズ（や書体）が変わっていたら、その大きさで組み直す。
+        ///
+        /// 変わった場所を知らせる文字列は設定によってまちまちなので当てにせず、
+        /// いまの大きさを尋ね直して比べる（安い呼び出しなので、関係ない変更で来ても困らない）。
+        /// 表示倍率が変わったとき（OnDpiChanged）もここを通る。
+        /// </summary>
+        private void OnSettingChange()
+        {
+            var font = Dpi.MessageFont(_dpiScale);
+            if (Math.Abs(font.Pixels - _fontPixels) < 0.5f
+                && string.Equals(font.Face ?? Theme.FontFamily, Font.Name, StringComparison.OrdinalIgnoreCase)) return;
+
+            // 画面の値は、倍率を変える前（いまの部品があるうち）に読み取る。
+            var values = FromScreen();
+            ApplyTextSize(font);
+            // 幅は組み立てで決まらない（コンストラクタで決めている）ので、新しい倍率で決め直す。高さは Rebuild が合わせる。
+            ClientSize = new Size(S(ContentWidth), ClientSize.Height);
+            Rebuild(values);
+        }
+
+        /// <summary>
+        /// 表示倍率が変わった（別のモニタへ動かした・Windows の拡大縮小を変えた）。新しい倍率で作り直す。
+        ///
+        /// ドラッグの途中で倍率の境目をまたいだときは、離すまで待つ。作り直しには 1 秒ほどかかり、
+        /// ドラッグの途中で行うと窓が引っかかる。
+        /// </summary>
+        private void OnDpiChanged(int dpi)
+        {
+            if (dpi >= 48) _dpiScale = dpi / 96f;
+
+            if (_moving)
+            {
+                _rescalePending = true;
+                return;
+            }
+
+            _screen = Screen.FromHandle(Handle);
+            OnSettingChange();
+        }
+
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            FitToContent();
+            FitToContent(true);
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -211,8 +303,31 @@ namespace CtxTray.Ui
                     ReloadTheme();
             }
 
+            // テキストのサイズの変更。組み直すと部品を捨てるので、この窓の処理を終えてから行う。
+            if (m.Msg == NativeMethods.WM_SETTINGCHANGE && IsHandleCreated)
+                BeginInvoke((Action)OnSettingChange);
+
             // コントラストテーマの入り切りは別の合図で来る。
             if (m.Msg == NativeMethods.WM_THEMECHANGED) ReloadTheme();
+
+            // 表示倍率の変更。新しい倍率は wParam の下位 16 ビット。
+            // 窓の大きさは作り直しのあとで自分で決めるので、Windows の勧める大きさは使わない。
+            if (m.Msg == NativeMethods.WM_DPICHANGED && IsHandleCreated)
+            {
+                var dpi = (int)(m.WParam.ToInt64() & 0xFFFF);
+                BeginInvoke((Action)(() => OnDpiChanged(dpi)));
+            }
+
+            if (m.Msg == NativeMethods.WM_ENTERSIZEMOVE) _moving = true;
+            if (m.Msg == NativeMethods.WM_EXITSIZEMOVE)
+            {
+                _moving = false;
+                if (_rescalePending)
+                {
+                    _rescalePending = false;
+                    BeginInvoke((Action)(() => OnDpiChanged(0)));
+                }
+            }
 
             base.WndProc(ref m);
         }
@@ -236,7 +351,11 @@ namespace CtxTray.Ui
         /// 窓の高さを、いちばん長いタブが収まる高さに合わせる。
         /// 画面より高くなる場合だけ画面の 9 割で止め、タブの中をスクロールさせる。
         /// </summary>
-        private void FitToContent()
+        /// <param name="center">
+        /// 開いたときは中央へ置く。開いたあとの組み直し（言語・文字の大きさ・倍率）では、
+        /// 利用者が置いた場所から動かさず、はみ出した分だけ画面の内側へ戻す。
+        /// </param>
+        private void FitToContent(bool center)
         {
             PerformLayout();
 
@@ -248,7 +367,8 @@ namespace CtxTray.Ui
             var wanted = _tabStrip.Height + _buttons.Height + tallest + S(4 + 12) + S(8);
             var limit = (int)(_screen.WorkingArea.Height * 0.9);
             ClientSize = new Size(ClientSize.Width, Math.Min(wanted, limit));
-            CenterOnScreen();
+            if (center) CenterOnScreen();
+            else KeepOnScreen();
 
             // 高さが決まってから、ページと自前のスクロールバーを合わせる。
             PerformLayout();
@@ -265,6 +385,15 @@ namespace CtxTray.Ui
             var work = _screen.WorkingArea;
             Location = new Point(work.Left + (work.Width - Width) / 2,
                                  work.Top + Math.Max(0, (work.Height - Height) / 2));
+        }
+
+        /// <summary>いまの場所のまま、はみ出した分だけモニタの作業領域の内側へ戻す（左上を優先して見せる）。</summary>
+        private void KeepOnScreen()
+        {
+            var work = _screen.WorkingArea;
+            var x = Math.Max(work.Left, Math.Min(Left, work.Right - Width));
+            var y = Math.Max(work.Top, Math.Min(Top, work.Bottom - Height));
+            Location = new Point(x, y);
         }
 
         // --- 組み立て -----------------------------------------------------------
@@ -678,7 +807,7 @@ namespace CtxTray.Ui
 
         private ComboBox LimitPicker(int? current)
         {
-            var c = new ThemedCombo { Width = S(130) };
+            var c = new ThemedCombo(_s) { Width = S(130) };
             c.Items.Add(Strings.Get("set.limitUnset"));
             foreach (var v in LimitChoices) c.Items.Add(LimitText(v));
             var index = 0;
@@ -836,7 +965,7 @@ namespace CtxTray.Ui
 
             // 自前の細いスクロールバー。Windows 標準のものは配色に追従せず古く見える
             // （利用者の指摘、2026-09-20）。タブ見出しを標準の TabControl で作らないのと同じ理由。
-            var bar = new ThinScrollBar { Visible = false };
+            var bar = new ThinScrollBar(_s) { Visible = false };
             bar.Attach(page);
 
             page.Controls.Add(_grid);
@@ -964,7 +1093,7 @@ namespace CtxTray.Ui
 
         private ComboBox Combo(params string[] items)
         {
-            var c = new ThemedCombo { Width = S(300) };
+            var c = new ThemedCombo(_s) { Width = S(300) };
             foreach (var item in items) c.Items.Add(item);
             return c;
         }
@@ -975,7 +1104,7 @@ namespace CtxTray.Ui
         /// </summary>
         private T Framed<T>(T inner) where T : Control
         {
-            _frames[inner] = new FieldFrame(inner);
+            _frames[inner] = new FieldFrame(inner, _s);
             return inner;
         }
 
@@ -1041,12 +1170,12 @@ namespace CtxTray.Ui
         // 数値欄は 4 桁（8760 時間）まで入れば足りる。70 だと「注意／危険」の行が右端からはみ出した。
         private NumericUpDown Number(int min, int max)
         {
-            return Framed(new ThemedNumeric { Minimum = min, Maximum = max, Width = S(60) });
+            return Framed(new ThemedNumeric(_s) { Minimum = min, Maximum = max, Width = S(60) });
         }
 
         private NumericUpDown Percent()
         {
-            return Framed(new ThemedNumeric { Minimum = 0, Maximum = 100, Width = S(56) });
+            return Framed(new ThemedNumeric(_s) { Minimum = 0, Maximum = 100, Width = S(56) });
         }
 
         /// <summary>数値の前後に置く短い文字。空文字なら何も置かない（語順が日英で違うため）。</summary>
@@ -1346,13 +1475,17 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// 言語が変わったときに画面を組み直す。
+        /// 言語や文字の大きさが変わったときに画面を組み直す。
         ///
         /// 文言は部品を作るときに埋め込まれるので、1 つずつ入れ替えるより作り直す方が
         /// 取りこぼしが無い（ドロップダウンの項目や、数値の前後に置く短い文字まで含むため）。
-        /// 値は保存済みの設定から入れ直すので、画面の内容は変わらない。
+        /// 大きさも部品を作るときに掛けているので同じ。
         /// </summary>
-        private void Rebuild()
+        /// <param name="values">
+        /// 組み直した画面に入れる値。言語の切り替えは保存の直後なので保存済みの設定（null）。
+        /// 文字の大きさの変更はいつでも起きるので、保存していない入力を消さないよう画面の値を渡す。
+        /// </param>
+        private void Rebuild(AppConfig values = null)
         {
             var tab = SelectedTab();
 
@@ -1372,7 +1505,7 @@ namespace CtxTray.Ui
 
                 Text = Strings.Get("set.title") + " — " + AppVersion.Display;
                 Build();
-                Load_(_config);
+                Load_(values ?? _config);
                 // 言語と配色を一度に変えた場合もあるので、配色と窓枠はここで付け直す。
                 ReloadTheme();
                 SelectTab(tab);
@@ -1382,7 +1515,7 @@ namespace CtxTray.Ui
                 ResumeLayout(true);
             }
 
-            FitToContent();
+            FitToContent(false);
         }
 
         /// <summary>いま選ばれているタブ。組み直したあとも同じタブを開いたままにする。</summary>

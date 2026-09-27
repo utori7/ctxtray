@@ -222,9 +222,10 @@ notifications together. There is no separate set of numbers for each.
 ### Model and effort
 
 Each session's model and effort always appear in the details when you hover over a row
-(for example `Opus 5.5 · high`). Turn on **Model** and **Effort** under "On each row" on the
+(for example `Opus 5.5 · high`). Turn on **Model and effort** under "On each row" on the
 HUD tab of the settings to show them on the row as well (off by default), either in their own
-column after the name or in a small second line under the name (the rows get taller).
+column after the session name or in a small second line under it (the rows get taller).
+To show only one of the two, set `showModel` and `showEffort` separately in the config file.
 
 The panel's width is the session-name column ("Name width" under "More settings") plus whatever
 you turn on — the bar, token counts, the model column. Turning any of them on never squeezes

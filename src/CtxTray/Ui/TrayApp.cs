@@ -994,7 +994,9 @@ namespace CtxTray.Ui
         {
             // 効いているキーは項目の右端に出す（Windows のメニューの慣例。タブの後ろが右寄せになる）。
             var hudOk = _hud != null && !_hud.IsDisposed;
-            _hudItem.Text = Strings.Get((_hud != null && _hud.Visible) ? "menu.hideHud" : "menu.showHud")
+            // 表示中かどうかはチェックで示す。文言まで「非表示」に変えると、
+            // 表示中に「パネルを非表示」へチェックが付き、逆の意味に読めた（2026-09-27、利用者の指摘）。
+            _hudItem.Text = Strings.Get("menu.showHud")
                             + KeyLabel(hudOk && _hud.HotkeyStatus == HotkeyState.Ok, _config.Hotkey);
             _hudItem.Checked = _hud != null && _hud.Visible;
             _clickThroughItem.Text = Strings.Get("menu.clickThrough")

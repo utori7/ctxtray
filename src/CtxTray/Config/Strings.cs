@@ -50,7 +50,6 @@ namespace CtxTray.Config
         {
             // トレイメニュー
             { "menu.showHud",     new[] { "パネルを表示",        "Show HUD" } },
-            { "menu.hideHud",     new[] { "パネルを非表示",        "Hide HUD" } },
             // 透過中は HUD をドラッグできず右クリックも届かないので、メニューからも切り替えられるようにする。
             { "menu.clickThrough",new[] { "クリックを透過", "Pass clicks through" } },
             { "menu.autoStart",   new[] { "サインイン時に起動",   "Start at sign-in" } },
@@ -232,11 +231,14 @@ namespace CtxTray.Config
             { "set.secHudColumns", new[] { "各行の表示項目",          "On each row" } },
             { "set.showBar",       new[] { "バー",                 "Bar" } },
             { "set.showTokens",    new[] { "トークン数（例: 284k / 1M）", "Token count (e.g. 284k / 1M)" } },
-            { "set.showModel",     new[] { "モデル（例: Opus 5.5）",  "Model (e.g. Opus 5.5)" } },
-            { "set.showEffort",    new[] { "エフォート（例: high）",  "Effort (e.g. high)" } },
+            // モデルとエフォートは 1 つのチェックボックスで両方を切り替える（2026-09-27、利用者の提案）。
+            // 片方だけにしたいときは設定ファイルの showModel／showEffort で分けられる。
+            { "set.showModel",     new[] { "モデルとエフォート（例: Opus 5.5 · high）",
+                                           "Model and effort (e.g. Opus 5.5 · high)" } },
             { "set.modelLayout",   new[] { "表示位置",               "Layout" } },
-            { "set.layoutColumn",  new[] { "名前の右（パネルの幅が広がる）", "After the name (wider panel)" } },
-            { "set.layoutTwoLine", new[] { "名前の下（行が高くなる）", "Under the name (taller rows)" } },
+            // 「名前」だけだと何の名前か分かりにくい（2026-09-27、利用者の指摘）。
+            { "set.layoutColumn",  new[] { "セッション名の右（パネルの幅が広がる）", "After the session name (wider panel)" } },
+            { "set.layoutTwoLine", new[] { "セッション名の下（行が高くなる）", "Under the session name (taller rows)" } },
             { "set.showResets",    new[] { "5時間枠のリセット時刻", "5-hour reset time" } },
             { "set.always",        new[] { "常に表示",             "Always" } },
             { "set.autoNear",      new[] { "リセットの {0} 分前から", "From {0} min before the reset" } },

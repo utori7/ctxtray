@@ -125,7 +125,8 @@ namespace CtxTray.Ui
         // --- HUD ---
         private CheckBox _hudRate, _hudSessions, _hideIdle, _hideStopped, _external;
         private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen;
-        private CheckBox _showModel, _showEffort;
+        /// <summary>モデルとエフォートをまとめて切り替える（設定ファイルでは showModel と showEffort の 2 つ）。</summary>
+        private CheckBox _showModel;
         private ComboBox _modelLayout;
         private ThemedNumeric _idleHours, _externalMax, _nameWidth;
 
@@ -530,21 +531,17 @@ namespace CtxTray.Ui
             Full(_showTokens);
 
             // モデル名とエフォート。出し方は実寸の見本で選んだ 2 つ（2026-09-26）。
+            // 別々に選べても使い分ける場面が無いので、1 つのチェックボックスにした（2026-09-27、利用者の提案）。
             _showModel = Check("set.showModel");
-            _showEffort = Check("set.showEffort");
             _modelLayout = Combo(Strings.Get("set.layoutColumn"), Strings.Get("set.layoutTwoLine"));
-            EventHandler syncLayout = (s, e) => _modelLayout.Enabled = _showModel.Checked || _showEffort.Checked;
-            _showModel.CheckedChanged += syncLayout;
-            _showEffort.CheckedChanged += syncLayout;
+            _showModel.CheckedChanged += (s, e) => _modelLayout.Enabled = _showModel.Checked;
             Full(_showModel);
-            Full(_showEffort);
             Full(Flow(Indent(), Text_("set.modelLayout"), _modelLayout));
             // 「オフでも行の詳細には出る」の補足は、説明を短くしたときに外した（2026-09-26、利用者の指摘）。
 
             Section("set.secHudLook");
-            _textSize = Combo(Strings.Get("set.sizeXSmall"), Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
+            _textSize = Combo(120, Strings.Get("set.sizeXSmall"), Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
                               Strings.Get("set.sizeLarge"), Strings.Get("set.sizeXLarge"));
-            _textSize.Width = S(120);
             Row("set.textSize", _textSize);
 
             _opacity = new TrackBar
@@ -569,7 +566,7 @@ namespace CtxTray.Ui
             _hudRate.CheckedChanged += (s, e) => _showResets.Enabled = _hudRate.Checked;
             Row("set.showResets", _showResets);
 
-            _hideIdle = new CheckBox { AutoSize = true, Margin = BareCheckMargin };
+            _hideIdle = new CheckBox { AutoSize = true, Margin = InlineCheckMargin };
             _idleHours = Number(1, 8760);
             _hideIdle.CheckedChanged += (s, e) => _idleHours.Enabled = _hideIdle.Checked;
             Full(Flow(_hideIdle, Toggles(Text_("set.hideIdlePre"), _hideIdle), _idleHours,
@@ -1201,8 +1198,26 @@ namespace CtxTray.Ui
 
         private ComboBox Combo(params string[] items)
         {
-            var c = new ThemedCombo(_s) { Width = S(300) };
-            foreach (var item in items) c.Items.Add(item);
+            return Combo(300, items);
+        }
+
+        /// <summary>
+        /// ドロップダウン。幅は minWidth を下限に、いちばん長い項目が収まるまで広げる。
+        ///
+        /// ★ 固定の幅だと、文字が大きい画面（テキストのサイズ 150%）で
+        ///   「自動（Windows の設定に合わせる）」「Extra small」などが途中で切れた（2026-09-27、利用者の指摘）。
+        /// </summary>
+        private ComboBox Combo(int minWidth, params string[] items)
+        {
+            var c = new ThemedCombo(_s);
+            var widest = 0;
+            foreach (var item in items)
+            {
+                c.Items.Add(item);
+                widest = Math.Max(widest, TextRenderer.MeasureText(item, Font, Size.Empty, TextFormatFlags.NoPrefix).Width);
+            }
+            // 閉じた欄は左に 7、右に山形の 22 を取る（ThemedCombo.Decorate）。少し余らせる。
+            c.Width = Math.Max(S(minWidth), widest + S(7 + 22 + 6));
             return c;
         }
 
@@ -1253,6 +1268,22 @@ namespace CtxTray.Ui
         /// ラベルは上に 6 の余白を持つので、それより少し下げないと四角が文字より上に浮く（実画面で確認）。
         /// </summary>
         private Padding BareCheckMargin { get { return P(0, 11, 0, 0); } }
+
+        /// <summary>
+        /// 普通のチェックボックス（Check）の間に置く、文字を持たないチェックボックスの余白。
+        /// Check は WinForms の既定の外側の余白（左 3px、倍率を掛けない）を持つので、左だけそれに合わせる。
+        /// BareCheckMargin のままだと 3px 左にずれた（「x 時間以上使用していない…」、2026-09-27、利用者の指摘）。
+        /// トレイアイコンのタブの色見本付きのものは、上下のラジオボタン（左 0）に揃えているので BareCheckMargin のまま。
+        /// </summary>
+        private Padding InlineCheckMargin
+        {
+            get
+            {
+                var m = BareCheckMargin;
+                m.Left = 3;   // Control.DefaultMargin の左
+                return m;
+            }
+        }
 
         /// <summary>
         /// 識別色の見本付きのチェックボックス。トレイで目印とバーに付く色と同じ色を並べ、
@@ -1407,8 +1438,7 @@ namespace CtxTray.Ui
 
             _showBar.Checked = c.HudShowBar;
             _showTokens.Checked = c.HudShowTokens;
-            _showModel.Checked = c.HudShowModel;
-            _showEffort.Checked = c.HudShowEffort;
+            _showModel.Checked = c.HudShowModel || c.HudShowEffort;
             _modelLayout.SelectedIndex = IndexOf(c.HudModelLayout, AppConfig.ModelLayouts);
             _modelLayout.Enabled = c.HudShowModel || c.HudShowEffort;
             _showResets.SelectedIndex = IndexOf(c.ShowResets, "always", "auto", "never");
@@ -1486,8 +1516,10 @@ namespace CtxTray.Ui
 
             c.HudShowBar = _showBar.Checked;
             c.HudShowTokens = _showTokens.Checked;
-            c.HudShowModel = _showModel.Checked;
-            c.HudShowEffort = _showEffort.Checked;
+            // オンのままなら設定ファイルの組み合わせ（片方だけ、など）を崩さない。
+            // オフからオンにしたときだけ両方を出す。
+            if (!_showModel.Checked) c.HudShowModel = c.HudShowEffort = false;
+            else if (!c.HudShowModel && !c.HudShowEffort) c.HudShowModel = c.HudShowEffort = true;
             c.HudModelLayout = Pick(_modelLayout.SelectedIndex, AppConfig.ModelLayouts);
             c.ShowResets = Pick(_showResets.SelectedIndex, "always", "auto", "never");
 

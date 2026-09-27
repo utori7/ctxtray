@@ -165,19 +165,19 @@ namespace CtxTray
             // ヘルプだけは行ごとに訳すと崩れるので、まとめて切り替える。
             if (Strings.IsJapanese)
             {
-                Console.WriteLine("ctxtray - Claude Desktop / Claude Code の状態を読む（読み取りのみ）");
+                Console.WriteLine("ctxtray - Claude Desktop / Claude Code の状態を表示（読み取りのみ）");
                 Console.WriteLine();
-                Console.WriteLine("  ctxtray                     引数なしで常駐（トレイ + HUD）");
+                Console.WriteLine("  ctxtray                     引数なしで常駐（トレイ + パネル）");
                 Console.WriteLine("  ctxtray --status            状態を表形式で 1 回表示");
                 Console.WriteLine("  ctxtray --json              状態を JSON で出力");
                 Console.WriteLine("  ctxtray --no-external       Desktop のタブだけを対象にする");
-                Console.WriteLine("  ctxtray --include-archived  終了済みタブも含める");
+                Console.WriteLine("  ctxtray --include-archived  終了済みのタブも含める");
                 Console.WriteLine("  ctxtray --verify-weekly     週間枠リセットの推定過程を表示");
-                Console.WriteLine("  ctxtray --icon-preview [dir] トレイアイコンの見本を PNG に出力");
-                Console.WriteLine("  ctxtray --hud-preview [dir]  HUD の見本（架空のデータ）を PNG に出力");
-                Console.WriteLine("  ctxtray --app-icon-preview [dir]  アプリのアイコンの見本を PNG に出力");
+                Console.WriteLine("  ctxtray --icon-preview [dir] トレイアイコンのプレビューを PNG で出力");
+                Console.WriteLine("  ctxtray --hud-preview [dir]  パネルのプレビュー（架空のデータ）を PNG で出力");
+                Console.WriteLine("  ctxtray --app-icon-preview [dir]  アプリのアイコンのプレビューを PNG で出力");
                 Console.WriteLine("  ctxtray --write-app-icon [path]   アプリのアイコンを .ico に書き出す（開発用）");
-                Console.WriteLine("  ctxtray --version           版を表示");
+                Console.WriteLine("  ctxtray --version           バージョンを表示");
             }
             else
             {

@@ -66,7 +66,7 @@ To hear about them, use **Watch → Custom → Releases** at the top of this rep
 | `Ctrl+Alt+C` | show / hide the panel (configurable, or none) |
 | a shortcut you choose | pass clicks through the panel, or stop (none by default; set one in the settings) |
 
-To change a shortcut, open the settings (**HUD** tab), click its box and press a key together with Ctrl, Alt, or Shift;
+To change a shortcut, open the settings (**Panel** tab), click its box and press a key together with Ctrl, Alt, or Shift;
 Delete sets it to none. If the box does not change when you press a key, another app has already taken that key.
 | drag | move the panel |
 | hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, and when the value was recorded |
@@ -223,7 +223,7 @@ notifications together. There is no separate set of numbers for each.
 
 Each session's model and effort always appear in the details when you hover over a row
 (for example `Opus 5.5 · high`). Turn on **Model and effort** under "On each row" on the
-HUD tab of the settings to show them on the row as well (off by default), either in their own
+Panel tab of the settings to show them on the row as well (off by default), either in their own
 column after the session name or in a small second line under it (the rows get taller).
 To show only one of the two, set `showModel` and `showEffort` separately in the config file.
 

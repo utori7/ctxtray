@@ -45,11 +45,18 @@ namespace CtxTray.Config
         }
 
         // [0] = 日本語 / [1] = English
+        //
+        // 書き方の約束（2026-09-27、利用者の決定）:
+        // - 最前面の小窓は 日本語「パネル」、英語 "panel"（"HUD" は使わない。キーやコマンド名の hud はそのまま）
+        // - 日本語は Windows 標準の言い回し（サインイン、実行中、非表示、既定値、フォルダー など）
+        // - 英語の項目名（メニュー・チェックボックス・選択肢・見出し）は冠詞を付けない（"Show panel"）。
+        //   補足や通知などの文は普通の英文として冠詞を付ける（"The panel takes clicks again."）
+        // - 英語の綴りは英国式（colour、grey）で README・docs とそろえる
         private static readonly Dictionary<string, string[]> Map =
             new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
             // トレイメニュー
-            { "menu.showHud",     new[] { "パネルを表示",        "Show HUD" } },
+            { "menu.showHud",     new[] { "パネルを表示",        "Show panel" } },
             // 透過中は HUD をドラッグできず右クリックも届かないので、メニューからも切り替えられるようにする。
             { "menu.clickThrough",new[] { "クリックを透過", "Pass clicks through" } },
             { "menu.autoStart",   new[] { "サインイン時に起動",   "Start at sign-in" } },
@@ -173,14 +180,14 @@ namespace CtxTray.Config
                                        "The {0} shortcut is in use by another app, so it does nothing. Choose a different key in the settings." } },
             { "hotkey.clickThroughTaken", new[] { "「クリックを透過」のショートカット {0} は他のアプリが使用中のため使用できません。設定で別のキーを選んでください。",
                                                   "The {0} click-through shortcut is in use by another app, so it does nothing. Choose a different key in the settings." } },
-            { "hotkey.clickThroughSame",  new[] { "「クリックを透過」のショートカット {0} は「いまパネルを表示する」のキーと同じため使用できません。設定で別のキーを選んでください。",
-                                                  "The {0} click-through shortcut is the same as the \"Show the HUD now\" shortcut, so it does nothing. Choose a different key in the settings." } },
+            { "hotkey.clickThroughSame",  new[] { "「クリックを透過」のショートカット {0} は「パネルを表示」のキーと同じため使用できません。設定で別のキーを選んでください。",
+                                                  "The {0} click-through shortcut is the same as the \"Show panel\" shortcut, so it does nothing. Choose a different key in the settings." } },
             { "hotkey.unparsable", new[] { "設定ファイルのショートカット「{0}」を認識できません。設定で選び直してください。",
                                            "The shortcut \"{0}\" in the config file could not be read. Choose one in the settings." } },
 
             // 設定ダイアログ
             { "set.title",         new[] { "ctxtray の設定",      "ctxtray settings" } },
-            { "set.tabHud",        new[] { "パネル",                  "HUD" } },
+            { "set.tabHud",        new[] { "パネル",                  "Panel" } },
             { "set.tabTray",       new[] { "トレイアイコン",        "Tray icon" } },
             { "set.tabThresholds", new[] { "しきい値と通知",        "Thresholds and alerts" } },
             { "set.tabGeneral",    new[] { "全般",                 "General" } },
@@ -237,11 +244,11 @@ namespace CtxTray.Config
                                            "Model and effort (e.g. Opus 5.5 · high)" } },
             { "set.modelLayout",   new[] { "表示位置",               "Layout" } },
             // 「名前」だけだと何の名前か分かりにくい（2026-09-27、利用者の指摘）。
-            { "set.layoutColumn",  new[] { "セッション名の右（パネルの幅が広がる）", "After the session name (wider panel)" } },
-            { "set.layoutTwoLine", new[] { "セッション名の下（行が高くなる）", "Under the session name (taller rows)" } },
+            { "set.layoutColumn",  new[] { "セッション名の右（パネルの幅が広がる）", "After session name (wider panel)" } },
+            { "set.layoutTwoLine", new[] { "セッション名の下（行が高くなる）", "Under session name (taller rows)" } },
             { "set.showResets",    new[] { "5時間枠のリセット時刻", "5-hour reset time" } },
             { "set.always",        new[] { "常に表示",             "Always" } },
-            { "set.autoNear",      new[] { "リセットの {0} 分前から", "From {0} min before the reset" } },
+            { "set.autoNear",      new[] { "リセットの {0} 分前から", "From {0} min before reset" } },
             { "set.never",         new[] { "表示しない",           "Never" } },
 
             { "set.secHudLook",    new[] { "外観",               "Look" } },
@@ -255,12 +262,12 @@ namespace CtxTray.Config
             { "set.nameWidthUnit", new[] { "（既定値: {0}）",        "(default {0})" } },
             { "set.opacity",       new[] { "不透明度",             "Opacity" } },
             { "set.clickThrough",  new[] { "クリックを後ろのウィンドウへ透過する",
-                                           "Let clicks pass through to the window behind" } },
+                                           "Pass clicks through to windows behind" } },
             // 透過中は窓がマウスを一切受け取らないので、ドラッグだけでなく行の詳細も右クリックも死ぬ。
             // 「ドラッグできない」としか書いていなかった頃は、残りの 2 つが壊れたように見えた（2026-09-20）。
             // 戻し方はオンにしたときパネルに出る（hud.clickThroughOnKey など）ので、ここには書かない。
             { "set.clickThroughHint", new[] { "オンの間は、パネルの移動・詳細の表示・右クリックができません。",
-                                              "While on, the HUD can't be dragged, hovered, or right-clicked." } },
+                                              "While on, the panel can't be dragged, hovered, or right-clicked." } },
 
             // 起動の節（全般タブの先頭）。自動起動は以前からトレイのメニューにだけあり、設定画面で見つからなかった（2026-09-26）。
             { "set.secStartup",    new[] { "起動",                 "Startup" } },
@@ -269,10 +276,11 @@ namespace CtxTray.Config
             { "set.autoStartHint", new[] { "スタートアップフォルダーにショートカットを作成します。",
                                            "Puts a shortcut in your Startup folder." } },
 
-            { "set.secHudControl", new[] { "パネルの操作",           "HUD controls" } },
+            { "set.secHudControl", new[] { "パネルの操作",           "Panel controls" } },
             // いまの表示状態（保存しない）。クリック透過と同じ並びにするために置いた（2026-09-26、利用者の決定）。
-            // すぐ下の「起動したときに HUD を表示する」と対の名前にして、違いを補足文なしで伝える（2026-09-27、利用者の指摘）。
-            { "set.showHud",       new[] { "いまパネルを表示する",   "Show the HUD now" } },
+            // トレイメニューと同じ言葉にし、チェックでいまの状態を示す。すぐ下の「起動時にパネルを表示する」とは
+            // 「起動時に」の有無で見分ける（「いまパネルを表示する」「Show the HUD now」は不自然だった、2026-09-27、利用者の決定）。
+            { "set.showHud",       new[] { "パネルを表示",           "Show panel" } },
             // チェックボックスの直下に字下げして置くので、何の切り替えかは書かない（2 つの欄で同じ言葉）。
             { "set.toggleKey",     new[] { "切り替えキー",       "Shortcut" } },
             { "set.keyNone",       new[] { "なし",                 "None" } },
@@ -280,11 +288,11 @@ namespace CtxTray.Config
             // 「押しても欄が変わらないキーは、ほかのアプリが先に使っている」（2026-09-18 実機で確認）は README に書く。
             // 中黒（・）だと「全部」なのか「どれか」なのか分かりにくいので、英語と同じく半角スラッシュで書く（2026-09-27、利用者の指摘）。
             { "set.keyPrompt",     new[] { "Ctrl/Alt/Shift + キー", "Ctrl/Alt/Shift + key" } },
-            { "set.clickThroughKeySame", new[] { "「いまパネルを表示する」のキーと同じです。",
-                                                 "Same as the \"Show the HUD now\" shortcut." } },
+            { "set.clickThroughKeySame", new[] { "「パネルを表示」のキーと同じです。",
+                                                 "Same as the \"Show panel\" shortcut." } },
             { "set.hotkeyTaken",   new[] { "他のアプリが使用中のため使用できません。",
                                            "Another app uses this key, so it won't work." } },
-            { "set.showAtStartup", new[] { "起動時にパネルを表示する", "Show the HUD when ctxtray starts" } },
+            { "set.showAtStartup", new[] { "起動時にパネルを表示する", "Show panel when ctxtray starts" } },
             { "set.hideFullscreen", new[] { "全画面表示のアプリを使用中は非表示にする",
                                             "Hide while a full-screen app is in use" } },
             { "set.hideFullscreenHint", new[] { "Claude Desktop が前面にあるときは非表示にしません。",
@@ -299,7 +307,7 @@ namespace CtxTray.Config
 
             { "set.secTrayValues", new[] { "表示する値",            "Values to show" } },
             { "set.valContext",    new[] { "コンテキスト（実行中で自動圧縮に最も近いセッション）",
-                                           "Context (the running session closest to compaction)" } },
+                                           "Context (running session closest to compaction)" } },
             { "set.valFiveHour",   new[] { "5時間枠",              "5-hour limit" } },
             { "set.valWeekly",     new[] { "週間枠",               "Weekly limit" } },
 
@@ -318,7 +326,7 @@ namespace CtxTray.Config
             { "set.previewHint",   new[] { "左: 実寸、右: 2 倍",  "Actual size, then 2x." } },
 
             // 設定ダイアログ: しきい値と通知
-            { "set.secThreshold",  new[] { "色が変わる使用率",        "When colors change" } },
+            { "set.secThreshold",  new[] { "色が変わる使用率",        "When colours change" } },
             { "set.warn",          new[] { "注意",                 "Warn" } },
             { "set.danger",        new[] { "危険",                 "Danger" } },
             { "set.ctxThreshold",  new[] { "コンテキスト",          "Context" } },
@@ -335,7 +343,7 @@ namespace CtxTray.Config
             // 色だけで示すと、赤と緑の区別が付きにくい人には通常と危険が見分けられない。
             // 通知領域のアイコンには入れない（小さすぎて、見えるようにするとうるさくなる）。
             { "set.levelMarks",    new[] { "注意・危険をバーの縞模様でも示す",
-                                           "Also mark warn and danger on the panel's bars" } },
+                                           "Also mark warn and danger with stripes" } },
             { "set.levelMarksHint",new[] { "注意は粗い縞、危険は細かい縞。色が見分けにくいときに。",
                                            "Wide stripes for warn, tight for danger. Helps when colours are hard to tell apart." } },
 
@@ -416,7 +424,7 @@ namespace CtxTray.Config
             { "vw.next",        new[] { "  次回リセット: {0}", "  next reset: {0}" } },
             { "vw.notYet",      new[] { "まだ絞り込めていないため表示しません",
                                         "not narrow enough yet, so not shown" } },
-            { "vw.hud",         new[] { "  推定の表記: {0}（パネルには表示しない）", "  estimate label: {0} (not shown in the HUD)" } },
+            { "vw.hud",         new[] { "  推定の表記: {0}（パネルには表示しない）", "  estimate label: {0} (not shown in the panel)" } },
             { "vw.nothing",     new[] { "(表示なし)", "(nothing)" } },
 
             // 診断（読み取りに失敗した理由）。

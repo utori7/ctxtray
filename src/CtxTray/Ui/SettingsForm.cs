@@ -621,7 +621,7 @@ namespace CtxTray.Ui
             Section("set.secHudControl");
 
             // 「いま HUD を表示する」とその切り替えのキー。下のクリック透過と同じ並びにする。
-            // 「起動したときに HUD を表示する」との違いは、名前（いま／起動したときに）で伝える（2026-09-27、利用者の指摘で補足文を外した）。
+            // 「起動時にパネルを表示する」との違いは、名前（「起動時に」の有無）で伝える（2026-09-27、利用者の指摘で補足文を外した）。
             _showHud = Check("set.showHud");
             _showHud.Click += (s, e) => _hudWanted = _showHud.Checked;
             Full(_showHud);

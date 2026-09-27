@@ -114,6 +114,9 @@ namespace CtxTray.Ui
         private readonly List<ScrollPage> _pages = new List<ScrollPage>();
         private readonly List<ThinScrollBar> _bars = new List<ThinScrollBar>();
         private readonly List<TableLayoutPanel> _grids = new List<TableLayoutPanel>();
+        private readonly List<TableLayoutPanel> _groups = new List<TableLayoutPanel>();   // 折りたたみの表（BeginGroup）
+        // Row で作った項目名と、その行の字下げ（折りたたみの中なら GroupIndent）。FitLabelColumn が列の幅を決める。
+        private readonly List<KeyValuePair<Label, int>> _rowLabels = new List<KeyValuePair<Label, int>>();
 
         /// <summary>
         /// 入力欄とその角丸の枠の対応。値の出し入れは部品に対して行い、
@@ -406,7 +409,8 @@ namespace CtxTray.Ui
             foreach (var grid in _grids)
                 tallest = Math.Max(tallest, grid.GetPreferredSize(new Size(inner, 0)).Height);
 
-            var wanted = _tabStrip.Height + _buttons.Height + tallest + S(4 + 12) + S(8);
+            // ページの上下の余白は表の Padding に入っている（BeginPage）ので、tallest に含まれる。
+            var wanted = _tabStrip.Height + _buttons.Height + tallest + S(8);
             var limit = (int)(_screen.WorkingArea.Height * 0.9);
             ClientSize = new Size(ClientSize.Width, Math.Min(wanted, limit));
             if (center) CenterOnScreen();
@@ -480,6 +484,7 @@ namespace CtxTray.Ui
             BuildGeneralPage();
 
             _buttons = BuildButtons();
+            FitLabelColumn();
 
             root.Controls.Add(_tabStrip, 0, 0);
             root.Controls.Add(_pageHost, 0, 1);
@@ -744,6 +749,13 @@ namespace CtxTray.Ui
 
             _hysteresis = Number(0, 50);
             Row("set.hysteresis", Flow(Text_("set.hysteresisPre"), _hysteresis, Text_("set.hysteresisUnit")));
+            // 例の数字は欄の値に合わせる（固定の例だと、値を変えたときに説明と食い違う）。
+            // 例はこの値が効くコンテキスト（既定の注意 75%）で書く。5時間枠・週間枠はリセットで必ず 0% に戻るので効かない。
+            var hysteresisHint = Hint(null);
+            EventHandler showExample = (s, e) =>
+                hysteresisHint.Text = Strings.Format("set.hysteresisHint", Math.Max(0, 75 - (int)_hysteresis.Value));
+            _hysteresis.ValueChanged += showExample;
+            showExample(null, EventArgs.Empty);
             _minRepeat = Number(0, 1440);
             Row("set.minRepeat", Flow(_minRepeat, Text_("set.minutes")));
         }
@@ -1051,9 +1063,12 @@ namespace CtxTray.Ui
             // Dock = Fill にせず、_pageHost.Resize で大きさを合わせる（LayoutPages）。
             // 標準のスクロールバーを _pageHost のクリップ範囲の外へ押し出すために、
             // このパネルだけ横幅を広く取るため。
+            // 上下の余白はページではなく中の表に持たせる。WinForms の AutoScroll はページの Padding を
+            // スクロールの範囲に数えないので、ページに持たせるといちばん下までスクロールしても
+            // 最後の行が下端に張り付いた（詳細設定の「最大 [20] 件」、2026-09-27、利用者の指摘）。
             var page = new ScrollPage
             {
-                Padding = P(16, 4, 16, 12),
+                Padding = P(16, 0, 16, 0),
                 Visible = false,
             };
 
@@ -1063,6 +1078,7 @@ namespace CtxTray.Ui
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 ColumnCount = 2,
+                Padding = P(0, 4, 0, 12),
             };
             _grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(LabelColumn)));
             _grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -1157,15 +1173,40 @@ namespace CtxTray.Ui
             {
                 Text = Strings.Get(labelKey),
                 AutoSize = true,
-                // 英語のラベルは長いので、列からはみ出さず折り返させる。
-                // 折りたたみの中（BeginGroup）は字下げの分だけ列が狭いので、いまの表の列の幅から決める。
+                // 列の幅は組み立ての最後に FitLabelColumn が決め直す。ここでは仮の幅で止めておく。
                 MaximumSize = new Size(Math.Max(S(40), (int)_grid.ColumnStyles[0].Width - S(8)), 0),
                 Padding = P(0, 7, 8, 0),
             };
             _grid.Controls.Add(label, 0, row);
             _grid.Controls.Add(Place(control), 1, row);
             _grid.RowCount++;
+            _rowLabels.Add(new KeyValuePair<Label, int>(label, _groupParent != null ? GroupIndent : 0));
             return label;
+        }
+
+        /// <summary>
+        /// 項目名の列の幅を、いちばん長い項目名が 1 行に収まる幅にそろえる（全タブ・折りたたみの中も同じ位置）。
+        ///
+        /// ★ 決め打ちの幅（LabelColumn）だと、英語や大きい文字サイズで項目名が 2〜3 行に折り返した
+        ///   （「Session name width」「When auto-compaction happens」など、2026-09-27、利用者の指摘）。
+        ///   決め打ちの幅は下限として残す。日本語の今の項目名はすべて収まるので、日本語では列の位置が変わらない。
+        /// </summary>
+        private void FitLabelColumn()
+        {
+            var column = S(LabelColumn);
+            foreach (var pair in _rowLabels)
+            {
+                var label = pair.Key;
+                var text = TextRenderer.MeasureText(label.Text, Font, new Size(int.MaxValue, 0), TextFormatFlags.NoPrefix).Width;
+                // Row の MaximumSize（列の幅 − S(8)）と、折りたたみの字下げの分を足し戻す。
+                // ちょうどの幅だと丸めの差で折り返しうるので、少しだけ余らせる。
+                column = Math.Max(column, text + label.Padding.Horizontal + S(8) + pair.Value + S(4));
+            }
+
+            foreach (var grid in _grids) grid.ColumnStyles[0].Width = column;
+            foreach (var group in _groups) group.ColumnStyles[0].Width = column - GroupIndent;
+            foreach (var pair in _rowLabels)
+                pair.Key.MaximumSize = new Size(Math.Max(S(40), column - pair.Value - S(8)), 0);
         }
 
         /// <summary>ラベルの列を使わず、行いっぱいに置く。</summary>
@@ -1340,9 +1381,11 @@ namespace CtxTray.Ui
         /// 折りたたむ行の組み立てを始める。EndGroup までの Row・Full・Hint は入れ子の表に入る。
         /// 入れ子の表は字下げし、ラベルの列はその分だけ狭めて、入力欄の位置を外の表と揃える。
         /// </summary>
+        private int GroupIndent { get { return S(18); } }
+
         private TableLayoutPanel BeginGroup()
         {
-            var indent = S(18);
+            var indent = GroupIndent;
             var group = new TableLayoutPanel
             {
                 AutoSize = true,
@@ -1355,6 +1398,7 @@ namespace CtxTray.Ui
             group.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(LabelColumn) - indent));
             group.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             Hold(group);
+            _groups.Add(group);
 
             _groupParent = _grid;
             _grid = group;
@@ -1663,6 +1707,8 @@ namespace CtxTray.Ui
                 _pages.Clear();
                 _bars.Clear();
                 _grids.Clear();
+                _groups.Clear();
+                _rowLabels.Clear();
                 _frames.Clear();
                 _swatches.Clear();
                 _limitPickers.Clear();

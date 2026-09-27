@@ -170,7 +170,7 @@ namespace CtxTray
                 Console.WriteLine("  ctxtray                     引数なしで常駐（トレイ + パネル）");
                 Console.WriteLine("  ctxtray --status            状態を表形式で 1 回表示");
                 Console.WriteLine("  ctxtray --json              状態を JSON で出力");
-                Console.WriteLine("  ctxtray --no-external       Desktop のタブだけを対象にする");
+                Console.WriteLine("  ctxtray --no-external       Claude Desktop のタブだけを対象にする");
                 Console.WriteLine("  ctxtray --include-archived  終了済みのタブも含める");
                 Console.WriteLine("  ctxtray --verify-weekly     週間枠リセットの推定過程を表示");
                 Console.WriteLine("  ctxtray --icon-preview [dir] トレイアイコンのプレビューを PNG で出力");
@@ -183,7 +183,7 @@ namespace CtxTray
             {
                 Console.WriteLine("ctxtray - read Claude Desktop / Claude Code status (read-only)");
                 Console.WriteLine();
-                Console.WriteLine("  ctxtray                     run resident (tray + HUD)");
+                Console.WriteLine("  ctxtray                     run resident (tray + panel)");
                 Console.WriteLine("  ctxtray --status            print the current state as a table");
                 Console.WriteLine("  ctxtray --json              print the current state as JSON");
                 Console.WriteLine("  ctxtray --no-external       only Claude Desktop tabs");

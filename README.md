@@ -7,7 +7,7 @@ Always-visible context and rate-limit readout for Claude Code on Windows.
 Claude Desktop already shows your context usage and rate limits — but only after you
 move the mouse to the indicator and click it. That breaks your train of thought.
 `ctxtray` keeps the same numbers on screen all the time: a small always-on-top panel
-plus bars drawn into the notification-area icon.
+plus bars drawn into the tray icon.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ctxtray-hud-en-dark.png">
@@ -34,7 +34,7 @@ change when you restart or resume the session. A conversation open in both Claud
 Desktop and VS Code is listed once, as the Claude Desktop tab.
 
 It only shows numbers it can back up. Estimates that could not be verified — turns left
-until compaction, the weekly reset day — are deliberately left out.
+until auto-compaction, the weekly reset day — are deliberately left out.
 
 ## Install
 
@@ -42,8 +42,8 @@ until compaction, the weekly reset day — are deliberately left out.
 2. Move `ctxtray.exe` to a folder you will keep, for example `%LOCALAPPDATA%\Programs\ctxtray\`.
    The sign-in shortcut (step 4) points at this location.
 3. Run it. There is no installer and no runtime to install.
-4. Right-click the tray icon → **Start at sign-in** if you want it to run every time you sign in
-   (or turn on **Start ctxtray when you sign in to Windows** under **General** in the settings).
+4. Right-click the tray icon and select **Start at sign-in** if you want it to run every time you sign in
+   (or turn on **Start ctxtray when you sign in to Windows** on the **General** tab in Settings).
    If you move `ctxtray.exe` later, start it from the new place: **Start at sign-in** then shows
    unchecked (the shortcut still points at the old place), and turning it on again fixes it.
 
@@ -51,37 +51,37 @@ Requirements: Windows 10 version 1903 or later, or Windows 11.
 (.NET Framework 4.8 is part of the OS on those versions.)
 
 The binary is not code-signed, so SmartScreen will warn on first run:
-**More info → Run anyway**. You can check the download against the `.sha256` file next to it
+**More info > Run anyway**. You can check the download against the `.sha256` file next to it
 on the release page. If you would rather not trust a prebuilt binary,
 [build it yourself](#building).
 
 ctxtray does not check for updates (by default it makes no network connections at all; see
 [below](#what-it-reads-what-it-writes-and-what-it-does-not-do)), so it cannot tell you about new versions.
-To hear about them, use **Watch → Custom → Releases** at the top of this repository.
+To hear about them, use **Watch > Custom > Releases** at the top of this repository.
 
 ## Using it
 
-| | |
+| Action | Result |
 |---|---|
 | `Ctrl+Alt+C` | show / hide the panel (configurable, or none) |
-| a shortcut you choose | pass clicks through the panel, or stop (none by default; set one in the settings) |
-
-To change a shortcut, open the settings (**Panel** tab), click its box and press a key together with Ctrl, Alt, or Shift;
-Delete sets it to none. If the box does not change when you press a key, another app has already taken that key.
+| a shortcut you choose | pass clicks through the panel, or stop (none by default; set one in Settings) |
 | drag | move the panel |
 | hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, and when the value was recorded |
 | click the tray icon | show / hide the panel |
 | right-click the tray icon or the panel | show / hide panel, pass clicks through, start at sign-in, settings, refresh now, open config file, about, exit |
 
+To change a shortcut, open Settings (**Panel** tab), click its box and press a key together with Ctrl, Alt, or Shift;
+Delete sets it to none. If the box does not change when you press a key, another app has already taken that key.
+
 **Pass clicks through** makes the panel ignore the mouse entirely: you can click what is
 behind it, but you can no longer drag it, hover a row for details, or right-click it.
-Turn it back off from the tray icon's menu, or with the click-through shortcut if you set one.
+Turn it back off from the tray menu, or with the click-through shortcut if you set one.
 The panel says how to undo it for a few seconds whenever you turn it on.
 
 A session name in grey means its Claude Code process is not running right now
 (for example, a tab that has been idle). Grey sessions are left out of the tray icon and
 the notifications: their usage cannot grow until they run again. You can hide them
-altogether in the settings.
+altogether in Settings.
 
 Click **show N more** at the right of the heading to see the rows that are currently
 filtered out, and click it again to fold them away. Nothing is saved, and the tray icon
@@ -90,13 +90,13 @@ Desktop is not running and those two rows are the last values it recorded.
 
 In the panel, warn and danger are shown by diagonal stripes on the bar as well as by
 colour — wider for warn, tighter for danger — so the level does not depend on telling red
-from green. It can be turned off in the settings. The tray icon is too small for stripes
+from green. It can be turned off in Settings. The tray icon is too small for stripes
 to read, so it uses colour alone.
 
 The panel stays on screen: when it sits in the lower half of the screen it grows upward
 as sessions come and go, and it is never pushed past the edge. While a video, a
 presentation, or a game is full-screen, the panel hides itself and comes back afterwards
-(it stays visible when Claude Desktop itself is in front). Both can be turned off in the settings.
+(it stays visible when Claude Desktop itself is in front). Both can be turned off in Settings.
 
 ### The tray icon
 
@@ -104,7 +104,7 @@ The tray icon shows amounts as bars — hover over it for the exact values.
 Each value has its own colour (context blue, 5-hour green, weekly violet), and a value
 that crosses a threshold turns amber, then red. The panel uses the same colours, and
 both list the values in the same order: context, 5-hour, weekly.
-Two arrangements, switchable in settings:
+Two arrangements, switchable in Settings:
 
 - **One combined icon** (default) — one horizontal bar per value, top to bottom:
   context, 5-hour, weekly.
@@ -119,7 +119,7 @@ You choose which values to show, and the choice applies to both arrangements.
 
 Where an icon shows context, it uses the **running** session with the **highest percentage**.
 The percentage is a share of that model's own context window, and auto-compaction happens
-at the same share for every model, so this is also the session closest to compaction.
+at the same share for every model, so this is also the session closest to auto-compaction.
 Hidden and grey sessions are not considered; if
 no session is running, the context bar is empty.
 
@@ -127,7 +127,7 @@ no session is running, the context bar is empty.
 
 Claude Desktop samples your usage every 5–15 minutes and only while you are using it.
 While you are working, the number shown can therefore trail your real usage: measured
-growth reaches 2.8 %/min, so a 7-minute-old sample can understate the 5-hour window by
+growth reaches 2.8 points/min, so a 7-minute-old sample can understate the 5-hour limit by
 ~20 points. `ctxtray --json` reports this as `"freshness": "behind"`.
 
 **Greyed out means "for reference only"** — Claude Desktop is not running, or nothing has
@@ -147,8 +147,8 @@ not precise enough to trust, so it is not shown in the panel or the tooltip.
 
 ## Configuration
 
-Tray menu → **Settings…** opens a dialog with five tabs (panel, tray icon, thresholds and
-alerts, models, general). Everything is stored in `%LOCALAPPDATA%\ctxtray\config.json`; you can
+Tray menu > **Settings…** opens a dialog with five tabs (**Panel**, **Tray icon**,
+**Thresholds and notifications**, **Models**, **General**). Everything is stored in `%LOCALAPPDATA%\ctxtray\config.json`; you can
 also edit that file directly — **save it and changes apply immediately**, no restart.
 If the file cannot be read while ctxtray is running, the previous settings stay in effect
 until you fix it.
@@ -170,11 +170,11 @@ notifications together. There is no separate set of numbers for each.
   },
   "notify": {
     "enabled": { "context": true, "fiveHour": true, "weekly": true },
-    // After an alert, the value has to fall this many points below the
-    // threshold before crossing it again alerts again.
+    // After a notification, the value has to fall this many points below the
+    // threshold before crossing it again notifies you again.
     "hysteresisPts": 10,
-    // Minimum time between alerts for one value. A rise to a higher level
-    // than the last alert (warn -> danger) is reported straight away.
+    // Minimum time between notifications for one value. A rise to a higher level
+    // than the last notification (warn -> danger) is reported straight away.
     "minRepeatMinutes": 30
   },
   "tray": {
@@ -195,7 +195,7 @@ notifications together. There is no separate set of numbers for each.
     "showTokens": false,         // e.g. 284k/1M
     "showModel": false,          // model name on the row (e.g. Opus 5.5)
     "showEffort": false,         // effort on the row (e.g. high)
-    "modelLayout": "column",     // "column" (own column, wider panel) | "twoLine" (under the name, taller rows)
+    "modelLayout": "column",     // "column" (own column, wider panel) | "twoLine" (under the session name, taller rows)
     "showResets": "auto",        // "always" | "auto" | "never" (5-hour reset time)
     "opacity": 0.9,
     "clickThrough": false,
@@ -222,12 +222,12 @@ notifications together. There is no separate set of numbers for each.
 ### Model and effort
 
 Each session's model and effort always appear in the details when you hover over a row
-(for example `Opus 5.5 · high`). Turn on **Model and effort** under "On each row" on the
-Panel tab of the settings to show them on the row as well (off by default), either in their own
+(for example `Opus 5.5 · high`). Turn on **Model and effort** under **On each row** on the
+**Panel** tab in Settings to show them on the row as well (off by default), either in their own
 column after the session name or in a small second line under it (the rows get taller).
 To show only one of the two, set `showModel` and `showEffort` separately in the config file.
 
-The panel's width is the session-name column ("Name width" under "More settings") plus whatever
+The panel's width is the session-name column (**Session name width** under **Show more settings**) plus whatever
 you turn on — the bar, token counts, the model column. Turning any of them on never squeezes
 the names; the panel gets wider instead.
 
@@ -248,16 +248,16 @@ The built-in table holds 14 models, each checked against its page in the officia
 (listed in [docs/how-it-works.md](docs/how-it-works.md#denominators)).
 When you switch to a newer model, either of these brings the percentage back:
 
-- **Pick its window in Settings → Models** (200K or 1M). Other values go in `modelLimits`.
-- **Turn on "Look up unknown models in the official docs"** (off by default). Only when
-  ctxtray meets a model it doesn't know, it reads that model's public docs page on
+- Pick its context window in **Settings > Models** (200K or 1M). Other values go in `modelLimits`.
+- Turn on **Look up unknown models in the official docs** (off by default). Only when
+  ctxtray meets a model it does not know, it reads that model's public docs page on
   `platform.claude.com` once (for example `…/docs/en/models/opus-5-5/overview.md`) and uses
-  the window only if the page's model ID matches. A model that isn't listed is checked again
+  the context window only if the page's model ID matches. A model that is not listed is checked again
   after 24 hours. Only the page URL is requested; no conversation, account, or sign-in data is used.
 
-The first time you use a model with an unknown window, ctxtray tells you once with a
-notification (not if context notifications are off). The Models tab lists every known
-window and where it came from (built in, official docs, or set by you).
+The first time you use a model with an unknown context window, ctxtray tells you once with a
+notification (not if context notifications are off). The **Models** tab lists every known
+context window and where it came from (built-in, official docs, or set by you).
 
 ## Command line
 
@@ -267,9 +267,9 @@ ctxtray --status            print the current state as a table
 ctxtray --json              print the current state as JSON
 ctxtray --no-external       only Claude Desktop tabs
 ctxtray --include-archived  include closed tabs
-ctxtray --verify-weekly     show how the weekly reset estimate was derived
-ctxtray --icon-preview DIR  write a PNG sheet of every tray icon style to DIR
-ctxtray --hud-preview DIR   write PNGs of the panel, filled with made-up data, to DIR
+ctxtray --verify-weekly     show how the weekly reset was derived
+ctxtray --icon-preview [dir] write a PNG sheet of the tray icons
+ctxtray --hud-preview [dir]  write PNGs of the panel with made-up data
 ctxtray --version           print the version
 ```
 
@@ -310,8 +310,8 @@ It writes only its own files:
   the official docs, and which unknown models you have already been told about
 - `ctxtray.lnk` in your Startup folder — only while **Start at sign-in** is on
 
-**By default it makes no network connections at all.** Only if you turn on "Look up unknown
-models in the official docs" does it read
+**By default it makes no network connections at all.** Only if you turn on **Look up unknown
+models in the official docs** does it read
 `https://platform.claude.com/docs/en/models/<model>/overview.md` (public documentation),
 once per unknown model.
 
@@ -330,7 +330,7 @@ once per unknown model.
 
 1. Right-click the tray icon and turn **Start at sign-in** off (or delete `ctxtray.lnk`
    from the folder that opens with `shell:startup`).
-2. Right-click the tray icon → **Exit**.
+2. Right-click the tray icon and select **Exit**.
 3. Delete `ctxtray.exe`.
 4. Delete the `%LOCALAPPDATA%\ctxtray` folder.
 
@@ -339,18 +339,18 @@ once per unknown model.
 - **These file formats are internal to Claude.** They can change in any update. ctxtray
   degrades to "unknown" instead of crashing or guessing, but a future release may need a fix.
 - **Context is one turn behind.** Token counts are written when a response completes.
-- **The compaction point is Claude Code's documented default (0.967).** Models with a 1M
+- **The auto-compaction point is Claude Code's documented default (0.967).** Models with a 1M
   context window auto-compact at about 967K tokens
   ([Claude Code docs](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)).
   For models that compact only at the full window (such as 200K models), the "tokens until
   auto-compaction" figure is therefore slightly low. If you changed the point with
   `/autocompact`, set `compactThreshold` to match — ctxtray does not read Claude Code's
-  settings. This value drives the "tokens until auto-compaction" figure and the settings
-  warning for thresholds at or above it; the context colours themselves use the panel's
+  settings. This value drives the "tokens until auto-compaction" figure and the warning in
+  Settings for thresholds at or above it; the context colours themselves use the panel's
   percentage (up to 0.3.0 they were measured against this point).
 - **Unknown models show no percentage (`?%`).** A wrong denominator is worse than an honest
-  blank, so ctxtray does not guess from a similarly named model either. Pick the window in
-  Settings → Models, or turn on fetching from the official docs.
+  blank, so ctxtray does not guess from a similarly named model either. Pick the context window in
+  **Settings > Models**, or turn on fetching from the official docs.
 - Notifications use balloon tips, so they do not persist in the Action Center and are
   suppressed by Focus Assist.
 - **The panel cannot be read by a screen reader.** It is drawn as a single surface on a
@@ -373,7 +373,7 @@ dotnet build src/CtxTray/CtxTray.csproj -c Release
 Output: `src/CtxTray/bin/Release/ctxtray.exe`. The exe runs on its own; nothing else from
 that folder needs to be copied.
 
-Tests for the parsing and alerting logic live in `tests/CtxTray.Tests` (a plain console
+Tests for the parsing and notification logic live in `tests/CtxTray.Tests` (a plain console
 program, no test framework). It prints the results and exits with 1 if anything failed:
 
 ```

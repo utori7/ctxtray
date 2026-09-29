@@ -771,8 +771,8 @@ namespace CtxTray.Ui
                                           _config.HudAnchorBottom, Size, work);
         }
 
-        /// <summary>位置が保存されているか（-1 は未設定＝右下の隅）。</summary>
-        private bool HasSavedPosition { get { return _config.HudX >= 0 && _config.HudY >= 0; } }
+        /// <summary>位置が保存されているか（未設定なら右下の隅）。座標はマイナスでも有効。</summary>
+        private bool HasSavedPosition { get { return _config.HasHudPosition; } }
 
         /// <summary>保存された座標といまの大きさから、置こうとしている範囲。</summary>
         private Rectangle SavedBounds()
@@ -805,6 +805,7 @@ namespace CtxTray.Ui
         /// </summary>
         public void ResetPosition()
         {
+            _config.HasHudPosition = false;
             _config.HudX = -1;
             _config.HudY = -1;
             _config.HudAnchorBottom = false;
@@ -821,10 +822,14 @@ namespace CtxTray.Ui
         /// </summary>
         private void SavePosition()
         {
+            // はみ出して離されたら、まず作業領域の内側へ押し戻す。はみ出した座標は保存しない。
             var work = Screen.FromRectangle(Bounds).WorkingArea;
+            Location = HudPlacement.Place(Left, Top, false, Size, work);
+
             var anchorBottom = HudPlacement.AnchorBottom(Bounds, work);
             var anchor = HudPlacement.Anchor(Bounds, anchorBottom);
 
+            _config.HasHudPosition = true;
             _config.HudX = anchor.X;
             _config.HudY = anchor.Y;
             _config.HudAnchorBottom = anchorBottom;

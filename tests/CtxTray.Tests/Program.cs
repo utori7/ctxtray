@@ -261,6 +261,27 @@ namespace CtxTray.Tests
             Check(back.HudAnchorBottom && back.HideStoppedSessions && !back.HideWhenFullscreen,
                   "the three settings survive a save");
             Equal(40, back.HudY, "the saved position survives too");
+            Check(old.HasHudPosition && back.HasHudPosition, "hudX / hudY mean a saved position");
+
+            // 位置の未設定（2026-09-29）: マイナスの座標は有効な位置（左端・左のモニタ）。
+            // 以前は -1 を未設定の印にしてマイナスを未設定と見ていたので、左端に置くと右下の隅へ飛んでいた。
+            File.WriteAllText(path, "{ \"display\": { \"hudX\": -1800, \"hudY\": 300 } }", new UTF8Encoding(false));
+            var left = AppConfig.Load(out problem, out failed);
+            Check(left.HasHudPosition, "a negative x is still a saved position");
+            Check(left.Save(), "save succeeds");
+            var leftBack = AppConfig.Load(out problem, out failed);
+            Check(leftBack.HasHudPosition && leftBack.HudX == -1800 && leftBack.HudY == 300,
+                  "a negative x survives a save");
+
+            File.WriteAllText(path, "{ \"display\": { \"hudX\": -1, \"hudY\": -1 } }", new UTF8Encoding(false));
+            var legacy = AppConfig.Load(out problem, out failed);
+            Check(!legacy.HasHudPosition, "the old -1, -1 still means no position");
+            Check(legacy.Save(), "save succeeds");
+            Check(!File.ReadAllText(path).Contains("\"hudX\""), "no position means no hudX / hudY in the file");
+            Check(!AppConfig.Load(out problem, out failed).HasHudPosition, "and it stays unset");
+
+            File.WriteAllText(path, "{ \"display\": { \"theme\": \"dark\" } }", new UTF8Encoding(false));
+            Check(!AppConfig.Load(out problem, out failed).HasHudPosition, "no hudX / hudY means no position");
 
             // モデルとエフォート（2026-09-26）: 既定はオフ。行の段数（2026-09-29）: 既定は 1 段。知らない形は既定のまま。
             Check(!old.HudShowModel && !old.HudShowEffort, "model and effort are off by default");

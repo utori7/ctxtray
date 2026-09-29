@@ -837,6 +837,7 @@ namespace CtxTray.Ui
 
             // 位置は実行中の値を優先する（ドラッグ直後に設定ファイルで巻き戻さない）。
             // 位置の基準（上端／下端）も位置の一部なので一緒に持ち越す。
+            loaded.HasHudPosition = _config.HasHudPosition;
             loaded.HudX = _config.HudX;
             loaded.HudY = _config.HudY;
             loaded.HudAnchorBottom = _config.HudAnchorBottom;

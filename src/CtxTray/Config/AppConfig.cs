@@ -184,7 +184,14 @@ namespace CtxTray.Config
 
         public bool HudShowAtStartup = true;
 
-        // HUD の位置。-1 は「未設定（右下に置く）」。
+        /// <summary>
+        /// HUD の位置が保存されているか。false なら右下の隅に置く（HudX / HudY は使わない）。
+        ///
+        /// 以前は HudX / HudY の -1 を「未設定」の印にして、マイナスなら未設定と見ていた。
+        /// そのため左端からはみ出して置く（主モニタより左のモニタに置く）と未設定扱いになり、
+        /// 右下の隅へ飛んでいた（2026-09-29）。ファイルでは hudX / hudY のキーが無ければ未設定。
+        /// </summary>
+        public bool HasHudPosition = false;
         public int HudX = -1;
         public int HudY = -1;
 
@@ -456,8 +463,13 @@ namespace CtxTray.Config
                 Opacity = Dbl(display, "opacity", Opacity);
                 ClickThrough = Json.Bool(display, "clickThrough", ClickThrough);
                 ShowResets = Json.Str(display, "showResets") ?? ShowResets;
-                HudX = (int)Json.Long(display, "hudX", HudX);
-                HudY = (int)Json.Long(display, "hudY", HudY);
+                // 位置は hudX と hudY の両方があるときだけ。0.7.0 までは -1, -1 を未設定として書いていた。
+                if (display.ContainsKey("hudX") && display.ContainsKey("hudY"))
+                {
+                    HudX = (int)Json.Long(display, "hudX", HudX);
+                    HudY = (int)Json.Long(display, "hudY", HudY);
+                    HasHudPosition = !(HudX == -1 && HudY == -1);
+                }
                 // キーが無い旧設定は上端基準（これまでと同じ意味）で読む。
                 HudAnchorBottom = string.Equals(Json.Str(display, "hudAnchor"), "bottom",
                                                 StringComparison.OrdinalIgnoreCase);
@@ -549,6 +561,31 @@ namespace CtxTray.Config
             var modelLimits = new JObj();
             foreach (var kv in ModelLimits) modelLimits.Add(kv.Key, kv.Value);
 
+            var display = new JObj()
+                .Add("theme", Theme)
+                .Add("opacity", Opacity)
+                .Add("clickThrough", ClickThrough)
+                .Add("textSize", HudTextSize)
+                .Add("nameWidth", HudNameWidth)
+                .Add("showRateLimits", HudShowRateLimits)
+                .Add("showSessions", HudShowSessions)
+                .Add("hideIdleSessions", HideIdleSessions)
+                .Add("idleHours", IdleHours)
+                .Add("hideStoppedSessions", HideStoppedSessions)
+                .Add("hideWhenFullscreen", HideWhenFullscreen)
+                .Add("showBar", HudShowBar)
+                .Add("showTokens", HudShowTokens)
+                .Add("showModel", HudShowModel)
+                .Add("showEffort", HudShowEffort)
+                .Add("rowLayout", HudRowLayout)
+                .Add("showResets", ShowResets)
+                .Add("resetLeadMinutes", new JObj()
+                    .Add("fiveHour", ResetLeadFiveHourMinutes))
+                .Add("showAtStartup", HudShowAtStartup);
+            // 未設定なら位置のキーを書かない（キーが無い＝右下の隅）。
+            if (HasHudPosition) display.Add("hudX", HudX).Add("hudY", HudY);
+            display.Add("hudAnchor", HudAnchorBottom ? "bottom" : "top");
+
             var root = new JObj()
                 .Add("thresholds", new JObj()
                     .Add("context", new JObj().Add("warn", ContextWarn).Add("danger", ContextDanger))
@@ -571,30 +608,7 @@ namespace CtxTray.Config
                     .Add("mode", TrayMode)
                     .Add("label", TrayLabel)
                     .Add("values", OrderedTrayValues().ToArray()))
-                .Add("display", new JObj()
-                    .Add("theme", Theme)
-                    .Add("opacity", Opacity)
-                    .Add("clickThrough", ClickThrough)
-                    .Add("textSize", HudTextSize)
-                    .Add("nameWidth", HudNameWidth)
-                    .Add("showRateLimits", HudShowRateLimits)
-                    .Add("showSessions", HudShowSessions)
-                    .Add("hideIdleSessions", HideIdleSessions)
-                    .Add("idleHours", IdleHours)
-                    .Add("hideStoppedSessions", HideStoppedSessions)
-                    .Add("hideWhenFullscreen", HideWhenFullscreen)
-                    .Add("showBar", HudShowBar)
-                    .Add("showTokens", HudShowTokens)
-                    .Add("showModel", HudShowModel)
-                    .Add("showEffort", HudShowEffort)
-                    .Add("rowLayout", HudRowLayout)
-                    .Add("showResets", ShowResets)
-                    .Add("resetLeadMinutes", new JObj()
-                        .Add("fiveHour", ResetLeadFiveHourMinutes))
-                    .Add("showAtStartup", HudShowAtStartup)
-                    .Add("hudX", HudX)
-                    .Add("hudY", HudY)
-                    .Add("hudAnchor", HudAnchorBottom ? "bottom" : "top"))
+                .Add("display", display)
                 .Add("externalSessions", new JObj()
                     .Add("enabled", ExternalSessionsEnabled)
                     .Add("max", ExternalSessionsMax))

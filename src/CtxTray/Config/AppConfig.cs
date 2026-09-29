@@ -146,12 +146,15 @@ namespace CtxTray.Config
         public bool HudShowEffort = false;
 
         /// <summary>
-        /// 行に出すときの形。column = 名前の後ろに専用の列（その分パネルを広げる）、
-        /// twoLine = 名前の下に小さく 2 段目（幅は変えず、行が高くなる）。
-        /// 実寸の見本で 4 案を見比べ、この 2 つを選べるようにした（2026-09-26 利用者の決定）。
+        /// セッションの行の段数。モデルとエフォート・トークン数の両方に効く。
+        /// oneLine = どれも 1 段に並べ、オンにした分だけパネルが広がる。
+        /// twoLine = 2 段目に小さく出す（モデルとエフォートは名前の下、トークン数は % の下に右揃え）。幅は増えず、行が高くなる。
+        /// 0.6.x まではモデルとエフォートだけの設定（modelLayout: column / twoLine）だった。
+        /// トークン数も 2 段目に置けるようにし、片方だけオンでも効く「1 段／2 段」にした
+        /// （2026-09-29、実寸の見本で利用者が決定。modelLayout は読み込み時に引き継ぐ）。
         /// </summary>
-        public string HudModelLayout = "column";
-        public static readonly string[] ModelLayouts = { "column", "twoLine" };
+        public string HudRowLayout = "oneLine";
+        public static readonly string[] RowLayouts = { "oneLine", "twoLine" };
 
         // しばらく使っていないセッションを隠す。何週間も触っていないタブが並ぶと
         // 行が増えるだけで役に立たないため（利用者の指摘、2026-09-15）。
@@ -480,9 +483,13 @@ namespace CtxTray.Config
                 HudShowModel = Json.Bool(display, "showModel", HudShowModel);
                 HudShowEffort = Json.Bool(display, "showEffort", HudShowEffort);
                 // 知らない値は既定のまま（手で書き換えた設定で行が描けなくならないように）。
-                var layout = Json.Str(display, "modelLayout");
-                foreach (var l in ModelLayouts)
-                    if (string.Equals(l, layout, StringComparison.OrdinalIgnoreCase)) HudModelLayout = l;
+                // 0.6.x までの modelLayout（column / twoLine）は、rowLayout が無いときだけ引き継ぐ。
+                var layout = display.ContainsKey("rowLayout")
+                    ? Json.Str(display, "rowLayout")
+                    : (string.Equals(Json.Str(display, "modelLayout"), "twoLine", StringComparison.OrdinalIgnoreCase)
+                        ? "twoLine" : null);
+                foreach (var l in RowLayouts)
+                    if (string.Equals(l, layout, StringComparison.OrdinalIgnoreCase)) HudRowLayout = l;
                 HudShowAtStartup = display.ContainsKey("showAtStartup")
                     ? Json.Bool(display, "showAtStartup", HudShowAtStartup)
                     : Json.Bool(display, "hudVisible", HudShowAtStartup);
@@ -580,7 +587,7 @@ namespace CtxTray.Config
                     .Add("showTokens", HudShowTokens)
                     .Add("showModel", HudShowModel)
                     .Add("showEffort", HudShowEffort)
-                    .Add("modelLayout", HudModelLayout)
+                    .Add("rowLayout", HudRowLayout)
                     .Add("showResets", ShowResets)
                     .Add("resetLeadMinutes", new JObj()
                         .Add("fiveHour", ResetLeadFiveHourMinutes))

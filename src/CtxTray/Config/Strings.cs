@@ -251,10 +251,11 @@ namespace CtxTray.Config
             // 片方だけにしたいときは設定ファイルの showModel／showEffort で分けられる。
             { "set.showModel",     new[] { "モデルとエフォート（例: Opus 5.5 · high）",
                                            "Model and effort (e.g. Opus 5.5 · high)" } },
-            { "set.modelLayout",   new[] { "表示位置",               "Layout" } },
-            // 「名前」だけだと何の名前か分かりにくい（2026-09-27、利用者の指摘）。
-            { "set.layoutColumn",  new[] { "セッション名の右（パネルの幅が広がる）", "After session name (wider panel)" } },
-            { "set.layoutTwoLine", new[] { "セッション名の下（行が高くなる）", "Under session name (taller rows)" } },
+            // モデルとエフォート・トークン数の両方に効く（2026-09-29、利用者の決定）。以前はモデルとエフォートだけの
+            // 「表示位置: セッション名の右／下」だった。2 段目のどこに何が出るかは見れば分かるので選択肢に書かない。
+            { "set.rowLayout",     new[] { "並べ方",                 "Layout" } },
+            { "set.layoutOneLine", new[] { "1 段（パネルの幅が広がる）", "One line (wider panel)" } },
+            { "set.layoutTwoLine", new[] { "2 段（行が高くなる）",     "Two lines (taller rows)" } },
             // 対象が 5時間枠だけであることを名前で伝える。項目名の列が最長の項目名に合わせて広がるようになったので、
             // 「リセット時刻」＋補足から戻した（日本語の入力欄は 54px 右へ寄る。2026-09-28、利用者の決定）。
             { "set.showResets",    new[] { "5時間枠のリセット時刻", "5-hour reset time" } },

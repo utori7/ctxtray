@@ -262,20 +262,32 @@ namespace CtxTray.Tests
                   "the three settings survive a save");
             Equal(40, back.HudY, "the saved position survives too");
 
-            // モデルとエフォート（2026-09-26）: 既定はオフ・専用の列。知らない形は既定のまま。
+            // モデルとエフォート（2026-09-26）: 既定はオフ。行の段数（2026-09-29）: 既定は 1 段。知らない形は既定のまま。
             Check(!old.HudShowModel && !old.HudShowEffort, "model and effort are off by default");
-            Equal("column", old.HudModelLayout, "the column layout by default");
-            File.WriteAllText(path, "{ \"display\": { \"showModel\": true, \"showEffort\": true, \"modelLayout\": \"twoline\" } }",
+            Equal("oneLine", old.HudRowLayout, "one line by default");
+            File.WriteAllText(path, "{ \"display\": { \"showModel\": true, \"showEffort\": true, \"rowLayout\": \"twoline\" } }",
                               new UTF8Encoding(false));
             var model = AppConfig.Load(out problem, out failed);
             Check(model.HudShowModel && model.HudShowEffort, "showModel / showEffort are read");
-            Equal("twoLine", model.HudModelLayout, "the layout is read (case-insensitive)");
+            Equal("twoLine", model.HudRowLayout, "the layout is read (case-insensitive)");
             Check(model.Save(), "save succeeds");
+            var modelText = File.ReadAllText(path);
+            Check(modelText.Contains("\"rowLayout\"") && !modelText.Contains("\"modelLayout\""),
+                  "only rowLayout is written back");
             var modelBack = AppConfig.Load(out problem, out failed);
-            Check(modelBack.HudShowModel && modelBack.HudShowEffort && modelBack.HudModelLayout == "twoLine",
+            Check(modelBack.HudShowModel && modelBack.HudShowEffort && modelBack.HudRowLayout == "twoLine",
                   "and survives a save");
-            File.WriteAllText(path, "{ \"display\": { \"modelLayout\": \"sideways\" } }", new UTF8Encoding(false));
-            Equal("column", AppConfig.Load(out problem, out failed).HudModelLayout, "an unknown layout keeps the default");
+            File.WriteAllText(path, "{ \"display\": { \"rowLayout\": \"sideways\" } }", new UTF8Encoding(false));
+            Equal("oneLine", AppConfig.Load(out problem, out failed).HudRowLayout, "an unknown layout keeps the default");
+
+            // 0.6.x までの modelLayout は、rowLayout が無いときだけ引き継ぐ（column は 1 段、twoLine は 2 段）。
+            File.WriteAllText(path, "{ \"display\": { \"modelLayout\": \"twoLine\" } }", new UTF8Encoding(false));
+            Equal("twoLine", AppConfig.Load(out problem, out failed).HudRowLayout, "an old twoLine becomes two lines");
+            File.WriteAllText(path, "{ \"display\": { \"modelLayout\": \"column\" } }", new UTF8Encoding(false));
+            Equal("oneLine", AppConfig.Load(out problem, out failed).HudRowLayout, "an old column becomes one line");
+            File.WriteAllText(path, "{ \"display\": { \"modelLayout\": \"twoLine\", \"rowLayout\": \"oneLine\" } }",
+                              new UTF8Encoding(false));
+            Equal("oneLine", AppConfig.Load(out problem, out failed).HudRowLayout, "rowLayout wins over modelLayout");
 
             // 名前の幅（2026-09-26）: 既定 180。0.2.0 までの hudWidth は同じ見た目になるよう換算する。
             Equal(HudLayout.DefaultNameWidth, old.HudNameWidth, "the name width defaults to 180");
@@ -679,7 +691,9 @@ namespace CtxTray.Tests
         private static void HudWidths()
         {
             Equal(352, HudLayout.PanelWidth(180, true, false, 0), "the default panel is 352, as before");
-            Equal(352 + 68, HudLayout.PanelWidth(180, true, true, 0), "token counts widen the panel");
+            Equal(352 + 78, HudLayout.PanelWidth(180, true, true, 0), "token counts widen the panel");
+            // 0.6.x までの 60 では「169k/200k」が切れた。70 あれば収まる（12.5px で 67〜68px、2026-09-29 実測）。
+            Equal(70, HudLayout.Tokens, "the token column fits 200k/200k");
             Equal(352 + 132, HudLayout.PanelWidth(180, true, false, HudLayout.ModelColumn(true, true)),
                   "so does the model column");
             Equal(352 - 92, HudLayout.PanelWidth(180, false, false, 0), "turning the bar off narrows it");
@@ -693,8 +707,9 @@ namespace CtxTray.Tests
             // 0.2.0 までの hudWidth からの換算は、当時と同じ見た目になる。
             Equal(180, HudLayout.NameWidthFromPanel(352, true, false), "default settings");
             Equal(112, HudLayout.NameWidthFromPanel(352, true, true), "with token counts (the name was squeezed)");
-            Equal(352 + 132, HudLayout.PanelWidth(HudLayout.NameWidthFromPanel(352, true, true), true, true,
-                  HudLayout.ModelColumn(true, true)), "the same panel width as 0.2.x with every column on (484)");
+            // 名前の幅は当時の列の幅（60）で換算するので、名前は当時と同じ。パネルは列が広がった 10 だけ広い。
+            Equal(352 + 132 + 10, HudLayout.PanelWidth(HudLayout.NameWidthFromPanel(352, true, true), true, true,
+                  HudLayout.ModelColumn(true, true)), "0.2.x with every column on: the same name, a 10 wider token column");
             Equal(70, HudLayout.NameWidthFromPanel(240, true, true), "too narrow becomes 70");
         }
 

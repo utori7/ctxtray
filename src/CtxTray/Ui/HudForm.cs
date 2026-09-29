@@ -656,20 +656,28 @@ namespace CtxTray.Ui
 
         private int BarW { get { return _config.HudShowBar ? S(HudLayout.Bar) : 0; } }
         private int PctW { get { return S(HudLayout.Pct); } }
-        private int TokensW { get { return _config.HudShowTokens ? S(HudLayout.Tokens) : 0; } }
+        private int TokensW { get { return _config.HudShowTokens && !TwoLine ? S(HudLayout.Tokens) : 0; } }
 
-        // --- モデルとエフォート（設定 showModel / showEffort / modelLayout）-----------
+        // --- 行の段数（設定 rowLayout）とモデルとエフォート（showModel / showEffort）---------
         //
-        // column  … 名前の後ろに専用の列（その分パネルを広げる。名前の幅は変えない）
-        // twoLine … 名前の下に小さく 2 段目（幅は変えない。セッションの行が高くなる）
-        // 名前の列の右端に寄せる案は、名前が 3〜5 文字に縮んで読めなくなるので採らなかった
-        // （2026-09-26、実寸の見本で利用者が判断）。
+        // oneLine … モデルとエフォートは名前の後ろの専用の列、トークン数は % の右の列
+        //            （オンにした分だけパネルを広げる。名前の幅は変えない）
+        // twoLine … 2 段目に小さく。モデルとエフォートは名前の下、トークン数は % の下に右揃え
+        //            （幅は増えない。セッションの行が高くなる）
+        // モデルを名前の列の右端に寄せる案は、名前が 3〜5 文字に縮んで読めなくなるので採らなかった（2026-09-26）。
+        // トークン数をバーの下の中央に置く案は、% との結び付きが弱く、バーをオフにすると置き場所が無いので
+        // 採らなかった（2026-09-29）。どちらも実寸の見本で利用者が判断。
 
         private bool ModelRowOn { get { return _config.HudShowModel || _config.HudShowEffort; } }
 
+        /// <summary>2 段にするか。モデルとエフォート・トークン数のどちらか 1 つでもオンなら効く。</summary>
         private bool TwoLine
         {
-            get { return ModelRowOn && string.Equals(_config.HudModelLayout, "twoLine", StringComparison.Ordinal); }
+            get
+            {
+                return (ModelRowOn || _config.HudShowTokens)
+                    && string.Equals(_config.HudRowLayout, "twoLine", StringComparison.Ordinal);
+            }
         }
 
         /// <summary>行に出す文字列。出さない設定なら null。</summary>
@@ -705,7 +713,7 @@ namespace CtxTray.Ui
             get
             {
                 return S(HudLayout.PanelWidth(_config.HudNameWidth, _config.HudShowBar,
-                                              _config.HudShowTokens, ModelColBase));
+                                              _config.HudShowTokens && !TwoLine, ModelColBase));
             }
         }
 
@@ -1102,14 +1110,7 @@ namespace CtxTray.Ui
                         fraction, "context", Levels.ForContext(s, _config), !s.ProcessAlive,
                         pct, tokens, modelText);
 
-                if (TwoLine && modelText != null)
-                {
-                    using (var small = new Font(_fontFace, 10.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
-                        TextRenderer.DrawText(g, modelText, small,
-                            new Rectangle(PadX, y + RowHeight - S(4), NameW, SubLineH + S(2)), _theme.TextSecondary,
-                            TextFormatFlags.Left | TextFormatFlags.Top
-                            | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-                }
+                if (TwoLine) DrawSubLine(g, y, modelText, tokens);
 
                 AddTipRow(y, SessionTip(s), SessionRowHeight);
 
@@ -1117,6 +1118,35 @@ namespace CtxTray.Ui
             }
 
             return y;
+        }
+
+        /// <summary>
+        /// セッションの行の 2 段目（rowLayout: twoLine）。モデルとエフォートは名前の下、トークン数は % の下に右揃え。
+        ///
+        /// ★ トークン数は % の列より広いことがある（「169k/200k」は 10.5px で約 56px、% の列は 44px。2026-09-29 実測）。
+        ///   右端を % に揃えて左へはみ出させる。バーがあればバーの下の空きに収まるが、バーが無いと名前の欄に
+        ///   少し入るので、モデルとエフォートはトークン数の手前で「…」にする（重ならないように）。
+        /// </summary>
+        private void DrawSubLine(Graphics g, int y, string model, string tokens)
+        {
+            var rect = new Rectangle(PadX, y + RowHeight - S(4), NameW, SubLineH + S(2));
+            var flags = TextFormatFlags.Top | TextFormatFlags.NoPrefix;
+
+            using (var small = new Font(_fontFace, 10.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
+            {
+                if (tokens != null)
+                {
+                    var pctRight = PadX + NameW + Gap + (BarW > 0 ? BarW + Gap : 0) + PctW;
+                    var w = TextRenderer.MeasureText(g, tokens, small, new Size(int.MaxValue, rect.Height), flags).Width;
+                    TextRenderer.DrawText(g, tokens, small, new Rectangle(pctRight - w, rect.Y, w, rect.Height),
+                                          _theme.TextSecondary, flags | TextFormatFlags.Right);
+                    rect.Width = Math.Min(rect.Width, pctRight - w - Gap - PadX);
+                }
+
+                if (model != null && rect.Width > 0)
+                    TextRenderer.DrawText(g, model, small, rect, _theme.TextSecondary,
+                                          flags | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            }
         }
 
         /// <summary>

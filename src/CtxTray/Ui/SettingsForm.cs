@@ -130,7 +130,13 @@ namespace CtxTray.Ui
         private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen;
         /// <summary>モデルとエフォートをまとめて切り替える（設定ファイルでは showModel と showEffort の 2 つ）。</summary>
         private CheckBox _showModel;
-        private ComboBox _modelLayout;
+        private ComboBox _rowLayout;
+
+        /// <summary>並べ方（1 段／2 段）は、トークン数かモデルとエフォートがオンのときだけ意味を持つ。</summary>
+        private void UpdateRowLayoutEnabled()
+        {
+            _rowLayout.Enabled = _showTokens.Checked || _showModel.Checked;
+        }
         private ThemedNumeric _idleHours, _externalMax, _nameWidth;
 
         /// <summary>BeginGroup で行き先を入れ子の表に差し替えている間、元の表を覚えておく。</summary>
@@ -532,17 +538,24 @@ namespace CtxTray.Ui
             Section("set.secHudColumns");
             _showBar = Check("set.showBar");
             Full(_showBar);
-            _showTokens = Check("set.showTokens");
-            Full(_showTokens);
 
+            // モデルとエフォート → トークン数 の順。パネルでもモデルとエフォートが左、トークン数が右にあるため
+            // （2026-09-29、利用者の指摘。以前はトークン数が先だった）。
             // モデル名とエフォート。出し方は実寸の見本で選んだ 2 つ（2026-09-26）。
             // 別々に選べても使い分ける場面が無いので、1 つのチェックボックスにした（2026-09-27、利用者の提案）。
             _showModel = Check("set.showModel");
-            _modelLayout = Combo(Strings.Get("set.layoutColumn"), Strings.Get("set.layoutTwoLine"));
-            _showModel.CheckedChanged += (s, e) => _modelLayout.Enabled = _showModel.Checked;
             Full(_showModel);
-            Full(Flow(Indent(), Text_("set.modelLayout"), _modelLayout));
             // 「オフでも行の詳細には出る」の補足は、説明を短くしたときに外した（2026-09-26、利用者の指摘）。
+
+            _showTokens = Check("set.showTokens");
+            Full(_showTokens);
+
+            // 1 段／2 段。トークン数とモデルとエフォートの両方に効くので、どちらかの下に字下げせず並べる
+            // （2026-09-29。以前はモデルとエフォートだけの「表示位置」で、その下に字下げしていた）。
+            _rowLayout = Combo(Strings.Get("set.layoutOneLine"), Strings.Get("set.layoutTwoLine"));
+            _showTokens.CheckedChanged += (s, e) => UpdateRowLayoutEnabled();
+            _showModel.CheckedChanged += (s, e) => UpdateRowLayoutEnabled();
+            Full(Flow(Text_("set.rowLayout"), _rowLayout));
 
             Section("set.secHudLook");
             _textSize = Combo(120, Strings.Get("set.sizeXSmall"), Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
@@ -1483,8 +1496,8 @@ namespace CtxTray.Ui
             _showBar.Checked = c.HudShowBar;
             _showTokens.Checked = c.HudShowTokens;
             _showModel.Checked = c.HudShowModel || c.HudShowEffort;
-            _modelLayout.SelectedIndex = IndexOf(c.HudModelLayout, AppConfig.ModelLayouts);
-            _modelLayout.Enabled = c.HudShowModel || c.HudShowEffort;
+            _rowLayout.SelectedIndex = IndexOf(c.HudRowLayout, AppConfig.RowLayouts);
+            UpdateRowLayoutEnabled();
             _showResets.SelectedIndex = IndexOf(c.ShowResets, "always", "auto", "never");
 
             _textSize.SelectedIndex = TextSizeIndex(c.HudTextSize);
@@ -1564,7 +1577,7 @@ namespace CtxTray.Ui
             // オフからオンにしたときだけ両方を出す。
             if (!_showModel.Checked) c.HudShowModel = c.HudShowEffort = false;
             else if (!c.HudShowModel && !c.HudShowEffort) c.HudShowModel = c.HudShowEffort = true;
-            c.HudModelLayout = Pick(_modelLayout.SelectedIndex, AppConfig.ModelLayouts);
+            c.HudRowLayout = Pick(_rowLayout.SelectedIndex, AppConfig.RowLayouts);
             c.ShowResets = Pick(_showResets.SelectedIndex, "always", "auto", "never");
 
             c.HudTextSize = Pick(_textSize.SelectedIndex, AppConfig.TextSizes);

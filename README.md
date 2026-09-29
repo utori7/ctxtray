@@ -195,7 +195,7 @@ notifications together. There is no separate set of numbers for each.
     "showTokens": false,         // e.g. 284k/1M
     "showModel": false,          // model name on the row (e.g. Opus 5.5)
     "showEffort": false,         // effort on the row (e.g. high)
-    "modelLayout": "column",     // "column" (own column, wider panel) | "twoLine" (under the session name, taller rows)
+    "rowLayout": "oneLine",      // "oneLine" (token counts and model side by side, wider panel) | "twoLine" (on a second line, taller rows)
     "showResets": "auto",        // "always" | "auto" | "never" (5-hour reset time)
     "opacity": 0.9,
     "clickThrough": false,
@@ -223,13 +223,15 @@ notifications together. There is no separate set of numbers for each.
 
 Each session's model and effort always appear in the details when you hover over a row
 (for example `Opus 5.5 · high`). Turn on **Model and effort** under **On each row** on the
-**Panel** tab in Settings to show them on the row as well (off by default), either in their own
-column after the session name or in a small second line under it (the rows get taller).
+**Panel** tab in Settings to show them on the row as well (off by default).
 To show only one of the two, set `showModel` and `showEffort` separately in the config file.
 
 The panel's width is the session-name column (**Session name width** under **Show more settings**) plus whatever
 you turn on — the bar, token counts, the model column. Turning any of them on never squeezes
 the names; the panel gets wider instead.
+To keep the panel narrow, set **Layout** under **On each row** to **Two lines**. The model and effort then appear
+in small type under the session name and the token count under the percentage, so the rows get taller
+instead of the panel getting wider.
 
 - The values are what Claude Code recorded for the session's last response. If you switch
   mid-session, the new value appears from the next response

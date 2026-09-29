@@ -16,7 +16,16 @@ namespace CtxTray.Core
         public const int Gap = 8;
         public const int Pct = 44;
         public const int Bar = 84;
-        public const int Tokens = 60;
+
+        /// <summary>
+        /// トークン数の列（1 段のとき）。いちばん長い「200k/200k」「000k/000k」が 12.5px の
+        /// Yu Gothic UI・Segoe UI・Segoe UI Variable Text で 67〜68px（実測、2026-09-29）なので 70。
+        /// 0.6.x までの 60 では上限 200K のモデルで「169k/2…」と切れていた。
+        /// </summary>
+        public const int Tokens = 70;
+
+        /// <summary>0.2.x のパネルの幅（hudWidth）を換算するときに使う、当時のトークン数の列の幅。</summary>
+        private const int LegacyTokens = 60;
 
         public const int DefaultNameWidth = 180;
         public const int MinNameWidth = 70;
@@ -36,8 +45,10 @@ namespace CtxTray.Core
 
         /// <summary>
         /// パネルの幅。並びは 名前・[モデルの列]・[バー]・%・[トークン数]。
+        /// 2 段（rowLayout: twoLine）のときはモデルの列もトークン数の列も無い（どちらも 2 段目に入る）。
         /// </summary>
-        /// <param name="modelColumn">モデルの列の幅（出さない・名前の下に出すときは 0）。</param>
+        /// <param name="tokens">トークン数の列を置くか（出さない・2 段目に出すときは false）。</param>
+        /// <param name="modelColumn">モデルの列の幅（出さない・2 段目に出すときは 0）。</param>
         public static int PanelWidth(int nameWidth, bool bar, bool tokens, int modelColumn)
         {
             var w = PadX * 2 + ClampName(nameWidth) + Gap + Pct;
@@ -56,7 +67,7 @@ namespace CtxTray.Core
         {
             var used = PadX * 2 + Gap + Pct;
             if (bar) used += Bar + Gap;
-            if (tokens) used += Gap + Tokens;
+            if (tokens) used += Gap + LegacyTokens;
             return ClampName(hudWidth - used);
         }
 

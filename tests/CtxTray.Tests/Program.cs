@@ -34,6 +34,7 @@ namespace CtxTray.Tests
                 Run("Compaction point: documented default, old placeholder migrated", CompactThresholdMigration);
                 Run("Broken config", BrokenConfig);
                 Run("Config: new display keys and older files without them", NewDisplayKeys);
+                Run("Config: hideFromCapture is on unless turned off", HideFromCaptureKey);
                 Run("Config: a copy is independent of the original", ConfigClone);
                 Run("Config: tray label (letters / glyphs / percent)", TrayLabel);
                 Run("Percent text: the same rounding everywhere", PercentRounding);
@@ -230,6 +231,29 @@ namespace CtxTray.Tests
             Equal("3", PercentText.Format(2.5), "2.5 rounds up (Math.Round would give 2)");
             Equal("100", PercentText.Format(99.5), "99.5 becomes 100");
             Equal("100", PercentText.Format(100), "100 is not capped at 99");
+        }
+
+        /// <summary>
+        /// 画面共有・撮影に写さない設定（2026-10-01）。既定はオンなので、キーの無い旧設定もオンで読む。
+        /// </summary>
+        private static void HideFromCaptureKey()
+        {
+            var path = UseConfigDir("config-hide-from-capture");
+            string problem;
+            bool failed;
+
+            File.WriteAllText(path, "{ \"display\": { \"hideWhenFullscreen\": false } }", new UTF8Encoding(false));
+            var old = AppConfig.Load(out problem, out failed);
+            Check(!failed, "an older config still loads");
+            Check(old.HideFromCapture, "no hideFromCapture means on (the default)");
+
+            File.WriteAllText(path, "{ \"display\": { \"hideFromCapture\": false } }", new UTF8Encoding(false));
+            var off = AppConfig.Load(out problem, out failed);
+            Check(!off.HideFromCapture, "hideFromCapture: false is read");
+
+            Check(off.Save(), "save succeeds");
+            Check(!AppConfig.Load(out problem, out failed).HideFromCapture, "off survives a save");
+            Check(!off.Clone().HideFromCapture, "Clone keeps it");
         }
 
         /// <summary>

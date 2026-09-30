@@ -124,6 +124,24 @@ namespace CtxTray.Ui
             RegisterHotkeys();
             ApplyRoundedCorners();
             EnsureLayeredAttributes();
+            // 窓を作り直す（クリック透過の切り替え）と設定が消えるので、作るたびに付け直す。
+            ApplyCaptureAffinity();
+        }
+
+        /// <summary>
+        /// 画面共有・撮影に写すかを窓に反映する（hideFromCapture）。札にも同じ設定を渡す。
+        /// 失敗しても（トップレベルでない窓など）表示は続ける。
+        /// </summary>
+        private void ApplyCaptureAffinity()
+        {
+            var hide = _config == null || _config.HideFromCapture;
+            try
+            {
+                NativeMethods.SetWindowDisplayAffinity(
+                    Handle, hide ? NativeMethods.WDA_EXCLUDEFROMCAPTURE : NativeMethods.WDA_NONE);
+            }
+            catch { }
+            if (_tip != null && !_tip.IsDisposed) _tip.SetHideFromCapture(hide);
         }
 
         /// <summary>
@@ -364,6 +382,7 @@ namespace CtxTray.Ui
 
             // 不透明度だけを 100% に変えた場合も、LAYERED の窓に前の透明度が残らないようにする。
             if (IsHandleCreated) EnsureLayeredAttributes();
+            if (IsHandleCreated) ApplyCaptureAffinity();
 
             ReloadTheme();
             Relayout();
@@ -538,7 +557,12 @@ namespace CtxTray.Ui
             _tipShownRow = _tipRow;
             _tipShownText = row.Text;
 
-            if (_tip == null || _tip.IsDisposed) _tip = new TipForm();
+            if (_tip == null || _tip.IsDisposed)
+            {
+                _tip = new TipForm();
+                // 札には名前の全文と場所が出るので、パネルと同じく画面共有・撮影から外す。
+                _tip.SetHideFromCapture(_config == null || _config.HideFromCapture);
+            }
             // 札はパネルの外に出す（パネルは最前面へ押し戻しているので、重ねると裏に隠れる）。
             _tip.ShowLines(row.Lines, _theme, _fontFace, Factor, Bounds, PointToScreen(new Point(0, row.Top)).Y);
         }

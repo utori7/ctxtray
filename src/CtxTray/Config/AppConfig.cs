@@ -171,6 +171,12 @@ namespace CtxTray.Config
         // 前面が Claude Desktop のときは隠さない（TrayApp）。
         public bool HideWhenFullscreen = true;
 
+        // 画面共有（Teams・Zoom など）とスクリーンショットに HUD と行の詳細の札を写さない。自分の画面には出る。
+        // HUD にはセッション名やプロジェクト名が出るので、会議で画面を共有したときに見られないようにする。
+        // 撮影にも写らなくなるが、共有だけ外す手段は Windows に無い。
+        // 既定はオン（2026-10-01、利用者の決定。入れたまま忘れていても効くように）。
+        public bool HideFromCapture = true;
+
         // 文字の大きさ。Windows のテキストのサイズに掛ける倍率で、寸法もこの倍率で伸びる。
         // xsmall は HUD がテキストのサイズに従うようになったときに足した（2026-09-27、利用者の要望）。
         public string HudTextSize = "normal";       // xsmall / small / normal / large / xlarge
@@ -480,6 +486,7 @@ namespace CtxTray.Config
                 HudAnchorBottom = string.Equals(Json.Str(display, "hudAnchor"), "bottom",
                                                 StringComparison.OrdinalIgnoreCase);
                 HideWhenFullscreen = Json.Bool(display, "hideWhenFullscreen", HideWhenFullscreen);
+                HideFromCapture = Json.Bool(display, "hideFromCapture", HideFromCapture);
                 HideStoppedSessions = Json.Bool(display, "hideStoppedSessions", HideStoppedSessions);
 
                 HudShowRateLimits = Json.Bool(display, "showRateLimits", HudShowRateLimits);
@@ -580,6 +587,7 @@ namespace CtxTray.Config
                 .Add("idleHours", IdleHours)
                 .Add("hideStoppedSessions", HideStoppedSessions)
                 .Add("hideWhenFullscreen", HideWhenFullscreen)
+                .Add("hideFromCapture", HideFromCapture)
                 .Add("showBar", HudShowBar)
                 .Add("showTokens", HudShowTokens)
                 .Add("showModel", HudShowModel)

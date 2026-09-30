@@ -127,7 +127,7 @@ namespace CtxTray.Ui
 
         // --- HUD ---
         private CheckBox _hudRate, _hudSessions, _hideIdle, _hideStopped, _external;
-        private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen;
+        private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen, _hideFromCapture;
         /// <summary>モデルとエフォートをまとめて切り替える（設定ファイルでは showModel と showEffort の 2 つ）。</summary>
         private CheckBox _showModel;
         private ComboBox _rowLayout;
@@ -673,6 +673,11 @@ namespace CtxTray.Ui
             _hideFullscreen = Check("set.hideFullscreen");
             Full(_hideFullscreen);
             Hint("set.hideFullscreenHint");
+
+            // 「非表示」を自分の画面から消えることと取り違えないよう、補足で自分の画面には出ると書く。
+            _hideFromCapture = Check("set.hideFromCapture");
+            Full(_hideFromCapture);
+            Hint("set.hideFromCaptureHint");
 
             // チェックボックスの文は折り返せないので、長い注意書きは補足の行に分ける。
             _clickThrough = Check("set.clickThrough");
@@ -1597,6 +1602,7 @@ namespace CtxTray.Ui
             // 自動起動は設定ファイルに無いので、押した値が無ければショートカットの実際の状態を出す。
             _autoStart.Checked = _autoStartWanted ?? AutoStart.IsEnabled;
             _hideFullscreen.Checked = c.HideWhenFullscreen;
+            _hideFromCapture.Checked = c.HideFromCapture;
 
             if (c.TrayMultiMode) _modeMulti.Checked = true;
             else _modeSingle.Checked = true;
@@ -1678,6 +1684,7 @@ namespace CtxTray.Ui
             c.ClickThroughHotkey = _clickThroughKeyValue;
             c.HudShowAtStartup = _showAtStartup.Checked;
             c.HideWhenFullscreen = _hideFullscreen.Checked;
+            c.HideFromCapture = _hideFromCapture.Checked;
 
             c.TrayMode = _modeMulti.Checked ? "multi" : "single";
             c.TrayLabel = SelectedLabelStyle();

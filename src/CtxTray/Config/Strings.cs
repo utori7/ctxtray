@@ -313,6 +313,10 @@ namespace CtxTray.Config
                                             "Hide while a full-screen app is in use" } },
             { "set.hideFullscreenHint", new[] { "Claude Desktop が前面にあるときは非表示にしません。",
                                                 "Not while Claude Desktop is in front." } },
+            { "set.hideFromCapture", new[] { "画面共有とスクリーンショットでは非表示にする",
+                                             "Hide from screen sharing and screenshots" } },
+            { "set.hideFromCaptureHint", new[] { "自分の画面には表示されます。",
+                                                 "Still shown on your own screen." } },
             { "set.position",      new[] { "位置",                 "Position" } },
             { "set.resetPosition", new[] { "右下に戻す",        "Move back to bottom-right" } },
 

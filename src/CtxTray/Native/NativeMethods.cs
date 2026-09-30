@@ -20,6 +20,15 @@ namespace CtxTray.Native
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
+        // --- 画面共有・撮影から外す ---------------------------------------------
+        // WDA_EXCLUDEFROMCAPTURE は Windows 10 2004 から。それより前は WDA_MONITOR と同じ扱いで、
+        // 撮影すると中身の無い四角として写る（公式ドキュメント。内容が出ないことは同じ）。
+        public const uint WDA_NONE = 0x00000000;
+        public const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
         // --- クリック透過 -----------------------------------------------------
         public const int GWL_EXSTYLE = -20;
         public const int WS_EX_LAYERED = 0x00080000;

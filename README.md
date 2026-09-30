@@ -41,6 +41,9 @@ until auto-compaction, the weekly reset day — are deliberately left out.
 1. Download `ctxtray-<version>-win-x64.zip` from [Releases](../../releases) and extract it.
 2. Move `ctxtray.exe` to a folder you will keep, for example `%LOCALAPPDATA%\Programs\ctxtray\`.
    The sign-in shortcut (step 4) points at this location.
+   Avoid folders synced by OneDrive (Desktop and Documents often are) and folders you create
+   directly under `C:\`. Other devices or other users can change the files there, and a
+   replaced exe would then run every time you sign in.
 3. Run it. There is no installer and no runtime to install.
 4. Right-click the tray icon and select **Start at sign-in** if you want it to run every time you sign in
    (or turn on **Start ctxtray when you sign in to Windows** on the **General** tab in Settings).
@@ -117,6 +120,12 @@ The panel stays on screen: when it sits in the lower half of the screen it grows
 as sessions come and go, and it is never pushed past the edge. While a video, a
 presentation, or a game is full-screen, the panel hides itself and comes back afterwards
 (it stays visible when Claude Desktop itself is in front). Both can be turned off in Settings.
+
+The panel and the row details do not appear in screen sharing (Teams, Zoom and so on) or in
+screenshots; you still see them on your own screen. This keeps session names out of a shared
+screen in a meeting. If you want the panel in a screenshot, turn this off in Settings. It relies
+on a Windows feature, so it cannot promise that every way of capturing the screen leaves it out.
+Before Windows 10 version 2004, the panel shows up as an empty box instead.
 
 ### The tray icon
 
@@ -220,7 +229,8 @@ notifications together. There is no separate set of numbers for each.
     "opacity": 0.9,
     "clickThrough": false,
     "showAtStartup": true,
-    "hideWhenFullscreen": true   // hide while a full-screen app is in use
+    "hideWhenFullscreen": true,  // hide while a full-screen app is in use
+    "hideFromCapture": true      // hide from screen sharing and screenshots
   },
   "language": "auto",            // "ja" | "en"
   "clickThroughHotkey": "",      // e.g. "Ctrl+Alt+T" to toggle "clickThrough" from the keyboard; "" = none

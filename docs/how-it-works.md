@@ -326,6 +326,16 @@ The panel only re-appears if ctxtray was the one that hid it. Hiding it yourself
 a full-screen app is running, is respected. The whole behaviour is one setting
 (`hideWhenFullscreen`, on by default).
 
+Separately, the panel and the row-details card are left out of screen sharing and
+screenshots, because they show session names. Each window is given
+`SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`, so it stays on the monitor but does not
+appear in captures (Windows 10 version 2004 and later; earlier versions treat the value as
+`WDA_MONITOR`, and the window appears as an empty box). The affinity is set again whenever
+the window is recreated, as it is when click-through is switched. Windows does not offer a
+way to leave a window out of screen sharing but not out of screenshots, so both go
+together. Microsoft does not present this as a guarantee against every capture method. One
+setting (`hideFromCapture`, on by default) turns it off.
+
 ## 6. Terms compliance
 
 ctxtray reads plain-text files that Claude Desktop and Claude Code wrote themselves,

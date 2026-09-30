@@ -80,6 +80,26 @@ namespace CtxTray.Ui
                     Handle, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int));
             }
             catch { }
+            ApplyCaptureAffinity();
+        }
+
+        private bool _hideFromCapture = true;
+
+        /// <summary>画面共有・撮影に写さないか（HUD の hideFromCapture と同じ値を HudForm が渡す）。</summary>
+        public void SetHideFromCapture(bool hide)
+        {
+            _hideFromCapture = hide;
+            if (IsHandleCreated) ApplyCaptureAffinity();
+        }
+
+        private void ApplyCaptureAffinity()
+        {
+            try
+            {
+                NativeMethods.SetWindowDisplayAffinity(
+                    Handle, _hideFromCapture ? NativeMethods.WDA_EXCLUDEFROMCAPTURE : NativeMethods.WDA_NONE);
+            }
+            catch { }
         }
 
         /// <param name="avoid">パネルの範囲（画面座標）。ここに重ならない位置に出す。</param>

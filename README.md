@@ -51,8 +51,8 @@ Requirements: Windows 10 version 1903 or later, or Windows 11.
 (.NET Framework 4.8 is part of the OS on those versions.)
 
 The binary is not code-signed, so SmartScreen will warn on first run:
-**More info > Run anyway**. You can check the download against the `.sha256` file next to it
-on the release page. If you would rather not trust a prebuilt binary,
+**More info > Run anyway**. To check that the download is genuine, see
+[Verifying the download](#verifying-the-download). If you would rather not trust a prebuilt binary,
 [build it yourself](#building).
 
 To hear about new versions, turn on **Check for new versions** in **Settings > General**.
@@ -61,6 +61,23 @@ newer one (click the notification to open the download page; you replace the exe
 It is off by default, because by default ctxtray makes no network connections at all (see
 [below](#what-it-reads-what-it-writes-and-what-it-does-not-do)).
 If you would rather leave it off, use **Watch > Custom > Releases** at the top of this repository.
+
+### Verifying the download
+
+The `.sha256` file on the release page only tells you the file was not damaged while downloading.
+It sits in the same release as the zip, so it cannot tell you if the whole release was replaced.
+
+For versions published after v0.8.0, the [GitHub CLI](https://cli.github.com/) (`gh`) can check two things:
+
+```powershell
+# Was it built by this repository's release workflow on GitHub Actions?
+gh attestation verify ctxtray-<version>-win-x64.zip --repo utori7/ctxtray --signer-workflow utori7/ctxtray/.github/workflows/release.yml
+
+# Has it been replaced since it was published?
+gh release verify-asset v<version> ctxtray-<version>-win-x64.zip --repo utori7/ctxtray
+```
+
+The first command works on the extracted `ctxtray.exe` as well.
 
 ## Using it
 

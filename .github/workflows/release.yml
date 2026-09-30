@@ -2,15 +2,20 @@ name: Release
 
 # タグを打つとビルドして Release にバイナリを添付する。
 #   git tag v0.1.0 && git push origin v0.1.0
-# 手動実行（workflow_dispatch）ではビルドと成果物の保存だけ行い、Release は作らない。
+# 手動実行（workflow_dispatch）ではビルド・出どころの証明・成果物の保存だけ行い、Release は作らない。
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
 
+# id-token・attestations・artifact-metadata は出どころの証明（Attest の手順）に使う。
+# id-token は Sigstore の署名用の証明書を受け取るためのもので、ほかのサービスとの連携には使っていない。
 permissions:
   contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 
 jobs:
   build:
@@ -76,6 +81,16 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
           "$hash  $zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii
 
+      # 出どころの証明（build provenance）。「このリポジトリのこのワークフローが、このコミットからビルドした」
+      # ことを署名付きで残し、利用者は gh attestation verify で確かめられる。
+      # .sha256 は zip と同じ Release に置くので、Release ごと差し替えられると見分けられない。その穴を埋めるため。
+      # zip の中の exe（dist/ctxtray.exe と同じバイト列）も対象にして、展開後の exe も確かめられるようにする。
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            ctxtray-*.zip
+            dist/ctxtray.exe
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ctxtray
@@ -96,5 +111,8 @@ jobs:
             turning on "Start at sign-in".
 
             The binary is not code-signed, so SmartScreen will warn on first run
-            (More info -> Run anyway). Verify the SHA256 against the `.sha256` file,
-            or build from source.
+            (More info -> Run anyway). The `.sha256` file only shows the download is
+            intact. To check that the zip (or the `ctxtray.exe` in it) was built by this
+            repository's workflow, run
+            `gh attestation verify <file> --repo utori7/ctxtray --signer-workflow utori7/ctxtray/.github/workflows/release.yml`
+            (see "Verifying the download" in the README), or build from source.

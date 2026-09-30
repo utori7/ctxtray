@@ -41,6 +41,8 @@ namespace CtxTray.Tests
                 Run("Model docs: page URL and parsing", ModelDocsParsing);
                 Run("Model docs: record, 24-hour retry, one notice", ModelDocsFetching);
                 Run("Model docs: names for records from 0.2.0", ModelDocsNameBackfill);
+                Run("Updates: tag and version parsing", UpdateParsing);
+                Run("Updates: once a day, retry after an hour, one notice per version", UpdateChecking);
                 Run("Notify: a notice with its own click action", NotifyClickAction);
                 Run("Rate samples: latest org only, incomplete samples skipped", RateSamples);
                 Run("JSON writer: ASCII-only output", AsciiJson);
@@ -142,8 +144,10 @@ namespace CtxTray.Tests
             Check(!File.Exists(path + ".bak"), "no backup for a valid file");
             // 通信しないのが既定。書いていない設定ファイルでもオフのまま。
             Check(!c.FetchModelLimits, "fetching from the docs is off by default");
+            Check(!c.CheckUpdates, "checking for updates is off by default");
 
             c.FetchModelLimits = true;
+            c.CheckUpdates = true;
             Check(c.Save(), "save succeeds");
             string problem2;
             bool failed2;
@@ -152,6 +156,8 @@ namespace CtxTray.Tests
             Equal(123456, again.ModelLimits["claude-example-6"], "modelLimits survives a save");
             Check(again.FetchModelLimits, "fetchModelLimits survives a save");
             Check(again.Clone().FetchModelLimits, "fetchModelLimits is copied");
+            Check(again.CheckUpdates, "checkUpdates survives a save");
+            Check(again.Clone().CheckUpdates, "checkUpdates is copied");
             Check(!File.Exists(path + ".tmp"), "temporary file is gone after save");
         }
 
@@ -550,6 +556,132 @@ namespace CtxTray.Tests
 
             File.WriteAllText(Path.Combine(dir, ModelDocsStore.FileName), "{ broken", new UTF8Encoding(false));
             Equal(0, new ModelDocsFetcher(dir, "test").Limits().Count, "a broken file reads as empty");
+        }
+
+        /// <summary>更新の確認: タグの読み取りと版の比較。v0.8.0 の形だけ受け付ける。</summary>
+        private static void UpdateParsing()
+        {
+            Equal(new Version(0, 8, 0), UpdateCheck.ParseTag("v0.8.0"), "v0.8.0");
+            Equal(new Version(1, 10, 2), UpdateCheck.ParseTag("v1.10.2"), "two-digit parts");
+            Equal((Version)null, UpdateCheck.ParseTag("0.8.0"), "no v prefix");
+            Equal((Version)null, UpdateCheck.ParseTag("v0.8.0-beta"), "a pre-release tag");
+            Equal((Version)null, UpdateCheck.ParseTag("v0.8"), "two parts");
+            Equal((Version)null, UpdateCheck.ParseTag(" v0.8.0"), "leading space");
+
+            Equal(new Version(0, 8, 0), UpdateCheck.ParseLatest("{\"tag_name\":\"v0.8.0\",\"html_url\":\"https://example.com/\"}"),
+                  "tag_name from the API response");
+            Equal((Version)null, UpdateCheck.ParseLatest("{ broken"), "broken JSON");
+            Equal((Version)null, UpdateCheck.ParseLatest("{\"message\":\"Not Found\"}"), "no tag_name");
+            Equal((Version)null, UpdateCheck.ParseLatest(null), "no response");
+
+            Equal(new Version(0, 7, 1), UpdateCheck.ParseCurrent("0.7.1+2d04e67abcdef"), "commit hash is dropped");
+            Equal(new Version(0, 7, 1), UpdateCheck.ParseCurrent("0.7.1.0"), "four parts become three");
+            Equal((Version)null, UpdateCheck.ParseCurrent("?"), "unreadable version");
+            Check(UpdateCheck.Current != null, "this build's version is readable");
+
+            Check(UpdateCheck.IsNewer(new Version(0, 10, 0), new Version(0, 9, 0)), "0.10.0 is newer than 0.9.0");
+            Check(!UpdateCheck.IsNewer(new Version(0, 7, 1), UpdateCheck.ParseCurrent("0.7.1+abc")), "the same version is not newer");
+            Check(!UpdateCheck.IsNewer(new Version(0, 7, 0), new Version(0, 7, 1)), "an older release is not newer");
+            Check(!UpdateCheck.IsNewer(new Version(0, 8, 0), null), "unknown current version: no notice");
+
+            Equal("https://github.com/utori7/ctxtray/releases/tag/v0.8.0", UpdateCheck.ReleaseUrl(new Version(0, 8, 0)),
+                  "the page is built from the checked version");
+        }
+
+        /// <summary>更新の確認: 1 日 1 回・失敗なら 1 時間後・同じ版は 1 回だけ知らせる（通信は差し替える）。</summary>
+        private static void UpdateChecking()
+        {
+            var dir = Path.Combine(_temp, "updates");
+            var now = new DateTime(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
+            var requested = new List<string>();
+            string response = "{\"tag_name\":\"v0.8.0\"}";
+
+            Func<UpdateChecker> make = () =>
+            {
+                var c = new UpdateChecker(dir, "test");
+                c.Manual = true;
+                c.Clock = () => now;
+                c.Current = new Version(0, 7, 1);
+                c.Download = url => { requested.Add(url); return response; };
+                return c;
+            };
+
+            var u = make();
+            Equal(UpdateState.None, u.Status().State, "nothing checked yet");
+            Check(!File.Exists(Path.Combine(dir, UpdateStore.FileName)), "no record file until a check runs");
+
+            u.RequestIfDue();
+            Equal(UpdateState.Checking, u.Status().State, "checking");
+            u.RunNow();
+            Equal(1, requested.Count, "one request");
+            Equal(UpdateCheck.LatestUrl, requested[0], "only the GitHub releases API");
+            Check(requested[0].StartsWith("https://" + UpdateCheck.Host + "/", StringComparison.Ordinal), "on api.github.com");
+            Equal(UpdateState.Available, u.Status().State, "a newer version is available");
+            Equal(new Version(0, 8, 0), u.Status().Latest, "latest version");
+            Check(u.TakeChanged(), "a change is reported");
+            Check(!u.TakeChanged(), "and only once");
+
+            Equal(new Version(0, 8, 0), u.ToNotify(), "to be notified");
+            u.MarkNotified(u.ToNotify());
+            Equal((Version)null, u.ToNotify(), "not notified twice");
+
+            requested.Clear();
+            now = now.AddHours(23);
+            u.RequestIfDue();
+            u.RunNow();
+            Equal(0, requested.Count, "not again within 24 hours");
+
+            now = now.AddHours(1);
+            response = null;   // 通信の失敗
+            u.RequestIfDue();
+            u.RunNow();
+            Equal(1, requested.Count, "checked again after 24 hours");
+            Equal(UpdateState.Failed, u.Status().State, "a failed check");
+            Equal(new Version(0, 8, 0), u.Status().Latest, "the last known version is kept");
+
+            requested.Clear();
+            now = now.AddMinutes(59);
+            u.RequestIfDue();
+            u.RunNow();
+            Equal(0, requested.Count, "a failure waits an hour");
+            now = now.AddMinutes(1);
+            response = "{\"tag_name\":\"v0.8.1\"}";
+            u.RequestIfDue();
+            u.RunNow();
+            Equal(1, requested.Count, "retried after an hour");
+            Equal(new Version(0, 8, 1), u.ToNotify(), "a newer release is notified again");
+
+            requested.Clear();
+            u.RequestNow();
+            u.RunNow();
+            Equal(1, requested.Count, "Check now does not wait");
+
+            // 記録ファイルから読み直しても同じ。
+            u.MarkNotified(new Version(0, 8, 1));
+            var again = make();
+            Equal(UpdateState.Available, again.Status().State, "the result survives a restart");
+            Equal((Version)null, again.ToNotify(), "notices survive a restart");
+            requested.Clear();
+            again.RequestIfDue();
+            again.RunNow();
+            Equal(0, requested.Count, "a restart does not check again within 24 hours");
+
+            // 手元がその版になれば「最新」。
+            again.Current = new Version(0, 8, 1);
+            Equal(UpdateState.UpToDate, again.Status().State, "up to date after updating");
+            Equal((Version)null, again.ToNotify(), "nothing to notify when up to date");
+
+            // 時計が戻されたら待たない。
+            now = now.AddDays(-2);
+            again.RequestIfDue();
+            again.RunNow();
+            Equal(1, requested.Count, "a clock moved back does not block checks");
+
+            File.WriteAllText(Path.Combine(dir, UpdateStore.FileName), "{ broken", new UTF8Encoding(false));
+            Equal(UpdateState.None, make().Status().State, "a broken file reads as empty");
+            File.WriteAllText(Path.Combine(dir, UpdateStore.FileName),
+                              "{\"checkedAt\":\"2026-09-29T00:00:00Z\",\"latest\":\"http://evil/\"}", new UTF8Encoding(false));
+            Equal((Version)null, make().Status().Latest, "an edited record with a bad version is ignored");
         }
 
         /// <summary>

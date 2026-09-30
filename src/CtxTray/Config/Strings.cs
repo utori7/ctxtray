@@ -120,6 +120,9 @@ namespace CtxTray.Config
             { "notify.unknownModel",     new[] { "モデルの上限が不明です", "Unknown context window" } },
             { "notify.unknownModelBody", new[] { "{0} の上限が不明なため、% を表示できません。クリックすると設定を開きます。",
                                                  "ctxtray can't show a percentage for {0}. Click to open Settings." } },
+            { "notify.update",           new[] { "ctxtray {0} が公開されました", "ctxtray {0} is available" } },
+            { "notify.updateBody",       new[] { "クリックするとダウンロードページを開きます。",
+                                                 "Click to open the download page." } },
             { "hud.tipLimitDocs",   new[] { "上限: 公式ドキュメントから取得", "Context window from the official docs" } },
             { "hud.tipLimitConfig", new[] { "上限: 設定で指定",     "Context window set in Settings" } },
             { "hud.tipSampled",   new[] { "Claude Desktop が {0}に記録", "Claude Desktop recorded this {0}" } },
@@ -400,6 +403,19 @@ namespace CtxTray.Config
                                            "If you changed it with /autocompact, set compactThreshold in the config file to match." } },
             { "set.configFile",    new[] { "設定ファイル",          "Config file" } },
             { "set.open",          new[] { "開く",                 "Open" } },
+
+            // 設定ダイアログ: 全般 > 更新（2026-09-29 追加。既定オフ）
+            { "set.secUpdates",    new[] { "更新",                 "Updates" } },
+            { "set.checkUpdates",  new[] { "新しいバージョンを確認する", "Check for new versions" } },
+            // 通信の中身は削らない（set.fetchDocsHint と同じ考え方）。
+            // 1 行に収まらず「アカウ／ント」と語の途中で折り返したので、文の区切りで改行する。
+            { "set.checkUpdatesHint", new[] { "1 日 1 回、GitHub で最新のバージョン番号を確認します。\n会話やアカウントの情報は送信しません。",
+                                              "Once a day, checks GitHub for the latest version number. Nothing about your conversations or account is sent." } },
+            { "set.updChecking",   new[] { "確認中…",              "Checking…" } },
+            { "set.updUpToDate",   new[] { "最新のバージョンです（{0}）", "Up to date ({0})" } },
+            { "set.updAvailable",  new[] { "バージョン {0} があります", "Version {0} is available" } },
+            { "set.updFailed",     new[] { "確認できませんでした",   "Couldn't check" } },
+            { "set.updOpen",       new[] { "ダウンロードページを開く", "Open download page" } },
 
             { "set.ok",            new[] { "OK",                   "OK" } },
             { "set.cancel",        new[] { "キャンセル",           "Cancel" } },

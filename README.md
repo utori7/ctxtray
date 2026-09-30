@@ -55,9 +55,12 @@ The binary is not code-signed, so SmartScreen will warn on first run:
 on the release page. If you would rather not trust a prebuilt binary,
 [build it yourself](#building).
 
-ctxtray does not check for updates (by default it makes no network connections at all; see
-[below](#what-it-reads-what-it-writes-and-what-it-does-not-do)), so it cannot tell you about new versions.
-To hear about them, use **Watch > Custom > Releases** at the top of this repository.
+To hear about new versions, turn on **Check for new versions** in **Settings > General**.
+Once a day ctxtray checks GitHub for the latest version number and notifies you when there is a
+newer one (click the notification to open the download page; you replace the exe yourself).
+It is off by default, because by default ctxtray makes no network connections at all (see
+[below](#what-it-reads-what-it-writes-and-what-it-does-not-do)).
+If you would rather leave it off, use **Watch > Custom > Releases** at the top of this repository.
 
 ## Using it
 
@@ -212,7 +215,9 @@ notifications together. There is no separate set of numbers for each.
   // (a name that differs only by a date, such as -20251001, counts as the same model).
   "modelLimits": { "claude-example-6": 1000000 },
   // Look up unknown models in the official docs (off by default; see below).
-  "fetchModelLimits": false
+  "fetchModelLimits": false,
+  // Check GitHub once a day for a new version (off by default; see below).
+  "checkUpdates": false
 }
 ```
 
@@ -310,12 +315,22 @@ It writes only its own files:
   unreadable file had to be set aside)
 - `%LOCALAPPDATA%\ctxtray\model-limits.json` — context windows and model names fetched from
   the official docs, and which unknown models you have already been told about
+- `%LOCALAPPDATA%\ctxtray\update-check.json` — when it last checked for updates, the latest
+  version number, and which version you have been told about (only once **Check for new
+  versions** is on)
 - `ctxtray.lnk` in your Startup folder — only while **Start at sign-in** is on
 
-**By default it makes no network connections at all.** Only if you turn on **Look up unknown
-models in the official docs** does it read
-`https://platform.claude.com/docs/en/models/<model>/overview.md` (public documentation),
-once per unknown model.
+**By default it makes no network connections at all.** It connects only if you turn on one of
+these two settings. Neither sends cookies, tokens, or other credentials, and nothing about your
+conversations or account is sent.
+
+- **Look up unknown models in the official docs** (Settings > Models): reads
+  `https://platform.claude.com/docs/en/models/<model>/overview.md` (public documentation),
+  once per unknown model.
+- **Check for new versions** (Settings > General): reads
+  `https://api.github.com/repos/utori7/ctxtray/releases/latest` (GitHub's public API) once a
+  day and takes only the latest release's version number. After a failed check it tries again
+  an hour later. It does not download anything or replace ctxtray.exe.
 
 **ctxtray does not:**
 
@@ -325,7 +340,8 @@ once per unknown model.
 - call any Anthropic API, documented or otherwise
 - read, decrypt, or use stored OAuth tokens or session cookies
 - read your conversations — only token counts, timestamps, model names, and effort
-- check for updates or send usage data (reading the docs page above is its only connection)
+- send usage data (the two connections above are the only ones it makes)
+- install updates by itself (it only tells you about a new version)
 - touch your `~/.claude/settings.json` (no hooks, no statusLine)
 
 ## Uninstall

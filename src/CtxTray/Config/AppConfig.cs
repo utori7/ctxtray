@@ -238,6 +238,12 @@ namespace CtxTray.Config
         /// </summary>
         public bool FetchModelLimits = false;
 
+        /// <summary>
+        /// 新しいバージョンが出ていないか、1 日 1 回 GitHub で確かめる（知らせるだけ。入れ替えは手で）。
+        /// 通信するので既定はオフ（利用者の決定、2026-09-29）。
+        /// </summary>
+        public bool CheckUpdates = false;
+
         // --------------------------------------------------------------------
 
         /// <summary>
@@ -537,6 +543,7 @@ namespace CtxTray.Config
             }
 
             FetchModelLimits = Json.Bool(o, "fetchModelLimits", FetchModelLimits);
+            CheckUpdates = Json.Bool(o, "checkUpdates", CheckUpdates);
         }
 
         private static double Dbl(Dictionary<string, object> d, string key, double fallback)
@@ -613,7 +620,8 @@ namespace CtxTray.Config
                     .Add("enabled", ExternalSessionsEnabled)
                     .Add("max", ExternalSessionsMax))
                 .Add("modelLimits", modelLimits)
-                .Add("fetchModelLimits", FetchModelLimits);
+                .Add("fetchModelLimits", FetchModelLimits)
+                .Add("checkUpdates", CheckUpdates);
 
             try
             {

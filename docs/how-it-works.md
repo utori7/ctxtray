@@ -333,10 +333,23 @@ and does nothing else. Specifically it does not modify the application, does not
 decompile or analyse its code, does not call any Anthropic API, and does not touch stored
 credentials.
 
-By default it makes no network connections. The one exception is opt-in
-(`fetchModelLimits`, off by default): for a model whose context window it does not know,
-it reads that model's public documentation page on `platform.claude.com` once, without
-cookies, tokens, or any other credentials (see Denominators above).
+By default it makes no network connections. There are two exceptions, both opt-in and
+both off by default, and neither sends cookies, tokens, or any other credentials:
+
+- `fetchModelLimits`: for a model whose context window it does not know, it reads that
+  model's public documentation page on `platform.claude.com` once (see Denominators above).
+- `checkUpdates`: once a day it reads
+  `https://api.github.com/repos/utori7/ctxtray/releases/latest` (GitHub's public REST API,
+  unauthenticated) and keeps only `tag_name`, accepted only in the form `vX.Y.Z`. If that is
+  newer than the running version it shows one notification per version; clicking it opens
+  `https://github.com/utori7/ctxtray/releases/tag/vX.Y.Z`, a URL built from the checked version
+  rather than taken from the response. A failed check is retried after an hour. The last check
+  time, the latest version, and the version already notified are kept in
+  `%LOCALAPPDATA%\ctxtray\update-check.json` so that a restart does not check again. It never
+  downloads or replaces the exe.
+
+Both use the same request rules: HTTPS only, no redirects to another host, a 10-second
+timeout, and at most 256 KB read.
 
 ## 7. When it breaks
 

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -121,63 +120,8 @@ namespace CtxTray.Collect
         /// </summary>
         public static string Download(string url, string userAgent)
         {
-            const int MaxBytes = 256 * 1024;
-            const int MaxRedirects = 3;
-
-            try
-            {
-                for (var hop = 0; hop <= MaxRedirects; hop++)
-                {
-                    var uri = new Uri(url);
-                    if (uri.Scheme != Uri.UriSchemeHttps ||
-                        !string.Equals(uri.Host, Host, StringComparison.OrdinalIgnoreCase))
-                        return null;
-
-                    var req = (HttpWebRequest)WebRequest.Create(uri);
-                    req.Method = "GET";
-                    req.AllowAutoRedirect = false;
-                    req.Timeout = 10000;
-                    req.ReadWriteTimeout = 10000;
-                    req.UserAgent = userAgent;
-                    // 利用者の Windows の設定に従う（社内のプロキシなど）。資格情報は送らない。
-                    req.UseDefaultCredentials = false;
-
-                    HttpWebResponse res;
-                    try { res = (HttpWebResponse)req.GetResponse(); }
-                    catch (WebException ex) { res = ex.Response as HttpWebResponse; if (res == null) return null; }
-
-                    using (res)
-                    {
-                        var code = (int)res.StatusCode;
-                        if (code >= 300 && code < 400)
-                        {
-                            var location = res.Headers[HttpResponseHeader.Location];
-                            if (string.IsNullOrEmpty(location)) return null;
-                            url = new Uri(uri, location).ToString();
-                            continue;
-                        }
-                        if (code != 200) return null;
-
-                        using (var stream = res.GetResponseStream())
-                        using (var buffer = new MemoryStream())
-                        {
-                            var chunk = new byte[8192];
-                            int read;
-                            while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
-                            {
-                                if (buffer.Length + read > MaxBytes) return null;
-                                buffer.Write(chunk, 0, read);
-                            }
-                            return Encoding.UTF8.GetString(buffer.ToArray());
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // 通信の失敗は「見つからなかった」と同じ扱い。表示を止めない。
-            }
-            return null;
+            // 通信の失敗は「見つからなかった」と同じ扱い（null）。表示を止めない。
+            return Https.Get(url, Host, userAgent, null);
         }
     }
 

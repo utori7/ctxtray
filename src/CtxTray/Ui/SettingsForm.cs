@@ -214,10 +214,23 @@ namespace CtxTray.Ui
         /// </summary>
         private static readonly int[] LimitChoices = { 200000, 1000000 };
 
+        // --- 更新の確認（全般タブ） ---
+        /// <summary>いまの確認の状態（確認中・最新・新しい版あり・失敗）。</summary>
+        private readonly Func<Collect.UpdateStatus> _updateStatus;
+        /// <summary>「今すぐ確認」で呼ぶ。</summary>
+        private readonly Action _checkUpdatesNow;
+        /// <summary>ダウンロードページを開く。</summary>
+        private readonly Action _openRelease;
+        private CheckBox _checkUpdates;
+        private Button _updCheckNow, _updOpen;
+        private Label _updStatus;
+
         public SettingsForm(Func<AppConfig> current, Func<string, TrayGauge> gaugeFor,
                             Func<string, bool> hotkeyAvailable,
                             Func<IList<Collect.ModelEntry>> models = null, Action checkNow = null,
-                            Func<bool> hudVisible = null, Action<bool> setHudVisible = null)
+                            Func<bool> hudVisible = null, Action<bool> setHudVisible = null,
+                            Func<Collect.UpdateStatus> updateStatus = null, Action checkUpdatesNow = null,
+                            Action openRelease = null)
         {
             _current = current;
             _config = current().Clone();
@@ -227,6 +240,9 @@ namespace CtxTray.Ui
             _checkNowAction = checkNow;
             _hudVisible = hudVisible;
             _setHudVisible = setHudVisible;
+            _updateStatus = updateStatus;
+            _checkUpdatesNow = checkUpdatesNow;
+            _openRelease = openRelease;
             _theme = Theme.Resolve(_config.Theme);
 
             // 倍率と置き場所は、窓を作る前にマウスのあるモニタから決める。
@@ -885,12 +901,18 @@ namespace CtxTray.Ui
         {
             if (_checkNow == null) return;
             var on = _fetchDocs.Checked;
-            _checkNow.Enabled = on;
-            _checkNow.ForeColor = on ? _theme.TextPrimary : _theme.TextSecondary;
-            _checkNow.BackColor = on
+            StyleEnabled(_checkNow, on);
+            if (!on && _checkNowStatus != null) _checkNowStatus.Text = string.Empty;
+        }
+
+        /// <summary>平らなボタンを押せる・押せないに。押せないときは地と文字を淡くする（UpdateCheckNow の説明）。</summary>
+        private void StyleEnabled(Button button, bool on)
+        {
+            button.Enabled = on;
+            button.ForeColor = on ? _theme.TextPrimary : _theme.TextSecondary;
+            button.BackColor = on
                 ? (_theme.IsDark ? ControlPaint.Light(_theme.Background, 0.25f) : Color.White)
                 : _theme.Background;
-            if (!on && _checkNowStatus != null) _checkNowStatus.Text = string.Empty;
         }
 
         /// <summary>「モデル」タブを前に出す（上限が分からないモデルの通知をクリックしたとき）。</summary>
@@ -996,6 +1018,66 @@ namespace CtxTray.Ui
             Hint("set.compactHint");
 
             Row("set.configFile", Button("set.open", (s, e) => OpenFile()));
+
+            BuildUpdates();
+        }
+
+        /// <summary>
+        /// 更新の確認（2026-09-29、利用者の依頼）。通信するので既定はオフで、全般タブで切り替える。
+        /// 知らせるだけで、入れ替えは利用者が手で行う。
+        /// 「今すぐ確認」はモデルタブと同じく、チェックが入っているときだけ押せる
+        /// （押すこと自体が通信してよいという意思表示。OK を待たずに確認する）。
+        /// </summary>
+        private void BuildUpdates()
+        {
+            Section("set.secUpdates");
+            _checkUpdates = Check("set.checkUpdates");
+            _checkUpdates.CheckedChanged += (s, e) => UpdateUpdates();
+            Full(_checkUpdates);
+            Hint("set.checkUpdatesHint");
+
+            _updCheckNow = Button("set.checkNow", (s, e) =>
+            {
+                if (_checkUpdatesNow != null) _checkUpdatesNow();
+                UpdateUpdates();
+            });
+            _updStatus = new Label { AutoSize = true, Padding = P(8, 7, 0, 0), Tag = HintTag };
+            _updOpen = Button("set.updOpen", (s, e) => { if (_openRelease != null) _openRelease(); });
+            _updOpen.Margin = new Padding(S(8), _updOpen.Margin.Top, _updOpen.Margin.Right, _updOpen.Margin.Bottom);
+            Full(Flow(_updCheckNow, _updStatus, _updOpen));
+        }
+
+        /// <summary>確認の結果が変わったとき（TrayApp から）。開いている間に確認が終わったら表示を合わせる。</summary>
+        public void RefreshUpdateStatus()
+        {
+            UpdateUpdates();
+        }
+
+        /// <summary>「今すぐ確認」の押せる・押せない、状態の文、ダウンロードページのボタンを合わせる。</summary>
+        private void UpdateUpdates()
+        {
+            if (_updCheckNow == null) return;
+            var on = _checkUpdates.Checked;
+            var status = on && _updateStatus != null ? _updateStatus() : null;
+            var state = status == null ? Collect.UpdateState.None : status.State;
+
+            StyleEnabled(_updCheckNow, on && state != Collect.UpdateState.Checking);
+
+            string text;
+            switch (state)
+            {
+                case Collect.UpdateState.Checking: text = Strings.Get("set.updChecking"); break;
+                case Collect.UpdateState.Failed: text = Strings.Get("set.updFailed"); break;
+                case Collect.UpdateState.UpToDate:
+                    text = Strings.Format("set.updUpToDate", status.Current == null ? "?" : status.Current.ToString(3));
+                    break;
+                case Collect.UpdateState.Available:
+                    text = Strings.Format("set.updAvailable", status.Latest.ToString(3));
+                    break;
+                default: text = string.Empty; break;
+            }
+            _updStatus.Text = text;
+            _updOpen.Visible = state == Collect.UpdateState.Available;
         }
 
         private Control BuildButtons()
@@ -1550,6 +1632,9 @@ namespace CtxTray.Ui
 
             _fetchDocs.Checked = c.FetchModelLimits;
             UpdateCheckNow();
+
+            _checkUpdates.Checked = c.CheckUpdates;
+            UpdateUpdates();
         }
 
         /// <summary>
@@ -1615,6 +1700,7 @@ namespace CtxTray.Ui
             c.Theme = Pick(_themeCombo.SelectedIndex, "auto", "light", "dark");
             c.Language = Pick(_language.SelectedIndex, "auto", "ja", "en");
             c.PollSeconds = (int)_poll.Value;
+            c.CheckUpdates = _checkUpdates.Checked;
 
             c.FetchModelLimits = _fetchDocs.Checked;
             // 「選んでください」に戻した行は設定から外す（組み込み・取得済みの値に戻る）。
@@ -2117,6 +2203,7 @@ namespace CtxTray.Ui
             UpdateHotkeyWarning();
             UpdateThresholdOrderWarning();
             UpdateCheckNow();
+            UpdateUpdates();
         }
 
         private void UpdateSwatches()

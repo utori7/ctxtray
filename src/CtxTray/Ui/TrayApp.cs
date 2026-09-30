@@ -54,6 +54,13 @@ namespace CtxTray.Ui
         private readonly ModelDocsFetcher _modelDocs =
             new ModelDocsFetcher(AppConfig.Dir, "ctxtray/" + AppVersion.Full);
 
+        /// <summary>
+        /// 新しいバージョンの確認係。通信するのは設定でオンにしたとき（checkUpdates）と、
+        /// 設定画面で「今すぐ確認」を押したときだけ。
+        /// </summary>
+        private readonly UpdateChecker _updates =
+            new UpdateChecker(AppConfig.Dir, "ctxtray/" + AppVersion.Full);
+
         /// <summary>この実行中に、上限が分からなかったモデル（設定画面の一覧に出す）。</summary>
         private readonly HashSet<string> _unknownModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -301,6 +308,8 @@ namespace CtxTray.Ui
             // 公式ドキュメントの取得が済んだら、待たずに分母を反映する。
             if (_modelDocs.TakeChanged()) _dirty = true;
 
+            HandleUpdates();
+
             var due = (DateTime.UtcNow - _lastRefreshUtc).TotalSeconds >= _config.PollSeconds;
             if (!_dirty && !due) return;
 
@@ -412,6 +421,50 @@ namespace CtxTray.Ui
                 list.Add(new ModelEntry { Id = m, Source = LimitSource.Unknown });
             }
             return list;
+        }
+
+        // --- 新しいバージョン ------------------------------------------------------
+
+        /// <summary>
+        /// 更新の確認。オンなら 1 日 1 回（失敗なら 1 時間後）確認し、新しい版は 1 回だけ知らせる。
+        /// 確認は裏のスレッドで行うので、ここは待たない。
+        /// </summary>
+        private void HandleUpdates()
+        {
+            if (_config.CheckUpdates) _updates.RequestIfDue();
+
+            if (_updates.TakeChanged() && _settings != null && !_settings.IsDisposed)
+                _settings.RefreshUpdateStatus();
+
+            // オフにした後に届いた結果では知らせない。
+            if (!_config.CheckUpdates) return;
+            var version = _updates.ToNotify();
+            if (version == null) return;
+            _updates.MarkNotified(version);
+            _notifier.ShowInfo(Strings.Format("notify.update", version.ToString(3)),
+                               Strings.Get("notify.updateBody"),
+                               () => OpenRelease(version));
+        }
+
+        /// <summary>ダウンロードページを開く（ブラウザー）。</summary>
+        private void OpenRelease(Version version)
+        {
+            var url = UpdateCheck.ReleaseUrl(version);
+            if (url == null) return;
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                ReportError(ex);
+            }
+        }
+
+        /// <summary>「今すぐ確認」（設定画面）。</summary>
+        private void CheckUpdatesNow()
+        {
+            _updates.RequestNow();
         }
 
         /// <summary>「今すぐ確認」。分からないモデルを、24 時間を待たずに確かめる。</summary>
@@ -1039,7 +1092,9 @@ namespace CtxTray.Ui
             // 設定画面には「いまの設定を返す関数」を渡す。画面は OK の時点の最新の設定を複製して保存する。
             _settings = new SettingsForm(() => _config, PreviewGauge, _hud.IsHotkeyAvailable,
                                          ModelEntries, CheckModelsNow,
-                                         () => HudWanted, SetHudVisible);
+                                         () => HudWanted, SetHudVisible,
+                                         _updates.Status, CheckUpdatesNow,
+                                         () => OpenRelease(_updates.Status().Latest));
             if (modelsTab) _settings.ShowModelsTab();
             _settings.ResetHudPositionRequested += (s, e) =>
             {

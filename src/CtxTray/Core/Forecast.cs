@@ -23,9 +23,8 @@ namespace CtxTray.Core
         /// <summary>
         /// 圧縮が起きた形跡を探す。
         ///
-        /// 圧縮点 (CompactThreshold) の既定値は、0.1.2 から公式ドキュメントの値（0.967）になった。
-        /// これは /autocompact で変えた場合などに、実際の圧縮から
-        /// 「直前のピーク ÷ 分母」を記録して合わせるための仕組み（未使用）。
+        /// 自動圧縮の位置は、公式ドキュメントの既定値と設定の autoCompactWindow（Core/CompactWindow）で決める。
+        /// これは実際の圧縮から「直前のピーク」を記録して位置を確かめるための仕組み（未使用）。
         /// </summary>
         public static List<CompactionEvent> DetectCompactions(List<UsagePoint> series, int limit)
         {

@@ -138,7 +138,7 @@ namespace CtxTray.Notify
             var now = Clock();
             var slack = Math.Max(0, config.NotifyHysteresisPts);
 
-            if (config.NotifyContext)
+            if (config.NotifyContext.Any)
             {
                 foreach (var s in snap.Sessions)
                 {
@@ -156,16 +156,16 @@ namespace CtxTray.Notify
                     //   画面に出る % は「ウィンドウに対する消費率」、到達率は「圧縮点に対する割合」で
                     //   分母が違うので、並べると足して 100 にならず、丸め誤差か不具合に見えた（2026-09-20）。
                     //   計算の根拠は HUD の行の詳細（hud.tipToCompact）と同じ。
-                    var toCompact = Math.Max(0, (int)Math.Round(
-                        (s.ContextLimit ?? 0) * config.CompactThreshold - (s.ContextTokens ?? 0)));
+                    var toCompact = Math.Max(0,
+                        CompactWindow.PointFor(config.AutoCompactWindow, s.ContextLimit ?? 0) - (s.ContextTokens ?? 0));
 
                     var body = Strings.Format("notify.contextBody",
                         title,
                         s.ContextPct.HasValue ? s.ContextPct.Value : 0,
                         toCompact.ToString("N0", System.Globalization.CultureInfo.InvariantCulture));
 
-                    Evaluate("ctx:" + s.CliSessionId, level, Levels.ForContext(s, config, slack), config, now,
-                             Strings.Get(level == Level.Danger ? "notify.compactSoon" : "notify.contextRising"),
+                    Evaluate("ctx:" + s.CliSessionId, level, Levels.ForContext(s, config, slack), config.NotifyContext, config, now,
+                             at => Strings.Get(at == Level.Danger ? "notify.compactSoon" : "notify.contextRising"),
                              body);
                 }
             }
@@ -176,17 +176,17 @@ namespace CtxTray.Notify
                 // 以前は「表示値は下限」の注記を本文に付けていたが、HUD の "+" と同じく
                 // 意味が伝わらなかったので付けない（2026-09-15）。
 
-                if (config.NotifyFiveHour)
+                if (config.NotifyFiveHour.Any)
                 {
-                    Evaluate("fh", Levels.ForFiveHour(r, config), Levels.ForFiveHour(r, config, slack), config, now,
-                             Strings.Get("notify.fiveHour"),
+                    Evaluate("fh", Levels.ForFiveHour(r, config), Levels.ForFiveHour(r, config, slack), config.NotifyFiveHour, config, now,
+                             at => Strings.Get("notify.fiveHour"),
                              Strings.Format("notify.fiveHourBody", r.FiveHourPct));
                 }
 
-                if (config.NotifyWeekly)
+                if (config.NotifyWeekly.Any)
                 {
-                    Evaluate("wk", Levels.ForWeekly(r, config), Levels.ForWeekly(r, config, slack), config, now,
-                             Strings.Get("notify.weekly"),
+                    Evaluate("wk", Levels.ForWeekly(r, config), Levels.ForWeekly(r, config, slack), config.NotifyWeekly, config, now,
+                             at => Strings.Get("notify.weekly"),
                              Strings.Format("notify.weeklyBody", r.WeeklyPct));
                 }
             }
@@ -204,9 +204,14 @@ namespace CtxTray.Notify
         /// 注意を知らせた直後に危険へ上がったときは、待たずに知らせる。
         /// 以前は間隔待ちの間にレベルだけ上げていたので、注意から 30 分以内に危険になると
         /// 危険の通知が出なかった。
+        ///
+        /// 通知しないレベル（enabled）に上がったときは、レベルだけ進めて何も出さない。
+        /// 前回の通知の記録も変えないので、たとえば注意を出さない設定で危険に上がったら、待たずに知らせる。
+        /// 一度に複数のレベルを越えたとき（起動した時点で既に危険、など）は、越えたレベルのうち通知するものの
+        /// いちばん上で知らせる。危険を出さない設定でも、注意を越えたことは知らせる。
         /// </summary>
-        private void Evaluate(string key, Level level, Level relaxed, AppConfig config, DateTime now,
-                              string title, string body)
+        private void Evaluate(string key, Level level, Level relaxed, NotifyLevels enabled, AppConfig config, DateTime now,
+                              Func<Level, string> titleFor, string body)
         {
             State state;
             if (!_states.TryGetValue(key, out state))
@@ -227,16 +232,22 @@ namespace CtxTray.Notify
                 return;
             }
 
+            var previous = state.Level;
             state.Level = level;
+
+            // 今回越えたレベル（previous より上、level 以下）のうち、通知するものでいちばん上。
+            var notifyAt = level;
+            while (notifyAt > previous && !enabled.For(notifyAt)) notifyAt = notifyAt - 1;
+            if (notifyAt <= previous) return;
 
             var quiet = state.LastNotifiedUtc != DateTime.MinValue
                      && (now - state.LastNotifiedUtc).TotalMinutes < config.NotifyMinRepeatMinutes;
-            if (quiet && level <= state.NotifiedLevel) return;
+            if (quiet && notifyAt <= state.NotifiedLevel) return;
 
-            state.NotifiedLevel = level;
+            state.NotifiedLevel = notifyAt;
             state.LastNotifiedUtc = now;
 
-            Show(title, body, level == Level.Danger ? ToolTipIcon.Warning : ToolTipIcon.Info);
+            Show(titleFor(notifyAt), body, notifyAt == Level.Danger ? ToolTipIcon.Warning : ToolTipIcon.Info);
         }
 
         private void Forget(DateTime now)

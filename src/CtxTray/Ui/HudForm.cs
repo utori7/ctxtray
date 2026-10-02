@@ -1347,9 +1347,9 @@ namespace CtxTray.Ui
                         Thousands(s.ContextTokens.Value), Thousands(s.ContextLimit.Value),
                         PercentText.Format(s.ContextPct.Value)), false, false));
 
-                    // 圧縮点は設定の compactThreshold（公式の既定値）。通知の本文と同じ根拠。
-                    var left = (int)Math.Round(s.ContextLimit.Value * _config.CompactThreshold
-                                               - s.ContextTokens.Value);
+                    // 自動圧縮の位置は設定の autoCompactWindow をモデルの上限で切り詰めたもの。通知の本文と同じ根拠。
+                    var left = (int)(CompactWindow.PointFor(_config.AutoCompactWindow, s.ContextLimit.Value)
+                                     - s.ContextTokens.Value);
                     if (left > 0)
                         lines.Add(new TipLine(Strings.Format("hud.tipToCompact", Thousands(left)), false, false));
 

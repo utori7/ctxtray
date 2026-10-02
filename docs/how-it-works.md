@@ -165,7 +165,7 @@ A terminal session was checked with Claude Code 2.1.274 in Windows Terminal:
 - `claude --continue` keeps the `sessionId` and appends to the same transcript, so the
   resumed row continues from the previous token count.
 - The token count matched Claude Code's own `/context` total (51,270 vs "51.3k"), and its
-  33k autocompact buffer on a 1M window agrees with the 0.967 auto-compaction point.
+  33k autocompact buffer on a 1M window agrees with compacting at about 967K tokens.
 
 A VS Code session was checked with the Claude Code extension 2.1.274:
 
@@ -283,30 +283,54 @@ Earlier builds estimated "turns until compaction" from the median token growth p
 It was removed before release: the estimate was never checked against an actual
 compaction, and it rested on a placeholder auto-compaction point.
 
-The auto-compaction point is **0.967 of the window**, taken from the Claude Code documentation
-([Default auto-compact thresholds](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)):
-models running with a native 1M window compact "at about 967K tokens by default", which is
-also what Claude Desktop shows (97%). The same page says other sessions (for example 200K
-models) compact at the model's context limit, so for those the "tokens until
-auto-compaction" figure is about 3 points of the window low. One value is used for every model; a window changed with `/autocompact`,
-`autoCompactWindow` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is not picked up, because ctxtray
-does not read Claude Code's settings — set `compactThreshold` in the config file to match.
+ctxtray follows the Claude Code documentation
+([Set the auto-compact window](https://code.claude.com/docs/en/model-config#set-the-auto-compact-window),
+checked on 2026-10-01):
 
-Versions up to 0.1.1 used 0.92 as a placeholder, because no compaction was observed during
-development (one session grew monotonically from 37k to 564k tokens with no drop), and
-wrote it to the config file on every save although the dialog could not change it. A
-stored 0.92 is therefore read as "not set" and replaced with the documented value.
+- Without a set window, models running with a native 1M window compact "at about 967K tokens
+  by default", and other sessions (for example 200K models) compact at the model's context limit.
+- `/autocompact`, `--autocompact`, the `autoCompactWindow` setting and
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW` set the window as a **token count** from 100K to 1M, and
+  "Claude Code caps the window at the model's context window".
 
-Detecting compactions (a drop of 30% or more) and recording the pre-drop peak is still
-designed but not implemented; it would only matter for a changed window.
+So ctxtray keeps one token count, `autoCompactWindow` in its own config file (`"auto"` by
+default, which stands for 967,000), and takes the point for each session as the smaller of that
+and the model's context window. With the default this gives 967K on a 1M model and 200K on a
+200K model, both as documented. The settings dialog accepts the same forms as `/autocompact`
+(`200000`, `500k`, `1M`, a bare `100`–`1000` meaning thousands, `auto`).
+
+ctxtray does not read Claude Code's settings, so the user enters the value they gave
+`/autocompact`. One value applies to every session; a project-level setting, `--autocompact`
+for one launch, or the environment variable is not picked up. When a window is set, ctxtray
+takes the point to be the window itself; whether Claude Code compacts exactly there or slightly
+before it has not been checked. The point is used only for the "tokens until auto-compaction"
+figure (row details and notifications) and for the warning in the settings dialog.
+
+Up to 0.9.0 the point was a share of the window, `compactThreshold` (0.967), applied to every
+model. That put a 200K model's point at 193,400 tokens instead of 200,000, and could not express
+`/autocompact 500k` correctly for models of different sizes. A stored `compactThreshold` is
+carried over once: 0.967 (the old default) and 0.92 (a placeholder written by versions up to
+0.1.1) become `"auto"`; any other value is read as a point on a 1M model (0.5 becomes 500,000).
+
+Detecting compactions (a drop of 30% or more) and recording the pre-drop peak is designed
+but not implemented.
 
 Context thresholds use the same percentage as the panel: a share of the window. Up to
-0.3.0 they were measured as progress toward the auto-compaction point, so that a threshold would
-keep its meaning if the point moved. In practice that made "warn at 75" change colour at
-73% on the panel, and ctxtray cannot notice a moved point anyway — the user has to set
-`compactThreshold` by hand. After 0.3.0 the stored numbers are read as a share of the
-window (same numbers, not converted), and the settings dialog warns in red when a context
-threshold is at or above the auto-compaction point, because such a colour would never appear.
+0.3.0 they were measured as progress toward the auto-compaction point. In practice that made
+"warn at 75" change colour at 73% on the panel. After 0.3.0 the stored numbers are read as a
+share of the window (same numbers, not converted), and the settings dialog warns in red when a
+context threshold is at or above the point on a 1M model (the earliest point as a share of the
+window), because such a colour would never appear there.
+
+### Notifications for warn and danger
+
+Each value (context, 5-hour, weekly) has two switches, warn and danger, under
+`notify.enabled` (for example `"context": { "warn": false, "danger": true }`). The thresholds
+are still the single set above; the switches only choose which levels are announced. A file
+from 0.9.0 or earlier holds `true` or `false` per value; `true` is read as both on and `false`
+as both off. When a value crosses more than one level at once (ctxtray starting while a value
+is already in danger, for example), it announces the highest level that is switched on among
+those crossed, so "warn only" still reports the warn crossing.
 
 ## 5. Getting out of the way of full-screen apps
 

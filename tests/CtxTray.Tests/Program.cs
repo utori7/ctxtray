@@ -31,7 +31,9 @@ namespace CtxTray.Tests
             {
                 Run("StripComments", StripComments);
                 Run("Config with comments and modelLimits", ConfigLoad);
-                Run("Compaction point: documented default, old placeholder migrated", CompactThresholdMigration);
+                Run("Auto-compaction window: config, and compactThreshold carried over", CompactWindowConfig);
+                Run("Auto-compaction window: the same forms as /autocompact", CompactWindowParsing);
+                Run("Config: notifications for warn and danger separately", NotifyLevelsConfig);
                 Run("Broken config", BrokenConfig);
                 Run("Config: new display keys and older files without them", NewDisplayKeys);
                 Run("Config: hideFromCapture is on unless turned off", HideFromCaptureKey);
@@ -60,6 +62,7 @@ namespace CtxTray.Tests
                 Run("HUD placement: grows upward in the lower half, stays on screen", Placement);
                 Run("Notify: stopped sessions are not reported", NotifySkipsStopped);
                 Run("Notify: the context body counts tokens, not a second percentage", NotifyContextBody);
+                Run("Notify: warn and danger chosen separately", NotifySeparateLevels);
                 Run("Notify: warn then danger within the quiet period", NotifyEscalation);
                 Run("Notify: hysteresis", NotifyHysteresis);
                 Run("Notify: same level within the quiet period", NotifyQuiet);
@@ -371,35 +374,130 @@ namespace CtxTray.Tests
             Check(!failed && problem == null, "and is not treated as a problem");
         }
 
-        private static void CompactThresholdMigration()
+        /// <summary>
+        /// 自動圧縮のウィンドウ（autoCompactWindow、トークン数）の読み書きと、0.9.0 までの compactThreshold（割合）の引き継ぎ。
+        /// </summary>
+        private static void CompactWindowConfig()
         {
-            Equal(0.967, new AppConfig().CompactThreshold, "default is the documented value");
+            Equal(CompactWindow.Auto, new AppConfig().AutoCompactWindow, "default is Claude Code's default");
 
-            // 旧版が保存していた仮の値だけを置き換え、利用者が書いた値は残す。
             var cases = new[]
             {
-                new { Name = "compact-old", Json = "{ \"compactThreshold\": 0.92 }", Expected = 0.967 },
-                new { Name = "compact-own", Json = "{ \"compactThreshold\": 0.8 }", Expected = 0.8 },
-                new { Name = "compact-none", Json = "{ \"language\": \"en\" }", Expected = 0.967 },
+                // 0.9.0 までの割合。既定値と v0.1.1 までの仮の値は「既定」、利用者の値は 1M のモデルでのトークン数に。
+                new { Name = "old-default", Json = "{ \"compactThreshold\": 0.967 }", Expected = CompactWindow.Auto },
+                new { Name = "old-placeholder", Json = "{ \"compactThreshold\": 0.92 }", Expected = CompactWindow.Auto },
+                new { Name = "old-own", Json = "{ \"compactThreshold\": 0.8 }", Expected = 800000L },
+                new { Name = "old-out-of-range", Json = "{ \"compactThreshold\": 0.05 }", Expected = CompactWindow.Auto },
+                new { Name = "none", Json = "{ \"language\": \"en\" }", Expected = CompactWindow.Auto },
+                // 0.10.0 から。/autocompact と同じ書き方を受ける。
+                new { Name = "new-number", Json = "{ \"autoCompactWindow\": 500000 }", Expected = 500000L },
+                new { Name = "new-k", Json = "{ \"autoCompactWindow\": \"500k\" }", Expected = 500000L },
+                new { Name = "new-auto", Json = "{ \"autoCompactWindow\": \"auto\" }", Expected = CompactWindow.Auto },
+                new { Name = "new-unreadable", Json = "{ \"autoCompactWindow\": \"abc\" }", Expected = CompactWindow.Auto },
+                new { Name = "new-wins", Json = "{ \"autoCompactWindow\": 300000, \"compactThreshold\": 0.8 }", Expected = 300000L },
             };
             foreach (var c in cases)
             {
-                var path = UseConfigDir(c.Name);
+                var path = UseConfigDir("compact-" + c.Name);
                 File.WriteAllText(path, c.Json, new UTF8Encoding(false));
                 string problem;
                 bool failed;
                 var loaded = AppConfig.Load(out problem, out failed);
                 Check(!failed, c.Name + " loads");
-                Equal(c.Expected, loaded.CompactThreshold, c.Name);
+                Equal(c.Expected, loaded.AutoCompactWindow, c.Name);
             }
 
-            // 置き換えた値は保存で書き戻される。
-            var saved = UseConfigDir("compact-old-saved");
-            File.WriteAllText(saved, "{ \"compactThreshold\": 0.92 }", new UTF8Encoding(false));
+            // 保存は新しいキーだけ。古いキーは書き戻さない。
+            var saved = UseConfigDir("compact-saved");
+            File.WriteAllText(saved, "{ \"compactThreshold\": 0.8 }", new UTF8Encoding(false));
             string p;
             bool f;
             Check(AppConfig.Load(out p, out f).Save(), "save succeeds");
-            Check(File.ReadAllText(saved).Contains("\"compactThreshold\": 0.967"), "the new value is written back");
+            var text = File.ReadAllText(saved);
+            Check(text.Contains("\"autoCompactWindow\": 800000"), "the carried-over value is written as tokens");
+            Check(!text.Contains("compactThreshold"), "the old key is not written back");
+
+            var auto = UseConfigDir("compact-saved-auto");
+            File.WriteAllText(auto, "{ \"language\": \"en\" }", new UTF8Encoding(false));
+            Check(AppConfig.Load(out p, out f).Save(), "save succeeds (default)");
+            Check(File.ReadAllText(auto).Contains("\"autoCompactWindow\": \"auto\""), "the default is written as auto");
+        }
+
+        /// <summary>
+        /// /autocompact と同じ書き方（公式ドキュメント: 200000、500k / 1M、100〜1000 の数字だけは千の単位、auto）。
+        /// 範囲は 100K〜1M。小数・カンマは書かれていないので受けない。
+        /// </summary>
+        private static void CompactWindowParsing()
+        {
+            var good = new[]
+            {
+                new { Text = "500k", Tokens = 500000L },
+                new { Text = "500K", Tokens = 500000L },
+                new { Text = "1M", Tokens = 1000000L },
+                new { Text = "1m", Tokens = 1000000L },
+                new { Text = "500000", Tokens = 500000L },
+                new { Text = "200", Tokens = 200000L },
+                new { Text = "100", Tokens = 100000L },
+                new { Text = "1000", Tokens = 1000000L },
+                new { Text = " 300k ", Tokens = 300000L },
+                new { Text = "auto", Tokens = CompactWindow.Auto },
+                new { Text = "AUTO", Tokens = CompactWindow.Auto },
+            };
+            foreach (var g in good)
+            {
+                long tokens;
+                Check(CompactWindow.TryParse(g.Text, out tokens), "'" + g.Text + "' is accepted");
+                Equal(g.Tokens, tokens, "'" + g.Text + "'");
+            }
+
+            foreach (var bad in new[] { "50k", "2M", "99", "1001", "0.5M", "500,000", "", "abc", "5 0 0k" })
+            {
+                long tokens;
+                Check(!CompactWindow.TryParse(bad, out tokens), "'" + bad + "' is refused");
+            }
+            long none;
+            Check(!CompactWindow.TryParse(null, out none), "null is refused");
+
+            Equal("500k", CompactWindow.Format(500000), "format 500k");
+            Equal("1M", CompactWindow.Format(1000000), "format 1M");
+            Equal("967k", CompactWindow.Format(967000), "format 967k");
+            Equal("123456", CompactWindow.Format(123456), "format a count that is not whole thousands");
+
+            // モデルの上限で切り詰める。既定では 1M のモデルが約 967K、200K のモデルは上限で圧縮する。
+            Equal(967000L, CompactWindow.PointFor(CompactWindow.Auto, 1000000), "default on a 1M model");
+            Equal(200000L, CompactWindow.PointFor(CompactWindow.Auto, 200000), "default on a 200K model is its limit");
+            Equal(500000L, CompactWindow.PointFor(500000, 1000000), "a set window on a 1M model");
+            Equal(200000L, CompactWindow.PointFor(500000, 200000), "a set window is capped at a smaller model's limit");
+        }
+
+        /// <summary>
+        /// 通知の設定（注意・危険）。0.9.0 までの true / false も読み、保存は新しい形。
+        /// </summary>
+        private static void NotifyLevelsConfig()
+        {
+            var path = UseConfigDir("notify-levels");
+            File.WriteAllText(path,
+                "{ \"notify\": { \"enabled\": { \"context\": { \"warn\": false, \"danger\": true },"
+                + " \"fiveHour\": false, \"weekly\": { \"warn\": false } } } }",
+                new UTF8Encoding(false));
+            string problem;
+            bool failed;
+            var c = AppConfig.Load(out problem, out failed);
+            Check(!failed, "loads");
+            Check(!c.NotifyContext.Warn && c.NotifyContext.Danger, "context: danger only");
+            Check(!c.NotifyFiveHour.Warn && !c.NotifyFiveHour.Danger, "an old false turns both off");
+            Check(!c.NotifyWeekly.Warn && c.NotifyWeekly.Danger, "a missing level keeps its default (on)");
+
+            var old = UseConfigDir("notify-levels-old");
+            File.WriteAllText(old, "{ \"notify\": { \"enabled\": { \"context\": true } } }", new UTF8Encoding(false));
+            var o = AppConfig.Load(out problem, out failed);
+            Check(o.NotifyContext.Warn && o.NotifyContext.Danger, "an old true turns both on");
+            Check(o.Save(), "save succeeds");
+            Check(File.ReadAllText(old).Contains("\"warn\": true"), "saved in the new form");
+
+            var d = new AppConfig();
+            Check(d.NotifyContext.Warn && d.NotifyContext.Danger && d.NotifyFiveHour.Any && d.NotifyWeekly.Any,
+                  "everything is on by default");
         }
 
         private static void BrokenConfig()
@@ -1030,7 +1128,7 @@ namespace CtxTray.Tests
         /// </summary>
         private static void LevelsContextWindowScale()
         {
-            var c = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90, CompactThreshold = 0.967 };
+            var c = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90 };
 
             Equal(Level.Normal, Levels.ForContext(new SessionRow { ContextTokens = 740000, ContextLimit = 1000000 }, c),
                   "74% is normal (it was warn as a reach of 76.5%)");
@@ -1041,7 +1139,7 @@ namespace CtxTray.Tests
             Equal(Level.Danger, Levels.ForContext(new SessionRow { ContextTokens = 180000, ContextLimit = 200000 }, c),
                   "90% of a 200K window is danger");
 
-            var lowered = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90, CompactThreshold = 0.80 };
+            var lowered = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90, AutoCompactWindow = 800000 };
             Equal(Level.Warn, Levels.ForContext(new SessionRow { ContextTokens = 760000, ContextLimit = 1000000 }, lowered),
                   "the compaction point does not move the thresholds");
 
@@ -1067,8 +1165,8 @@ namespace CtxTray.Tests
                     FiveHourDanger = 90,
                     NotifyHysteresisPts = 10,
                     NotifyMinRepeatMinutes = minRepeatMinutes,
-                    NotifyContext = false,
-                    NotifyWeekly = false,
+                    NotifyContext = new NotifyLevels(false, false),
+                    NotifyWeekly = new NotifyLevels(false, false),
                 };
             }
 
@@ -1259,11 +1357,10 @@ namespace CtxTray.Tests
         private static void NotifySkipsStopped()
         {
             var h = new Harness(30);
-            h.Config.NotifyContext = true;
-            h.Config.NotifyFiveHour = false;
+            h.Config.NotifyContext = NotifyLevels.Both;
+            h.Config.NotifyFiveHour = new NotifyLevels(false, false);
             h.Config.ContextWarn = 0.75;
             h.Config.ContextDanger = 0.90;
-            h.Config.CompactThreshold = 0.967;
 
             var snap = new Snapshot();
             var row = Row("s", 950000, 1000000, false);
@@ -1289,11 +1386,10 @@ namespace CtxTray.Tests
         private static void NotifyContextBody()
         {
             var h = new Harness(30);
-            h.Config.NotifyContext = true;
-            h.Config.NotifyFiveHour = false;
+            h.Config.NotifyContext = NotifyLevels.Both;
+            h.Config.NotifyFiveHour = new NotifyLevels(false, false);
             h.Config.ContextWarn = 0.75;
             h.Config.ContextDanger = 0.90;
-            h.Config.CompactThreshold = 0.967;
 
             var snap = new Snapshot();
             snap.Sessions.Add(Row("s", 750000, 1000000, true));
@@ -1308,6 +1404,60 @@ namespace CtxTray.Tests
             Check(body.Contains("217,000"), "the remainder is given in tokens: " + body);
             Check(body.Contains("75%"), "the percentage is the one shown on screen: " + body);
             Check(!body.Contains("% left"), "no second percentage on another scale: " + body);
+
+            // 200K のモデルは上限で圧縮する（0.9.0 までは 193,400 で数え、残りを少なく書いていた）。
+            var small = new Harness(30);
+            small.Config.NotifyContext = NotifyLevels.Both;
+            small.Config.NotifyFiveHour = new NotifyLevels(false, false);
+            small.Config.ContextWarn = 0.75;
+            small.Config.ContextDanger = 0.90;
+            var smallSnap = new Snapshot();
+            smallSnap.Sessions.Add(Row("t", 150000, 200000, true));
+            small.Notifier.Check(smallSnap, small.Config);
+            small.Notifier.Pump();
+            Check(small.Shown.Count == 1 && small.Shown[0].Contains("50,000"),
+                  "a 200K model counts up to its limit: " + (small.Shown.Count > 0 ? small.Shown[0] : "(none)"));
+        }
+
+        /// <summary>
+        /// 注意と危険を分けて通知する（2026-10-01）。しきい値は 1 組のまま、出すレベルだけを選ぶ。
+        /// 5時間枠で試す（Harness: 注意 70、危険 90）。
+        /// </summary>
+        private static void NotifySeparateLevels()
+        {
+            var dangerOnly = new Harness(30);
+            dangerOnly.Config.NotifyFiveHour = new NotifyLevels(false, true);
+            dangerOnly.FiveHour(75);
+            Equal(0, dangerOnly.Shown.Count, "danger only: warn is not reported");
+            dangerOnly.FiveHour(92);
+            Equal(1, dangerOnly.Shown.Count, "danger only: danger is reported");
+            if (dangerOnly.Shown.Count == 1) Check(dangerOnly.Shown[0].StartsWith("Warning"), "as danger");
+
+            var warnOnly = new Harness(30);
+            warnOnly.Config.NotifyFiveHour = new NotifyLevels(true, false);
+            warnOnly.FiveHour(75);
+            Equal(1, warnOnly.Shown.Count, "warn only: warn is reported");
+            warnOnly.FiveHour(92, 3600);
+            Equal(1, warnOnly.Shown.Count, "warn only: rising to danger adds nothing");
+
+            // 一度に両方を越えた（起動した時点で既に危険）。注意だけ出す設定でも、注意は越えたので知らせる。
+            var jump = new Harness(30);
+            jump.Config.NotifyFiveHour = new NotifyLevels(true, false);
+            jump.FiveHour(95);
+            Equal(1, jump.Shown.Count, "warn only: jumping past danger still reports warn");
+            if (jump.Shown.Count == 1) Check(jump.Shown[0].StartsWith("Info"), "as warn");
+
+            var off = new Harness(30);
+            off.Config.NotifyFiveHour = new NotifyLevels(false, false);
+            off.FiveHour(75);
+            off.FiveHour(95);
+            Equal(0, off.Shown.Count, "both off: nothing");
+
+            // 両方オンは今までどおり（注意 → 危険は間隔待ちでも知らせる）。
+            var both = new Harness(30);
+            both.FiveHour(75);
+            both.FiveHour(92);
+            Equal(2, both.Shown.Count, "both on: warn then danger");
         }
 
         private static void NotifyEscalation()

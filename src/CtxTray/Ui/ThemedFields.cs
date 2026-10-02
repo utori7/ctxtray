@@ -135,12 +135,18 @@ namespace CtxTray.Ui
             Invalidate();
         }
 
+        /// <summary>
+        /// 枠なしの文字の欄（TextBox）だけ、左右にさらに空ける。数値の欄（ThemedNumeric）が中で取っている余白と同じ。
+        /// 空けないと文字が左の枠線に貼り付いた（自動圧縮の欄、2026-10-01）。
+        /// </summary>
+        private int TextPad { get { return _inner is TextBox ? (int)Math.Round(4 * _s) : 0; } }
+
         /// <summary>中の部品の大きさに合わせる。欄の高さは揃えたいので下限を置く。</summary>
         private void Fit()
         {
             var h = Math.Max(_inner.Height + Inset * 2, (int)Math.Round(22 * _s));
-            Size = new Size(_inner.Width + Inset * 2, h);
-            _inner.Location = new Point(Inset, (h - _inner.Height) / 2);
+            Size = new Size(_inner.Width + (Inset + TextPad) * 2, h);
+            _inner.Location = new Point(Inset + TextPad, (h - _inner.Height) / 2);
         }
 
         protected override void OnPaint(PaintEventArgs e)

@@ -12,6 +12,34 @@ namespace CtxTray.Core
     }
 
     /// <summary>
+    /// 値ごとに、注意と危険のどちらで通知するか（2026-10-01、利用者の決定）。
+    ///
+    /// しきい値は 1 組のまま（色と通知で別の数字は持たない）。「色は 75% で変えたいが、通知は危険だけでよい」を
+    /// しきい値を動かさずに選べるようにする。コンテキストの通知はセッションごとに出るので、並行して作業すると多くなる。
+    /// 0.9.0 までは値ごとに true / false の 1 つだけで、true は両方、false はどちらも通知しない。
+    /// </summary>
+    internal struct NotifyLevels
+    {
+        public bool Warn;
+        public bool Danger;
+
+        public NotifyLevels(bool warn, bool danger)
+        {
+            Warn = warn;
+            Danger = danger;
+        }
+
+        public static NotifyLevels Both { get { return new NotifyLevels(true, true); } }
+
+        public bool Any { get { return Warn || Danger; } }
+
+        public bool For(Level level)
+        {
+            return level == Level.Danger ? Danger : level == Level.Warn && Warn;
+        }
+    }
+
+    /// <summary>
     /// 閾値の判定を 1 か所に集める。
     ///
     /// HUD の行の色、トレイアイコンの色、通知の発火は、すべてこの結果を使う。

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using CtxTray.Collect;
+using CtxTray.Core;
 
 namespace CtxTray.Config
 {
@@ -23,7 +24,7 @@ namespace CtxTray.Config
         // コンテキストはウィンドウに対する割合（0〜1）。トレイ・HUD・通知に出す % と同じ基準。
         // 0.3.0 までは「圧縮点までの到達率」だったが、設定の 75 がパネルでは 73 で色が変わり
         // 分かりにくかったので、同じ数字のまま意味だけ変えた（2026-09-26 利用者の決定。換算はしない）。
-        // 圧縮点 (CompactThreshold) 以上にすると、色が変わる前に圧縮される。
+        // 自動圧縮の位置（AutoCompactWindow）以上にすると、色が変わる前に圧縮される。
         // 設定画面はそのとき赤字で知らせる（値は勝手に直さない）。
         public double ContextWarn = 0.75;
         public double ContextDanger = 0.90;
@@ -44,25 +45,21 @@ namespace CtxTray.Config
         public bool LevelMarks = true;
 
         // --- 通知 -----------------------------------------------------------
-        public bool NotifyContext = true;
-        public bool NotifyFiveHour = true;
-        public bool NotifyWeekly = true;
+        // 値ごとに注意・危険のどちらで通知するか（Core/NotifyLevels）。設定ファイルは enabled.context.warn など。
+        public NotifyLevels NotifyContext = NotifyLevels.Both;
+        public NotifyLevels NotifyFiveHour = NotifyLevels.Both;
+        public NotifyLevels NotifyWeekly = NotifyLevels.Both;
         public int NotifyHysteresisPts = 10;
         public int NotifyMinRepeatMinutes = 30;
 
-        // --- 圧縮点 ---------------------------------------------------------
+        // --- 自動圧縮 -------------------------------------------------------
         //
-        // auto-compact の発火点（ウィンドウに対する割合）。Claude Code の公式ドキュメントの既定値で、
-        // 1M のモデルは約 967K トークンで圧縮する（Desktop の表示も 97%）。
-        // https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds
-        // 上限（100%）で圧縮するモデル（200K など）では、少し早めに 100% に達する（安全側）。
-        // /autocompact で変えた場合は、利用者が設定ファイルで合わせる。
-        public const double DefaultCompactThreshold = 0.967;
-
-        // v0.1.1 までの仮の値。調査中に圧縮を観測できなかったので置いていた。
-        private const double OldPlaceholderCompactThreshold = 0.92;
-
-        public double CompactThreshold = DefaultCompactThreshold;
+        // 自動圧縮のウィンドウ（トークン数、0 = Claude Code の既定値）。Claude Code の autoCompactWindow と同じ意味で、
+        // 自動圧縮の位置はモデルごとに「この値とモデルの上限の小さい方」（Core/CompactWindow）。
+        // ctxtray は Claude Code の設定を読まないので、/autocompact で変えた人が同じ値を入れる。
+        // 0.9.0 までは割合の compactThreshold（0.967）を全モデルに使っていた。200K のモデルの位置を
+        // 193K と少なく見積もり、/autocompact のトークン数とも書き方が合わなかった（2026-10-01 に置き換え）。
+        public long AutoCompactWindow = CompactWindow.Auto;
 
         // --- 動作 -----------------------------------------------------------
         public int PollSeconds = 5;
@@ -396,20 +393,29 @@ namespace CtxTray.Config
                 var enabled = Json.Obj(notify, "enabled");
                 if (enabled != null)
                 {
-                    NotifyContext = Json.Bool(enabled, "context", NotifyContext);
-                    NotifyFiveHour = Json.Bool(enabled, "fiveHour", NotifyFiveHour);
-                    NotifyWeekly = Json.Bool(enabled, "weekly", NotifyWeekly);
+                    NotifyContext = ReadNotify(enabled, "context", NotifyContext);
+                    NotifyFiveHour = ReadNotify(enabled, "fiveHour", NotifyFiveHour);
+                    NotifyWeekly = ReadNotify(enabled, "weekly", NotifyWeekly);
                 }
                 NotifyHysteresisPts = (int)Json.Long(notify, "hysteresisPts", NotifyHysteresisPts);
                 NotifyMinRepeatMinutes = (int)Json.Long(notify, "minRepeatMinutes", NotifyMinRepeatMinutes);
             }
 
-            CompactThreshold = Dbl(o, "compactThreshold", CompactThreshold);
-            // 旧版は、設定画面で変えられない仮の値 0.92 を保存のたびに書き込んでいた。
-            // この値は利用者が選んだものではないので「未設定」とみなし、公式の値に置き換える。
-            // 次に保存したときにファイルも新しい値になる。
-            if (Math.Abs(CompactThreshold - OldPlaceholderCompactThreshold) < 1e-9)
-                CompactThreshold = DefaultCompactThreshold;
+            // 自動圧縮のウィンドウ。/autocompact と同じ書き方（"auto"、500000、"500k" など）を読む。
+            // 読めない値は既定値のまま（設定画面は範囲外を受けないので、手で書いた場合だけ）。
+            // キーが無ければ 0.9.0 までの compactThreshold（割合）を引き継ぐ。次に保存したときに新しいキーになる。
+            object window;
+            if (o != null && o.TryGetValue("autoCompactWindow", out window) && window != null)
+            {
+                long tokens;
+                if (CompactWindow.TryParse(Convert.ToString(window, CultureInfo.InvariantCulture), out tokens))
+                    AutoCompactWindow = tokens;
+            }
+            else
+            {
+                var ratio = Dbl(o, "compactThreshold", double.NaN);
+                if (!double.IsNaN(ratio)) AutoCompactWindow = CompactWindow.FromOldThreshold(ratio);
+            }
             PollSeconds = Math.Max(1, (int)Json.Long(o, "pollSeconds", PollSeconds));
             Hotkey = Json.Str(o, "hotkey") ?? Hotkey;
             ClickThroughHotkey = Json.Str(o, "clickThroughHotkey") ?? ClickThroughHotkey;
@@ -553,6 +559,27 @@ namespace CtxTray.Config
             CheckUpdates = Json.Bool(o, "checkUpdates", CheckUpdates);
         }
 
+        /// <summary>
+        /// 通知の設定を読む。{ "warn": true, "danger": true } の形と、0.9.0 までの true / false
+        /// （true は両方、false はどちらも通知しない）の両方を受ける。
+        /// </summary>
+        private static NotifyLevels ReadNotify(Dictionary<string, object> d, string key, NotifyLevels fallback)
+        {
+            var levels = Json.Obj(d, key);
+            if (levels != null)
+                return new NotifyLevels(Json.Bool(levels, "warn", fallback.Warn), Json.Bool(levels, "danger", fallback.Danger));
+
+            object v;
+            if (d == null || !d.TryGetValue(key, out v) || v == null) return fallback;
+            var all = Json.Bool(d, key, fallback.Any);
+            return new NotifyLevels(all, all);
+        }
+
+        private static JObj NotifyJson(NotifyLevels levels)
+        {
+            return new JObj().Add("warn", levels.Warn).Add("danger", levels.Danger);
+        }
+
         private static double Dbl(Dictionary<string, object> d, string key, double fallback)
         {
             object v;
@@ -609,12 +636,12 @@ namespace CtxTray.Config
                     .Add("marks", LevelMarks))
                 .Add("notify", new JObj()
                     .Add("enabled", new JObj()
-                        .Add("context", NotifyContext)
-                        .Add("fiveHour", NotifyFiveHour)
-                        .Add("weekly", NotifyWeekly))
+                        .Add("context", NotifyJson(NotifyContext))
+                        .Add("fiveHour", NotifyJson(NotifyFiveHour))
+                        .Add("weekly", NotifyJson(NotifyWeekly)))
                     .Add("hysteresisPts", NotifyHysteresisPts)
                     .Add("minRepeatMinutes", NotifyMinRepeatMinutes))
-                .Add("compactThreshold", CompactThreshold)
+                .Add("autoCompactWindow", AutoCompactWindow == CompactWindow.Auto ? (object)"auto" : AutoCompactWindow)
                 .Add("pollSeconds", PollSeconds)
                 .Add("hotkey", Hotkey)
                 .Add("clickThroughHotkey", ClickThroughHotkey)

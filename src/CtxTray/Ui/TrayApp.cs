@@ -375,7 +375,8 @@ namespace CtxTray.Ui
 
             if (_config.FetchModelLimits) _modelDocs.Request(unknown, false);
 
-            if (!_config.NotifyContext) return;
+            // コンテキストの通知を注意・危険とも切っているなら、これも出さない。
+            if (!_config.NotifyContext.Any) return;
             foreach (var s in snap.Sessions)
             {
                 if (s.ModelKnown || string.IsNullOrEmpty(s.Model) || !SessionFilter.IsRunning(s)) continue;

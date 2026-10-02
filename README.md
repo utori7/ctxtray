@@ -187,18 +187,26 @@ ctxtray rewrites the file when you press OK in the dialog or move the panel.
 
 Thresholds are defined **once** and drive the panel colours, the tray icon colour, and the
 notifications together. There is no separate set of numbers for each.
+For each value you choose whether warn, danger, or both send a notification (**Thresholds and
+notifications** tab in Settings). With context set to danger only, for example, the colour still
+changes at 75% but you are notified only above 90%.
 
 ```jsonc
 {
   "thresholds": {
     // Context is a fraction of the window (0.75 = 75% on the panel).
-    // A value at or above auto-compaction (97% by default) is never reached.
+    // A value at or above auto-compaction (about 97% on 1M models by default) is never reached.
     "context":  { "warn": 0.75, "danger": 0.90 },
     "fiveHour": { "warn": 80,   "danger": 95 },
     "weekly":   { "warn": 80,   "danger": 95 }
   },
   "notify": {
-    "enabled": { "context": true, "fiveHour": true, "weekly": true },
+    // For each value, whether warn and danger send a notification.
+    "enabled": {
+      "context":  { "warn": true, "danger": true },
+      "fiveHour": { "warn": true, "danger": true },
+      "weekly":   { "warn": true, "danger": true }
+    },
     // After a notification, the value has to fall this many points below the
     // threshold before crossing it again notifies you again.
     "hysteresisPts": 10,
@@ -234,9 +242,9 @@ notifications together. There is no separate set of numbers for each.
   },
   "language": "auto",            // "ja" | "en"
   "clickThroughHotkey": "",      // e.g. "Ctrl+Alt+T" to toggle "clickThrough" from the keyboard; "" = none
-  // Where auto-compaction happens, as a share of the context window.
-  // 0.967 is Claude Code's default; change it if you changed /autocompact.
-  "compactThreshold": 0.967,
+  // Where auto-compaction happens, in tokens. "auto" is Claude Code's default (see below).
+  // If you changed it with /autocompact, use the same value (500000, "500k", ...).
+  "autoCompactWindow": "auto",
   // Context window for models ctxtray does not know yet (tokens).
   // Entries here take precedence over the built-in table. Use the exact model name
   // (a name that differs only by a date, such as -20251001, counts as the same model).
@@ -290,7 +298,7 @@ When you switch to a newer model, either of these brings the percentage back:
   after 24 hours. Only the page URL is requested; no conversation, account, or sign-in data is used.
 
 The first time you use a model with an unknown context window, ctxtray tells you once with a
-notification (not if context notifications are off). The **Models** tab lists every known
+notification (not if context notifications are off for both warn and danger). The **Models** tab lists every known
 context window and where it came from (built-in, official docs, or set by you).
 
 ## Command line
@@ -384,15 +392,18 @@ conversations or account is sent.
 - **These file formats are internal to Claude.** They can change in any update. ctxtray
   degrades to "unknown" instead of crashing or guessing, but a future release may need a fix.
 - **Context is one turn behind.** Token counts are written when a response completes.
-- **The auto-compaction point is Claude Code's documented default (0.967).** Models with a 1M
-  context window auto-compact at about 967K tokens
-  ([Claude Code docs](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)).
-  For models that compact only at the full window (such as 200K models), the "tokens until
-  auto-compaction" figure is therefore slightly low. If you changed the point with
-  `/autocompact`, set `compactThreshold` to match — ctxtray does not read Claude Code's
-  settings. This value drives the "tokens until auto-compaction" figure and the warning in
-  Settings for thresholds at or above it; the context colours themselves use the panel's
-  percentage (up to 0.3.0 they were measured against this point).
+- **Where auto-compaction happens is worked out without reading Claude Code's settings.**
+  By default (**Claude Code default**), as the
+  [Claude Code docs](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)
+  describe, models with a 1M context window are taken to compact at about 967K tokens and other
+  models (such as 200K ones) at their limit. If you changed it with `/autocompact`, choose
+  **Custom** under **Auto-compaction** in **Settings > General** and enter the same value
+  (`500k`, `1M`, `500000`, …). As in Claude Code, the value is capped at each model's context window.
+  Changing it does not change Claude Code. The value applies to every session, so a project's own
+  setting, `--autocompact` at launch, or the `CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable
+  is not picked up. It is used only for the "tokens until auto-compaction" figure in the row
+  details and notifications, and for the warning in Settings; it does not affect the panel's
+  percentages or colours.
 - **Unknown models show no percentage (`?%`).** A wrong denominator is worse than an honest
   blank, so ctxtray does not guess from a similarly named model either. Pick the context window in
   **Settings > Models**, or turn on fetching from the official docs.

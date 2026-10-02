@@ -180,11 +180,20 @@ namespace CtxTray.Ui
         private Label _thresholdOrderWarning;
         private Label _ctxOverCompactWarning;
         private CheckBox _levelMarks;
-        private CheckBox _notifyContext, _notifyFh, _notifyWk;
+        private CheckBox _notifyCtxWarn, _notifyCtxDanger, _notifyFhWarn, _notifyFhDanger, _notifyWkWarn, _notifyWkDanger;
 
         // --- 全般 ---
         private ComboBox _themeCombo, _language;
         private ThemedNumeric _poll;
+
+        // 自動圧縮（/autocompact と同じ書き方で入力する。Core/CompactWindow）
+        private ComboBox _compactMode;
+        private TextBox _compactBox;
+        private Label _compactInfo, _compactError;
+        /// <summary>「指定する」で最後に正しく読めた値。まだ無ければ Auto（0）。</summary>
+        private long _compactCustom;
+        /// <summary>欄に案内（「例: 500k」の淡い文字）を出している間は true。</summary>
+        private bool _compactPrompting;
 
         /// <summary>サインイン時の自動起動。設定ファイルではなくスタートアップのショートカット（AutoStart）。</summary>
         private CheckBox _autoStart;
@@ -740,6 +749,46 @@ namespace CtxTray.Ui
             Hint("set.previewHint");
         }
 
+        /// <summary>注意・危険の色見本。Paint_ が地の色を塗り直すので ApplyTheme で塗り直す。</summary>
+        private readonly List<KeyValuePair<Label, Level>> _levelSwatches = new List<KeyValuePair<Label, Level>>();
+
+        /// <summary>
+        /// 色見本の小さな塗りの四角（地の色で塗る）。しきい値と通知のタブ、トレイアイコンのタブで同じ形。
+        /// ★ 文字の ■ は幅を取り、150% で危険の「%」が右端からはみ出した（2026-10-01）。
+        ///   トレイアイコンのタブも同じ四角にそろえた（利用者の決定）。
+        /// </summary>
+        private Label Swatch()
+        {
+            return new Label { AutoSize = false, Size = new Size(S(9), S(9)), Margin = P(6, 14, 0, 0) };
+        }
+
+        private Label LevelSwatch(Level level)
+        {
+            var swatch = Swatch();
+            _levelSwatches.Add(new KeyValuePair<Label, Level>(swatch, level));
+            return swatch;
+        }
+
+        /// <summary>
+        /// 通知の 1 つ: 文字を持たないチェックボックス、色の四角、文字（四角と文字を押しても切り替わる）。
+        /// トレイアイコンのタブの「表示する値」（IdentityCheck）と同じ並びにして、上のしきい値の色と対だと分かるようにする
+        /// （2026-10-01、実寸の見本で 3 案を見比べて利用者が決めた）。
+        /// </summary>
+        private Control LevelCheck(Level level, bool first, out CheckBox box)
+        {
+            box = new CheckBox { AutoSize = true };
+            box.Margin = first ? BareCheckMargin : P(18, 11, 0, 0);
+            var swatch = Toggles(LevelSwatch(level), box);
+            var text = Toggles(Unit(Strings.Get(level == Level.Danger ? "set.danger" : "set.warn")), box);
+            return Flow(box, swatch, text);
+        }
+
+        /// <summary>値 1 つ分の通知の行（注意・危険）。</summary>
+        private void NotifyRow(string labelKey, out CheckBox warn, out CheckBox danger)
+        {
+            Row(labelKey, Flow(LevelCheck(Level.Warn, true, out warn), LevelCheck(Level.Danger, false, out danger)));
+        }
+
         private void BuildThresholdPage()
         {
             BeginPage("set.tabThresholds");
@@ -750,8 +799,8 @@ namespace CtxTray.Ui
             Row("set.ctxThreshold", WarnDanger(_ctxWarn, _ctxDanger));
             // 補足文は置かない。% はパネルと同じ基準なので説明が要らない
             // （基準が違った 0.3.0 までは、換算した % とトークン数を添えていた）。
-            // 圧縮点以上の値は、その色になる前に圧縮されるので起きない。
-            // 圧縮点は /autocompact で変わりうる（設定ファイルの compactThreshold）ので、ここで知らせる。
+            // 自動圧縮の位置以上の値は、その色になる前に圧縮されるので起きない。
+            // 位置は全般タブの「自動圧縮」で変わるので、ここで知らせる。
             _ctxOverCompactWarning = Hint(null);
 
             _fhWarn = Percent();
@@ -773,13 +822,12 @@ namespace CtxTray.Ui
             foreach (var box in new[] { _ctxWarn, _ctxDanger, _fhWarn, _fhDanger, _wkWarn, _wkDanger })
                 box.ValueChanged += (s, e) => UpdateThresholdOrderWarning();
 
+            // 値ごとに注意と危険を分けて選ぶ（2026-10-01）。しきい値は上の 1 組だけなので、補足でそれを言う。
             Section("set.secNotify");
-            _notifyContext = Check("set.notifyContext");
-            Full(_notifyContext);
-            _notifyFh = Check("set.notifyFh");
-            Full(_notifyFh);
-            _notifyWk = Check("set.notifyWk");
-            Full(_notifyWk);
+            Hint("set.notifySameHint");
+            NotifyRow("set.notifyContext", out _notifyCtxWarn, out _notifyCtxDanger);
+            NotifyRow("set.notifyFh", out _notifyFhWarn, out _notifyFhDanger);
+            NotifyRow("set.notifyWk", out _notifyWkWarn, out _notifyWkDanger);
 
             _hysteresis = Number(0, 50);
             Row("set.hysteresis", Flow(Text_("set.hysteresisPre"), _hysteresis, Text_("set.hysteresisUnit")));
@@ -1010,21 +1058,115 @@ namespace CtxTray.Ui
             _poll = Number(1, 600);
             Row("set.poll", Flow(_poll, Text_("set.seconds")));
 
-            Row("set.compactPoint", new Label
-            {
-                AutoSize = true,
-                Padding = P(0, 7, 0, 0),
-                // 設定ファイルで変えた値を「既定値」と書かない。
-                Text = Strings.Format(
-                    Math.Abs(_config.CompactThreshold - AppConfig.DefaultCompactThreshold) < 1e-9
-                        ? "set.compactValue" : "set.compactCustom",
-                    _config.CompactThreshold),
-            });
-            Hint("set.compactHint");
+            BuildCompact();
 
             Row("set.configFile", Button("set.open", (s, e) => OpenFile()));
 
             BuildUpdates();
+        }
+
+        /// <summary>
+        /// 自動圧縮のウィンドウ（2026-10-01、利用者と決めた形）。
+        ///
+        /// /autocompact で変えた人が、打ったものをそのまま写せるよう、同じ書き方（500k、1M、500000、500）を受ける。
+        /// 既定の状態が「空の欄」ではなく「自動」に見えるよう、ドロップダウンで自動／指定を分ける。
+        /// 入力中に正しく読めた値は下の行にすぐ出し、読めないまま欄を離れたら最後に正しかった値に戻して赤字で知らせる
+        /// （「5」「50」と打つ途中で毎回赤字が出ないよう、赤字は離れたときだけ）。
+        /// </summary>
+        private void BuildCompact()
+        {
+            _compactMode = Combo(120, Strings.Get("set.compactAuto"), Strings.Get("set.compactSet"));
+            _compactMode.Name = "compactMode";
+            _compactMode.SelectedIndexChanged += (s, e) => OnCompactModeChanged();
+
+            _compactBox = Framed(new TextBox { Width = S(90), BorderStyle = BorderStyle.None, Name = "compactBox" });
+            _compactBox.TextChanged += (s, e) => { if (!_compactPrompting) UpdateCompactInfo(); };
+            _compactBox.Enter += (s, e) =>
+            {
+                if (!_compactPrompting) return;
+                _compactPrompting = false;
+                _compactBox.Text = string.Empty;
+                _compactBox.ForeColor = _theme.TextPrimary;
+            };
+            _compactBox.Leave += (s, e) => CommitCompact();
+
+            Row("set.compactPoint", Flow(_compactMode, _compactBox));
+            _compactInfo = Hint(null);
+            _compactError = Hint(null);
+            _compactError.Name = "compactError";
+            _compactError.Visible = false;
+            Hint("set.compactHint");
+        }
+
+        private bool CompactIsCustom { get { return _compactMode != null && _compactMode.SelectedIndex == 1; } }
+
+        private void OnCompactModeChanged()
+        {
+            Place(_compactBox).Visible = CompactIsCustom;
+            _compactError.Visible = false;
+            if (CompactIsCustom) ShowCompactValue(_compactCustom);
+            UpdateCompactInfo();
+        }
+
+        /// <summary>欄に値を出す。Auto（まだ指定が無い）なら案内の淡い文字。</summary>
+        private void ShowCompactValue(long tokens)
+        {
+            if (tokens == Core.CompactWindow.Auto)
+            {
+                _compactPrompting = true;
+                _compactBox.Text = Strings.Get("set.compactPrompt");
+                _compactBox.ForeColor = _theme.TextSecondary;
+            }
+            else
+            {
+                _compactPrompting = false;
+                _compactBox.Text = Core.CompactWindow.Format(tokens);
+                _compactBox.ForeColor = _theme.TextPrimary;
+            }
+        }
+
+        /// <summary>欄を離れた（または OK・適用）。読めれば形をそろえ、読めなければ戻して赤字。auto なら「自動」へ。</summary>
+        private void CommitCompact()
+        {
+            if (_compactPrompting || !CompactIsCustom) return;
+            var text = _compactBox.Text.Trim();
+            if (text.Length == 0) { ShowCompactValue(_compactCustom); return; }
+
+            long tokens;
+            if (Core.CompactWindow.TryParse(text, out tokens))
+            {
+                _compactError.Visible = false;
+                if (tokens == Core.CompactWindow.Auto) { _compactMode.SelectedIndex = 0; return; }
+                _compactCustom = tokens;
+                ShowCompactValue(tokens);
+            }
+            else
+            {
+                _compactError.Text = Strings.Format("set.compactInvalid", text);
+                _compactError.ForeColor = _theme.Danger;
+                _compactError.Visible = true;
+                ShowCompactValue(_compactCustom);
+            }
+            UpdateCompactInfo();
+        }
+
+        /// <summary>画面のいまの値（入力中で読めるものはそれ、読めなければ最後に正しかった値）。</summary>
+        private long CompactFromScreen()
+        {
+            if (!CompactIsCustom) return Core.CompactWindow.Auto;
+            long tokens;
+            if (!_compactPrompting && Core.CompactWindow.TryParse(_compactBox.Text, out tokens)) return tokens;
+            return _compactCustom;
+        }
+
+        private void UpdateCompactInfo()
+        {
+            if (_compactInfo == null) return;
+            var window = Core.CompactWindow.PointFor(CompactFromScreen(), 1000000);
+            _compactInfo.Text = Strings.Format("set.compact1M", Core.CompactWindow.Format(window),
+                                               Core.PercentText.Format(window / 10000.0));
+            // しきい値と通知のタブの「自動圧縮以上」の赤字も、この値で決まる。
+            UpdateThresholdOrderWarning();
         }
 
         /// <summary>
@@ -1432,11 +1574,10 @@ namespace CtxTray.Ui
         /// </summary>
         private CheckBox IdentityCheck(string key, string value)
         {
+            // 四角と文字の置き方は、しきい値と通知のタブの通知の行（LevelCheck）と同じ（2026-10-01 にそろえた）。
             var box = new CheckBox { AutoSize = true, Margin = BareCheckMargin };
-            var swatch = new Label { Text = "■", AutoSize = true, Padding = P(0, 6, 2, 0), Margin = new Padding(0) };
+            var swatch = Swatch();
             var text = Unit(Strings.Get(key));
-            text.Padding = P(0, 6, 0, 0);
-            text.Margin = new Padding(0);
 
             Toggles(swatch, box);
             Toggles(text, box);
@@ -1536,10 +1677,14 @@ namespace CtxTray.Ui
             return new Label { AutoSize = false, Width = S(18), Height = 1, Margin = new Padding(0) };
         }
 
+        /// <summary>
+        /// 注意と危険の欄。名前の前に、パネルで実際に変わる色の四角を置く（2026-10-01、利用者の依頼）。
+        /// 色を文字（黄・赤）で書かないのは、配色で変わるため（ライトは黄土色、コントラストテーマは Windows の色）。
+        /// </summary>
         private Control WarnDanger(ThemedNumeric warn, ThemedNumeric danger)
         {
-            return Flow(Unit(Strings.Get("set.warn")), warn, Unit("%"),
-                        Unit(Strings.Get("set.danger")), danger, Unit("%"));
+            return Flow(LevelSwatch(Level.Warn), Unit(Strings.Get("set.warn")), warn, Unit("%"),
+                        LevelSwatch(Level.Danger), Unit(Strings.Get("set.danger")), danger, Unit("%"));
         }
 
         private Control Flow(params Control[] controls)
@@ -1626,15 +1771,21 @@ namespace CtxTray.Ui
             UpdateThresholdOrderWarning();
             _levelMarks.Checked = c.LevelMarks;
 
-            _notifyContext.Checked = c.NotifyContext;
-            _notifyFh.Checked = c.NotifyFiveHour;
-            _notifyWk.Checked = c.NotifyWeekly;
+            _notifyCtxWarn.Checked = c.NotifyContext.Warn;
+            _notifyCtxDanger.Checked = c.NotifyContext.Danger;
+            _notifyFhWarn.Checked = c.NotifyFiveHour.Warn;
+            _notifyFhDanger.Checked = c.NotifyFiveHour.Danger;
+            _notifyWkWarn.Checked = c.NotifyWeekly.Warn;
+            _notifyWkDanger.Checked = c.NotifyWeekly.Danger;
             _hysteresis.Value = Clamp(c.NotifyHysteresisPts, 0, 50);
             _minRepeat.Value = Clamp(c.NotifyMinRepeatMinutes, 0, 1440);
 
             _themeCombo.SelectedIndex = IndexOf(c.Theme, "auto", "light", "dark");
             _language.SelectedIndex = IndexOf(c.Language, "auto", "ja", "en");
             _poll.Value = Clamp(c.PollSeconds, 1, 600);
+            _compactCustom = c.AutoCompactWindow;
+            _compactMode.SelectedIndex = c.AutoCompactWindow == Core.CompactWindow.Auto ? 0 : 1;
+            OnCompactModeChanged();
 
             _fetchDocs.Checked = c.FetchModelLimits;
             UpdateCheckNow();
@@ -1698,15 +1849,16 @@ namespace CtxTray.Ui
             c.WeeklyDanger = (int)_wkDanger.Value;
             c.LevelMarks = _levelMarks.Checked;
 
-            c.NotifyContext = _notifyContext.Checked;
-            c.NotifyFiveHour = _notifyFh.Checked;
-            c.NotifyWeekly = _notifyWk.Checked;
+            c.NotifyContext = new NotifyLevels(_notifyCtxWarn.Checked, _notifyCtxDanger.Checked);
+            c.NotifyFiveHour = new NotifyLevels(_notifyFhWarn.Checked, _notifyFhDanger.Checked);
+            c.NotifyWeekly = new NotifyLevels(_notifyWkWarn.Checked, _notifyWkDanger.Checked);
             c.NotifyHysteresisPts = (int)_hysteresis.Value;
             c.NotifyMinRepeatMinutes = (int)_minRepeat.Value;
 
             c.Theme = Pick(_themeCombo.SelectedIndex, "auto", "light", "dark");
             c.Language = Pick(_language.SelectedIndex, "auto", "ja", "en");
             c.PollSeconds = (int)_poll.Value;
+            c.AutoCompactWindow = CompactFromScreen();
             c.CheckUpdates = _checkUpdates.Checked;
 
             c.FetchModelLimits = _fetchDocs.Checked;
@@ -1817,6 +1969,7 @@ namespace CtxTray.Ui
                 _rowLabels.Clear();
                 _frames.Clear();
                 _swatches.Clear();
+                _levelSwatches.Clear();
                 _limitPickers.Clear();
 
                 Text = Strings.Get("set.title") + " — " + AppVersion.Display;
@@ -1941,13 +2094,15 @@ namespace CtxTray.Ui
             _thresholdOrderWarning.Visible = inverted;
             if (inverted) _thresholdOrderWarning.ForeColor = _theme.Danger;
 
+            // 自動圧縮の位置は全般タブの欄（保存前の値）から。割合がいちばん小さくなる 1M のモデルで比べる
+            // （200K のモデルは上限で圧縮するので、99% でも色は変わる）。
             if (_ctxOverCompactWarning == null) return;
-            var compactPct = (decimal)(_config.CompactThreshold * 100.0);
-            var over = _ctxWarn.Value >= compactPct || _ctxDanger.Value >= compactPct;
+            var compactPct = CompactWindow.PointFor(CompactFromScreen(), 1000000) / 10000.0;
+            var over = (double)_ctxWarn.Value >= compactPct || (double)_ctxDanger.Value >= compactPct;
             _ctxOverCompactWarning.Visible = over;
             if (over)
             {
-                _ctxOverCompactWarning.Text = Strings.Format("set.ctxOverCompact", _config.CompactThreshold);
+                _ctxOverCompactWarning.Text = Strings.Format("set.ctxOverCompact", PercentText.Format(compactPct));
                 _ctxOverCompactWarning.ForeColor = _theme.Danger;
             }
         }
@@ -2211,13 +2366,20 @@ namespace CtxTray.Ui
             UpdateThresholdOrderWarning();
             UpdateCheckNow();
             UpdateUpdates();
+            foreach (var pair in _levelSwatches) pair.Key.BackColor = _theme.For(pair.Value);
+            if (_compactBox != null)
+            {
+                _compactBox.ForeColor = _compactPrompting ? _theme.TextSecondary : _theme.TextPrimary;
+                _compactError.ForeColor = _theme.Danger;
+            }
         }
 
         private void UpdateSwatches()
         {
             var tray = Theme.ResolveForTray(ThemeKey());
+            // 四角は地の色で塗る（Swatch）。
             foreach (var kv in _swatches)
-                kv.Value.ForeColor = tray.IdentityFor(kv.Key);
+                kv.Value.BackColor = tray.IdentityFor(kv.Key);
         }
 
         /// <summary>

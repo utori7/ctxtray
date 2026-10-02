@@ -350,9 +350,10 @@ namespace CtxTray.Config
             { "set.warn",          new[] { "注意",                 "Warn" } },
             { "set.danger",        new[] { "危険",                 "Danger" } },
             { "set.ctxThreshold",  new[] { "コンテキスト",          "Context" } },
-            // 圧縮点以上の値は、その色になる前に圧縮されるので起きない。値は勝手に直さず知らせる。
-            { "set.ctxOverCompact",new[] { "自動圧縮（{0:P0}）以上の値では、色の変化も通知も起きません。",
-                                           "At or above auto-compaction ({0:P0}), this never shows." } },
+            // 自動圧縮の位置以上の値は、その色になる前に圧縮されるので起きない。値は勝手に直さず知らせる。
+            // 位置はモデルで違う（200K のモデルは上限）ので、いちばん早く圧縮する 1M のモデルの % で書く。
+            { "set.ctxOverCompact",new[] { "自動圧縮（1M のモデルで {0}%）以上の値では、色の変化も通知も起きません。",
+                                           "At or above auto-compaction ({0}% on 1M models), this never shows." } },
             { "set.fhThreshold",   new[] { "5時間枠",              "5-hour limit" } },
             { "set.wkThreshold",   new[] { "週間枠",               "Weekly limit" } },
             // 判定は危険から先に見るので、注意を危険より大きくすると注意が一度も起きない。
@@ -367,7 +368,10 @@ namespace CtxTray.Config
             { "set.levelMarksHint",new[] { "注意は粗い縞、危険は細かい縞。色が見分けにくいときに。",
                                            "Wide stripes for warn, tight for danger. Helps when colours are hard to tell apart." } },
 
-            { "set.secNotify",     new[] { "通知する項目",           "Send notifications for" } },
+            // 値ごとに注意と危険を分けて選ぶ（2026-10-01、利用者の決定）。項目は「□ ■ 注意」の形で、文字は set.warn / set.danger。
+            // しきい値は上の 1 組だけ（通知用に別の数字を持たない）ことを補足で言う。
+            { "set.secNotify",     new[] { "通知",                 "Notifications" } },
+            { "set.notifySameHint",new[] { "上の使用率を超えたときに通知します。", "Sent when a value crosses the thresholds above." } },
             { "set.notifyContext", new[] { "コンテキスト",          "Context" } },
             { "set.notifyFh",      new[] { "5時間枠",              "5-hour limit" } },
             { "set.notifyWk",      new[] { "週間枠",               "Weekly limit" } },
@@ -401,10 +405,17 @@ namespace CtxTray.Config
             // 右に「97%（Claude Code の既定値）」が並ぶので、名前は「自動圧縮」だけで足りる。
             // 項目名の列に 1 行で収まらなかった「自動圧縮が起きる使用率」から短くした（2026-09-27、利用者の決定）。
             { "set.compactPoint",  new[] { "自動圧縮",             "Auto-compaction" } },
-            { "set.compactValue",  new[] { "{0:P0}（Claude Code の既定値）", "{0:P0} (Claude Code's default)" } },
-            { "set.compactCustom", new[] { "{0:P0}（設定ファイルの値）", "{0:P0} (from the config file)" } },
-            { "set.compactHint",   new[] { "/autocompact で変更した場合は、設定ファイルの compactThreshold も同じ値にしてください。",
-                                           "If you changed it with /autocompact, set compactThreshold in the config file to match." } },
+            // /autocompact と同じ書き方で入力する（Core/CompactWindow）。2026-10-01、利用者と決めた形。
+            // ctxtray で変えても Claude Code は変わらないので、誤解されないよう補足の 1 文目で言う。
+            // 「自動」は ctxtray が /autocompact を読み取って合わせるように見えるので使わない（読み取らない）。
+            { "set.compactAuto",   new[] { "Claude Code の既定値", "Claude Code default" } },
+            { "set.compactSet",    new[] { "指定する",             "Custom" } },
+            { "set.compactPrompt", new[] { "例: 500k",             "e.g. 500k" } },
+            { "set.compact1M",     new[] { "1M のモデルで {0}（{1}%）", "{0} ({1}%) on 1M models" } },
+            { "set.compactInvalid",new[] { "「{0}」は使えません。100k〜1M の値を入力してください。",
+                                           "\"{0}\" can't be used. Enter a value from 100k to 1M." } },
+            { "set.compactHint",   new[] { "ここを変えても Claude Code の動作は変わりません。\n/autocompact で変えたときだけ、同じ値を指定してください。",
+                                           "Changing this doesn't change Claude Code.\nSet the same value only if you changed it with /autocompact." } },
             { "set.configFile",    new[] { "設定ファイル",          "Config file" } },
             { "set.open",          new[] { "開く",                 "Open" } },
 

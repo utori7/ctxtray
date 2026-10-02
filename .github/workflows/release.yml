@@ -77,6 +77,9 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item src/CtxTray/bin/Release/ctxtray.exe dist/
           Copy-Item README.md, README.ja.md, LICENSE dist/
+          # README の詳細は docs に分けた（2026-10-02）。zip の中でもリンクが切れないよう同じ並びで入れる。
+          New-Item -ItemType Directory -Force dist/docs | Out-Null
+          Copy-Item docs/*.md dist/docs/
           Compress-Archive -Path dist/* -DestinationPath $zip
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
           "$hash  $zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii
@@ -115,4 +118,4 @@ jobs:
             intact. To check that the zip (or the `ctxtray.exe` in it) was built by this
             repository's workflow, run
             `gh attestation verify <file> --repo utori7/ctxtray --signer-workflow utori7/ctxtray/.github/workflows/release.yml`
-            (see "Verifying the download" in the README), or build from source.
+            (see https://github.com/utori7/ctxtray/blob/main/docs/verify.md), or build from source.

@@ -87,9 +87,8 @@ the terminal session's context kept updating. The Claude Code binary bundled wit
 VS Code extension also reports the product name "Claude Code", so a VS Code session is
 excluded the same way.
 
-The judgement is exposed as `freshness` in `ctxtray --json`. Earlier builds also marked
-`behind` in the panel (first `▲`, then `+`); users did not read the mark as intended, so
-it was removed and the panel only greys out `reference` values.
+The judgement is exposed as `freshness` in `ctxtray --json`. The panel greys out
+`reference` values only.
 
 ### Five-hour reset
 
@@ -178,16 +177,15 @@ A VS Code session was checked with the Claude Code extension 2.1.274:
   no transcript and is not listed.
 - The resumed one shares its `sessionId` with the Claude Desktop tab, so it is not listed
   separately; the tab counts as running while either process is alive. When both are
-  alive, `--json` shows the Claude Desktop process as the tab's `pid` and `entrypoint`
-  (earlier builds showed whichever process file was read last).
+  alive, `--json` shows the Claude Desktop process as the tab's `pid` and `entrypoint`.
 
 Short-lived "ghost" sessions exist (they start and end within a second, with no
 transcript). Requiring a transcript file to exist filters them out.
 
 A tab without a live process is still shown in the panel, greyed out, because it can be
 resumed with the same context. It is not used for the tray icon, the tooltip or the
-notifications: its usage cannot grow while it is stopped, and earlier builds re-announced
-such sessions every time ctxtray started. Once the tab runs again, it counts again.
+notifications: its usage cannot grow while it is stopped, and counting it would announce a
+high value again every time ctxtray started. Once the tab runs again, it counts again.
 
 ## 4. Context
 
@@ -259,8 +257,7 @@ official docs (`https://platform.claude.com/docs/en/models/<name>/overview.md`, 
 Names match exactly, or when they differ only by a trailing 8-digit date
 (`claude-haiku-4-5-20251001` is `claude-haiku-4-5`). There is no prefix matching: a new
 point release such as `claude-opus-5-9` is **not** assumed to share `claude-opus-5`'s
-window. (Versions up to 0.1.7 did that, which is how `claude-opus-5-5` once showed a
-percentage before anyone had checked its window.)
+window.
 
 **Fetching from the docs** (opt-in). When a model is unknown, ctxtray drops `claude-` and
 any date to form the page name (`claude-opus-5-5` → `opus-5-5`), refuses anything but
@@ -278,10 +275,6 @@ The panel and `--json` (`limit_source`) say where each denominator came from.
 `--status` and `--json` never connect; they only read that file.
 
 ### Auto-compaction point
-
-Earlier builds estimated "turns until compaction" from the median token growth per turn.
-It was removed before release: the estimate was never checked against an actual
-compaction, and it rested on a placeholder auto-compaction point.
 
 ctxtray follows the Claude Code documentation
 ([Set the auto-compact window](https://code.claude.com/docs/en/model-config#set-the-auto-compact-window),
@@ -306,21 +299,13 @@ takes the point to be the window itself; whether Claude Code compacts exactly th
 before it has not been checked. The point is used only for the "tokens until auto-compaction"
 figure (row details and notifications) and for the warning in the settings dialog.
 
-Up to 0.9.0 the point was a share of the window, `compactThreshold` (0.967), applied to every
-model. That put a 200K model's point at 193,400 tokens instead of 200,000, and could not express
-`/autocompact 500k` correctly for models of different sizes. A stored `compactThreshold` is
-carried over once: 0.967 (the old default) and 0.92 (a placeholder written by versions up to
-0.1.1) become `"auto"`; any other value is read as a point on a 1M model (0.5 becomes 500,000).
+A config file from 0.9.0 or earlier holds `compactThreshold`, a share of the window, instead.
+It is carried over once: 0.967 (the old default) and 0.92 (an old placeholder value) become
+`"auto"`; any other value is read as a point on a 1M model (0.5 becomes 500,000).
 
-Detecting compactions (a drop of 30% or more) and recording the pre-drop peak is designed
-but not implemented.
-
-Context thresholds use the same percentage as the panel: a share of the window. Up to
-0.3.0 they were measured as progress toward the auto-compaction point. In practice that made
-"warn at 75" change colour at 73% on the panel. After 0.3.0 the stored numbers are read as a
-share of the window (same numbers, not converted), and the settings dialog warns in red when a
-context threshold is at or above the point on a 1M model (the earliest point as a share of the
-window), because such a colour would never appear there.
+Context thresholds use the same percentage as the panel: a share of the window. The settings
+dialog warns in red when a context threshold is at or above the point on a 1M model (the
+earliest point as a share of the window), because such a colour would never appear there.
 
 ### Notifications for warn and danger
 
@@ -360,18 +345,21 @@ way to leave a window out of screen sharing but not out of screenshots, so both 
 together. Microsoft does not present this as a guarantee against every capture method. One
 setting (`hideFromCapture`, on by default) turns it off.
 
-## 6. Terms compliance
+## 6. What it does not do, and the network
 
-ctxtray reads plain-text files that Claude Desktop and Claude Code wrote themselves,
-and does nothing else. Specifically it does not modify the application, does not
-decompile or analyse its code, does not call any Anthropic API, and does not touch stored
-credentials.
+The data ctxtray shows comes from plain-text files that Claude Desktop and Claude Code wrote
+themselves (sections 2–4). Besides reading them, it asks Windows which processes are running
+and what their executables are called (section 2), whether something is full-screen and who
+owns the window in front (section 5), and whether Windows uses a light or dark theme. It does
+not modify the application, does not decompile or analyse its code, does not call any
+Anthropic API, and does not touch stored credentials.
 
 By default it makes no network connections. There are two exceptions, both opt-in and
 both off by default, and neither sends cookies, tokens, or any other credentials:
 
 - `fetchModelLimits`: for a model whose context window it does not know, it reads that
-  model's public documentation page on `platform.claude.com` once (see Denominators above).
+  model's public documentation page on `platform.claude.com` (see Denominators above for
+  when it reads a page again).
 - `checkUpdates`: once a day it reads
   `https://api.github.com/repos/utori7/ctxtray/releases/latest` (GitHub's public REST API,
   unauthenticated) and keeps only `tag_name`, accepted only in the form `vX.Y.Z`. If that is
@@ -395,5 +383,6 @@ If something reads wrong after an update, `ctxtray --json` shows the resolved pa
 a `diag` string, which is the fastest way to see which of the four sources stopped
 working.
 
-From Claude Code 2.1.229 through 2.1.271 the fields ctxtray uses were unchanged, although
-the contents of `plan-usage-history.json` were reset around 2.1.247.
+From Claude Code 2.1.229 through 2.1.284 (the copy bundled with Claude Desktop, last checked on
+2026-10-02) ctxtray read all four sources without a diagnostic, although the contents of
+`plan-usage-history.json` were reset around 2.1.247.

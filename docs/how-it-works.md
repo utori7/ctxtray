@@ -48,7 +48,8 @@ organization in the newest sample, so switching accounts does not mix two sets o
 numbers. A sample without `t`, `fh` or `sd` is skipped rather than read as 0%.
 Other fields (a newer `u.xu` has appeared) are ignored.
 
-Sampling interval is 5 minutes most often, sometimes 15. **Sampling stops when you are
+Sampling interval was 5 minutes most often, sometimes 15, in July and August 2026; since
+mid-September it has been 15 minutes almost every time. **Sampling stops when you are
 not using the app**, even while Claude Desktop is running.
 
 ### Freshness
@@ -75,6 +76,7 @@ elapsed time:
 | sample time ≥ newest transcript write | `current` — shown as is |
 | sample time < newest transcript write | `behind` — the value is a lower bound; shown as is |
 | Desktop not running, or sample older than 24 h | `reference` — greyed out |
+| `behind` for 30 minutes with no new sample | `stalled` — greyed out, heading says "recorded 40 min ago" |
 
 "Desktop running" means a process named `Claude` whose executable is not Claude Code.
 Claude Code's own binary is also called `claude.exe` (Claude Desktop's bundled copy under
@@ -88,7 +90,16 @@ VS Code extension also reports the product name "Claude Code", so a VS Code sess
 excluded the same way.
 
 The judgement is exposed as `freshness` in `ctxtray --json`. The panel greys out
-`reference` values only.
+`reference` and `stalled` values.
+
+`stalled` covers Claude Desktop that stops sampling while you keep working. On 2026-10-02
+Desktop wrote one sample right after it started and nothing for the next 40 minutes of use;
+its own usage indicator showed 26% while the file still said 0%. Restarting Desktop brought
+the samples back. Samples normally arrive every 15 minutes in use, so ctxtray waits for
+30 minutes of `behind` on the same sample. It counts from the moment it first sees
+`behind`, not from the sample time, because after a long break the sample is old but Desktop
+records a new one soon after you start again. The count lives in the running tray app, so
+a one-off `ctxtray --json` never reports `stalled`.
 
 ### Five-hour reset
 

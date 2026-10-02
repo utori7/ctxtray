@@ -990,9 +990,12 @@ namespace CtxTray.Ui
                     // 淡い行の理由は見出しに言葉で出す。灰色なだけでは「壊れている」と読まれ、
                     // 理由は行にマウスを乗せないと分からなかった（2026-09-20）。
                     // 記号は付けない（▲ も + も意味が伝わらなかった、2026-09-15）。
-                    var reference = _snapshot.Freshness == RateFreshness.Reference
-                        ? Strings.Get("hud.capReference")
-                        : null;
+                    // 記録が止まったときは、止まったと決めつけず、いつの値かを書く（2026-10-03、利用者の決定）。
+                    string reference = null;
+                    if (_snapshot.Freshness == RateFreshness.Reference)
+                        reference = Strings.Get("hud.capReference");
+                    else if (_snapshot.Freshness == RateFreshness.Stalled && _snapshot.RateLimits != null)
+                        reference = Strings.Format("hud.capRecorded", Ago(_snapshot.RateLimits.SampledAtUtc));
 
                     DrawCaption(g, cap, capNote, Strings.Get("hud.capLimits"), reference, y);
                     y += CapHeight;
@@ -1026,8 +1029,9 @@ namespace CtxTray.Ui
                 return y + RowHeight * 2;
             }
 
-            // Desktop 未起動や長時間更新なしのときは参考値なので淡く出す。
-            var dimmed = _snapshot.Freshness == RateFreshness.Reference;
+            // Desktop 未起動や長時間更新なしのとき、使用中なのに記録が止まっているときは淡く出す。
+            var dimmed = _snapshot.Freshness == RateFreshness.Reference
+                         || _snapshot.Freshness == RateFreshness.Stalled;
 
             DrawRow(g, body, bold, y,
                     Strings.Get("hud.fiveHour"), FiveHourResetText(r), false,
@@ -1399,6 +1403,8 @@ namespace CtxTray.Ui
 
             if (_snapshot != null && _snapshot.Freshness == RateFreshness.Reference)
                 lines.Add(new TipLine(Strings.Get("hud.tipReference"), true, false));
+            if (_snapshot != null && _snapshot.Freshness == RateFreshness.Stalled)
+                lines.Add(new TipLine(Strings.Get("hud.tipStalled"), true, false));
 
             // 行には残り 30 分からしか出さないリセット見込みも、ここでは常に出す
             //（自分で見に来たときだけなので、雑音にならない）。「表示しない」設定のときは出さない。

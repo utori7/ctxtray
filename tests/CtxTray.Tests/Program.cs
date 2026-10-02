@@ -48,6 +48,7 @@ namespace CtxTray.Tests
                 Run("Updates: once a day, retry after an hour, one notice per version", UpdateChecking);
                 Run("Notify: a notice with its own click action", NotifyClickAction);
                 Run("Rate samples: latest org only, incomplete samples skipped", RateSamples);
+                Run("Rate samples: in use for 30 minutes without a new sample", RateStalled);
                 Run("JSON writer: ASCII-only output", AsciiJson);
                 Run("Transcript: latest usage", TranscriptLatest);
                 Run("Effort: transcript first, then the tab record", TranscriptEffort);
@@ -890,6 +891,31 @@ namespace CtxTray.Tests
             now = now.AddSeconds(10);
             n.ShowInfo("title", "plain");
             Check(n.TakeClickAction() == null, "a plain notice keeps the default");
+        }
+
+        private static void RateStalled()
+        {
+            var stall = new RateStall();
+            var sample = new DateTime(2026, 10, 2, 13, 3, 48, DateTimeKind.Utc);
+            var t = sample.AddMinutes(1);
+
+            Equal(RateFreshness.Current, stall.Apply(RateFreshness.Current, sample, t), "no use since the sample");
+
+            // 長く使わずに戻ったとき: 記録は古いが、使い始めてからの時間で数える。
+            var back = sample.AddHours(2);
+            Equal(RateFreshness.Behind, stall.Apply(RateFreshness.Behind, sample, back), "first use after a long break");
+            Equal(RateFreshness.Behind, stall.Apply(RateFreshness.Behind, sample, back.AddMinutes(29)), "29 minutes of use");
+            Equal(RateFreshness.Stalled, stall.Apply(RateFreshness.Behind, sample, back.AddMinutes(30)), "30 minutes of use");
+
+            // 新しい記録が来たら数え直す。
+            var next = back.AddMinutes(31);
+            Equal(RateFreshness.Behind, stall.Apply(RateFreshness.Behind, next, next.AddMinutes(1)), "a new sample starts over");
+            Equal(RateFreshness.Behind, stall.Apply(RateFreshness.Behind, next, next.AddMinutes(30)), "counted from the first use, not the sample");
+            Equal(RateFreshness.Stalled, stall.Apply(RateFreshness.Behind, next, next.AddMinutes(31)), "30 minutes after the first use");
+
+            // Desktop を閉じたら参考値。開き直して同じ記録のままなら、また 0 から数える。
+            Equal(RateFreshness.Reference, stall.Apply(RateFreshness.Reference, next, next.AddMinutes(32)), "Desktop closed");
+            Equal(RateFreshness.Behind, stall.Apply(RateFreshness.Behind, next, next.AddMinutes(33)), "counting starts over after Reference");
         }
 
         private static void RateSamples()

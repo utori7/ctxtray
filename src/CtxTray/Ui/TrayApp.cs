@@ -45,6 +45,7 @@ namespace CtxTray.Ui
         private AppConfig _config;
         private HudForm _hud;
         private Snapshot _lastSnapshot;
+        private readonly RateStall _rateStall = new RateStall();
         private SettingsForm _settings;
 
         /// <summary>
@@ -329,6 +330,9 @@ namespace CtxTray.Ui
             // 表示の対象を絞る。ここで一度だけ絞り、HUD・トレイ・ツールチップ・通知が
             // すべて同じ結果を見る（HUD で隠した行にトレイや通知が反応しないように）。
             SessionFilter.Apply(snap, _config, DateTime.UtcNow);
+
+            if (snap.RateLimits != null)
+                snap.Freshness = _rateStall.Apply(snap.Freshness, snap.RateLimits.SampledAtUtc, DateTime.UtcNow);
 
             HandleUnknownModels(snap);
 

@@ -97,6 +97,8 @@ namespace CtxTray.Config
             // レート枠が淡いときの理由。灰色なだけでは「壊れている」と読まれうるので、
             // 見出しの右に言葉で出す（記号は付けない。▲ も + も意味が伝わらなかった）。
             { "hud.capReference", new[] { "参考値",           "for reference" } },
+            // 使用中なのに Claude Desktop の記録が 30 分以上止まっているとき。{0} は「40 分前」など。
+            { "hud.capRecorded",  new[] { "{0}に記録",        "recorded {0}" } },
 
             // HUD の行にマウスを乗せたときに出す詳細（行は簡潔なまま、確かな値だけをここに出す）。
             { "hud.tipTerminal",  new[] { "ターミナルで実行中",        "Running in a terminal" } },
@@ -129,6 +131,8 @@ namespace CtxTray.Config
             { "hud.tipReset",     new[] { "次回リセット {0} ごろ",         "Next reset about {0}" } },
             { "hud.tipReference", new[] { "Claude Desktop が起動していないため、最後に記録された値を表示しています",
                                           "Claude Desktop isn't running, so this is the last value it recorded" } },
+            { "hud.tipStalled",   new[] { "使用中ですが、Claude Desktop が新しい値を記録していません。Desktop を再起動すると直ることがあります",
+                                          "Claude Desktop hasn't recorded a new value while in use. Restarting Desktop may fix this" } },
 
             { "hud.loading",      new[] { "読み込み中…",              "Loading…" } },
             { "hud.rateUnavail",  new[] { "レート枠: 取得できません", "Rate limits: unavailable" } },

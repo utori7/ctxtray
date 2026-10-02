@@ -24,6 +24,12 @@ namespace CtxTray.Collect
 
         /// <summary>Desktop 未起動、または 24 時間以上更新なし。参考値。</summary>
         Reference,
+
+        /// <summary>
+        /// 使用中なのに Desktop が記録を止めている（Behind が同じ記録のまま 30 分続いた）。
+        /// 判定は常駐側の Core.RateStall が行う。
+        /// </summary>
+        Stalled,
     }
 
     /// <summary>コンテキストの分母（モデルの上限）をどこから得たか。</summary>

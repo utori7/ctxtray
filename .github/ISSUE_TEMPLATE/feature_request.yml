@@ -1,0 +1,27 @@
+name: 要望 / Feature request
+description: こうしてほしい、こういう表示がほしい / Something you would like ctxtray to do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        日本語でも英語でも書けます。すべての要望に応えられるとは限りません。
+        ctxtray は Claude Desktop と Claude Code が書き出したファイルだけを読み、Anthropic の API にはアクセスしません。
+        そのため、ファイルに記録されていない値（週間枠のリセット時刻など）は表示できません。
+        Japanese or English is fine. Not every request can be taken up.
+        ctxtray only reads files that Claude Desktop and Claude Code write, and does not call any Anthropic API,
+        so values that are not recorded in those files (such as the weekly reset time) cannot be shown.
+
+  - type: textarea
+    id: want
+    attributes:
+      label: してほしいこと / What you would like
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 理由や場面 / Why, or when it would help
+    validations:
+      required: false

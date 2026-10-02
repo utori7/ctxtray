@@ -1,0 +1,62 @@
+name: 不具合の報告 / Bug report
+description: 表示がおかしい、動かない、など / Something is shown wrong or does not work
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        日本語でも英語でも書けます。個人で作っているツールのため、返信までに時間がかかることがあります。
+        Japanese or English is fine. This is a personal project, so a reply may take a while.
+
+  - type: input
+    id: version
+    attributes:
+      label: ctxtray のバージョン / ctxtray version
+      description: 設定画面のタイトル、または `ctxtray --version` / The settings window title, or `ctxtray --version`
+      placeholder: "0.10.1"
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows のバージョンと表示倍率 / Windows version and display scale
+      placeholder: "Windows 11 25H2, 150%"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 起きたこと / What happened
+      description: 何をしたときに、何が表示されたか / What you did and what was shown
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した動き / What you expected
+    validations:
+      required: false
+
+  - type: textarea
+    id: json
+    attributes:
+      label: ctxtray --json の出力（任意） / Output of ctxtray --json (optional)
+      description: |
+        PowerShell で `ctxtray --json | Out-File state.json` を実行すると、state.json に保存されます。
+        **貼る前に、セッション名（`title`）、フォルダーのパス（`cwd`）、ユーザー名を含むパス（`paths`、`transcript`）を消してください。**
+        Run `ctxtray --json | Out-File state.json` in PowerShell to save it to state.json.
+        **Before pasting, remove the session names (`title`), folder paths (`cwd`), and the paths that contain your user name (`paths`, `transcript`).**
+      render: json
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        スクリーンショットを添えるときは、セッション名などが写っていないか確認してください。
+        パネルは既定でスクリーンショットに写りません。写すには、設定の「パネル」タブの「画面共有とスクリーンショットでは非表示にする」をオフにしてください。
+        If you attach a screenshot, check that no session names are visible.
+        The panel is left out of screenshots by default; to capture it, turn off **Hide from screen sharing and screenshots** on the **Panel** tab in Settings.

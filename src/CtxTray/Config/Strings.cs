@@ -326,8 +326,11 @@ namespace CtxTray.Config
             { "set.modeSingle",    new[] { "1 個にまとめる（横のバー）", "One combined icon (horizontal bars)" } },
 
             { "set.secTrayValues", new[] { "表示する値",            "Values to show" } },
-            { "set.valContext",    new[] { "コンテキスト（実行中で自動圧縮に最も近いセッション）",
-                                           "Context (running session closest to auto-compaction)" } },
+            // 選び方は SessionFilter.MostPressed（実行中で % が最も大きいもの）。
+            // 以前は「自動圧縮に最も近い」と書いていたが、200K のモデルは上限で圧縮するので、% が最大でも
+            // 自動圧縮に最も近いとは限らない（2026-10-02、README の整理で気付き、利用者の決定で文言を直した）。
+            { "set.valContext",    new[] { "コンテキスト（実行中で % が最も大きいセッション）",
+                                           "Context (running session with the highest %)" } },
             { "set.valFiveHour",   new[] { "5時間枠",              "5-hour limit" } },
             { "set.valWeekly",     new[] { "週間枠",               "Weekly limit" } },
 

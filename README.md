@@ -11,7 +11,7 @@ plus bars drawn into the tray icon.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ctxtray-hud-en-dark.png">
-  <img alt="The ctxtray panel: context usage for three sessions, then the 5-hour and weekly limits" src="docs/images/ctxtray-hud-en-light.png" width="352">
+  <img alt="The ctxtray panel: context usage for four sessions, each with a dot showing whether it is working, waiting for approval, has an unread reply or has finished, then the 5-hour and weekly limits" src="docs/images/ctxtray-hud-en-light.png" width="352">
 </picture>
 
 <picture>

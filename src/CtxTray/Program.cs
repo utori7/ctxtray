@@ -669,6 +669,18 @@ namespace CtxTray
                                         338000, false, false, state != "stopped"));
             snap.Sessions.Add(SampleRow("my-project", 221000, false, true, true));
 
+            // README の画像: 状態の丸を見せる（応答中・承認待ち・未読・終わった）。
+            // 3 行（未読なし）と 4 行の実寸の見本から、利用者が 4 行を選んだ（2026-10-03）。
+            if (state == "normal")
+            {
+                snap.Sessions[0].Activity = Core.SessionActivity.Busy;
+                snap.Sessions[1].Activity = Core.SessionActivity.WaitingPermission;
+                snap.Sessions[2].Activity = Core.SessionActivity.Idle;
+                var unread = SampleRow(japanese ? "README の見直し" : "Review README", 152000, false, false);
+                unread.Activity = Core.SessionActivity.Unread;
+                snap.Sessions.Insert(2, unread);
+            }
+
             // 状態の丸の全種類（応答中・承認待ち・回答待ち・未読・終わった）。highlight は待っている行の強調をオンにした姿。
             if (state == "activity" || state == "highlight")
             {

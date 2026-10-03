@@ -10,7 +10,7 @@ Claude Desktop でもこれらの値は確認できますが、インジケー�
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ctxtray-hud-ja-dark.png">
-  <img alt="ctxtray のパネル。3 つのセッションのコンテキスト使用量と、その下に 5時間枠と週間枠" src="docs/images/ctxtray-hud-ja-light.png" width="352">
+  <img alt="ctxtray のパネル。4 つのセッションのコンテキスト使用量と、応答中・承認待ち・未読・終わったを示す丸、その下に 5時間枠と週間枠" src="docs/images/ctxtray-hud-ja-light.png" width="352">
 </picture>
 
 <picture>

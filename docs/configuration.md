@@ -97,6 +97,7 @@ ctxtray --json              print the current state as JSON
 ctxtray --no-external       only Claude Desktop tabs
 ctxtray --include-archived  include closed tabs
 ctxtray --verify-weekly     show how the weekly reset was derived
+ctxtray --watch-status      log each change in session state (diagnostics; Ctrl+C to stop)
 ctxtray --icon-preview [dir] write a PNG sheet of the tray icons
 ctxtray --hud-preview [dir]  write PNGs of the panel with made-up data
 ctxtray --version           print the version
@@ -118,6 +119,23 @@ When the output goes to a pipe or a file, non-ASCII characters in the JSON are w
 
 The output of `--json` contains session names, working-directory paths, and paths that include
 your user name. Remove them before showing it to anyone.
+
+### `--watch-status` (diagnostics)
+
+Reads the session state (`status`) that Claude Code records in `~/.claude/sessions/<pid>.json`
+every 0.5 seconds and prints one line for each change. It is for finding out what Claude Code
+records while it waits for approval or after it finishes. Each line also shows the end of the
+transcript (the kind of the last message and the tool name) and the fields of the Claude Desktop
+tab record.
+
+```powershell
+ctxtray --watch-status | Tee-Object ctxtray-status.log
+```
+
+This shows the lines and saves them to a file at the same time. Press Ctrl+C to stop.
+The output contains no session names, folder paths or conversation text. Values are printed only
+when they are short and use letters, digits and `. _ : -`; anything else is printed as its length,
+so the output can be pasted into an issue as is.
 
 ## Files it writes
 

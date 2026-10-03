@@ -234,7 +234,7 @@ namespace CtxTray.Collect
         /// transcript は数 MB まで育つので全体は読まない。
         /// Claude Code が書き込み中でも読めるように共有指定する。
         /// </summary>
-        private static List<string> ReadTailLines(string path, int maxLines)
+        internal static List<string> ReadTailLines(string path, int maxLines)
         {
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
                                            FileShare.ReadWrite | FileShare.Delete))

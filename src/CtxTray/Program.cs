@@ -74,6 +74,7 @@ namespace CtxTray
             var hudPreview = false;
             var appIconPreview = false;
             var writeAppIcon = false;
+            var watchStatus = false;
             string outDir = null;
 
             foreach (var a in args)
@@ -91,6 +92,7 @@ namespace CtxTray
                     case "--hud-preview": hudPreview = true; break;
                     case "--app-icon-preview": appIconPreview = true; break;
                     case "--write-app-icon": writeAppIcon = true; break;
+                    case "--watch-status": watchStatus = true; break;
                     case "--version":
                     case "-v":
                         Console.WriteLine("ctxtray " + AppVersion.Full);
@@ -118,6 +120,7 @@ namespace CtxTray
             if (hudPreview) return WriteHudPreview(outDir);
             if (appIconPreview) return WriteAppIconPreview(outDir);
             if (writeAppIcon) return WriteAppIcon(outDir);
+            if (watchStatus) return RunStatusWatch();
 
             Snapshot snap;
             try
@@ -173,6 +176,7 @@ namespace CtxTray
                 Console.WriteLine("  ctxtray --no-external       Claude Desktop のタブだけを対象にする");
                 Console.WriteLine("  ctxtray --include-archived  終了済みのタブも含める");
                 Console.WriteLine("  ctxtray --verify-weekly     週間枠リセットの推定過程を表示");
+                Console.WriteLine("  ctxtray --watch-status      セッションの状態の変化を記録し続ける（診断用。Ctrl+C で終了）");
                 Console.WriteLine("  ctxtray --icon-preview [dir] トレイアイコンのプレビューを PNG で出力");
                 Console.WriteLine("  ctxtray --hud-preview [dir]  パネルのプレビュー（架空のデータ）を PNG で出力");
                 Console.WriteLine("  ctxtray --app-icon-preview [dir]  アプリのアイコンのプレビューを PNG で出力");
@@ -189,12 +193,71 @@ namespace CtxTray
                 Console.WriteLine("  ctxtray --no-external       only Claude Desktop tabs");
                 Console.WriteLine("  ctxtray --include-archived  include closed tabs");
                 Console.WriteLine("  ctxtray --verify-weekly     show how the weekly reset was derived");
+                Console.WriteLine("  ctxtray --watch-status      log each change in session state (diagnostics; Ctrl+C to stop)");
                 Console.WriteLine("  ctxtray --icon-preview [dir] write a PNG sheet of the tray icons");
                 Console.WriteLine("  ctxtray --hud-preview [dir]  write PNGs of the panel with made-up data");
                 Console.WriteLine("  ctxtray --app-icon-preview [dir]  write a PNG sheet of the app icon");
                 Console.WriteLine("  ctxtray --write-app-icon [path]   write the app icon as .ico (for maintainers)");
                 Console.WriteLine("  ctxtray --version           print the version");
             }
+        }
+
+        /// <summary>
+        /// セッションの状態が変わるたびに 1 行書く（Collect/StatusWatch.cs）。Ctrl+C で終わる。
+        ///
+        /// 承認待ちや完了のときに Claude Code が何を記録するかを、利用者の環境で集めるための診断用。
+        /// 行は貼りやすいように英語の記号だけで書く（見出しと案内だけ利用者の言語）。
+        /// </summary>
+        private static int RunStatusWatch()
+        {
+            var diag = new Diagnostics();
+            var configDir = Paths.FindClaudeCodeConfigDir(diag);
+            var dataRoot = Paths.FindClaudeDataRoot(diag);
+
+            Console.WriteLine(Strings.Format("watch.header", AppVersion.Full,
+                                             DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)));
+            Console.WriteLine(Strings.Get("watch.privacy"));
+            Console.WriteLine(Strings.Get("watch.stop"));
+            if (configDir == null)
+            {
+                Console.Error.WriteLine(Strings.Format("cli.diag", diag.Summary));
+                return 1;
+            }
+            Console.WriteLine();
+
+            const int IntervalMs = 500;
+            var watch = new StatusWatch(configDir, dataRoot);
+            var known = new Dictionary<int, WatchedSession>();
+            var first = true;
+
+            while (true)
+            {
+                var nowUtc = DateTime.UtcNow;
+                var current = watch.Poll(known);
+
+                var pids = new List<int>(current.Keys);
+                pids.Sort();
+                foreach (var pid in pids)
+                {
+                    WatchedSession before;
+                    if (!known.TryGetValue(pid, out before)) WatchLine(nowUtc, pid, StatusWatch.Describe(current[pid]));
+                    else foreach (var body in StatusWatch.Changes(before, current[pid], nowUtc)) WatchLine(nowUtc, pid, body);
+                }
+                foreach (var pid in known.Keys)
+                    if (!current.ContainsKey(pid)) WatchLine(nowUtc, pid, "ended");
+
+                if (first && current.Count == 0) Console.WriteLine(Strings.Get("watch.noneYet"));
+                first = false;
+                known = current;
+
+                Thread.Sleep(IntervalMs);
+            }
+        }
+
+        private static void WatchLine(DateTime nowUtc, int pid, string body)
+        {
+            Console.WriteLine(nowUtc.ToLocalTime().ToString("HH:mm:ss.f", CultureInfo.InvariantCulture)
+                              + "  pid " + pid.ToString(CultureInfo.InvariantCulture) + "  " + body);
         }
 
         /// <summary>

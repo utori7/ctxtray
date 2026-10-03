@@ -55,6 +55,10 @@ namespace CtxTray.Tests
                 Run("HUD widths: the name width, every column widens the panel", HudWidths);
                 Run("Model names: checked names only, no guessing", ModelDisplayNames);
                 Run("Sessions: a Desktop tab keeps its Desktop process", TabProcessChoice);
+                Run("Status watch: only short values, no names or paths", StatusWatchRecord);
+                Run("Status watch: transcript tail summary", StatusWatchTail);
+                Run("Status watch: change lines", StatusWatchChanges);
+                Run("Status watch: polling the session files", StatusWatchPoll);
                 Run("Levels with slack", LevelsSlack);
                 Run("Levels: context thresholds use the same % as the panel", LevelsContextWindowScale);
                 Run("Tray: running sessions only", TrayPicksRunning);
@@ -1130,6 +1134,180 @@ namespace CtxTray.Tests
             Equal(2, Sessions.AliveBySession(twoCli)["s"].Pid, "same kind, other order");
 
             Equal(0, Sessions.AliveBySession(null).Count, "null gives an empty map");
+        }
+
+        // --- --watch-status ----------------------------------------------------
+
+        private static void StatusWatchRecord()
+        {
+            // Claude Code 2.1.288 が書いた実物（値は変えてある）。
+            var o = Json.ParseObject(
+                "{\"pid\":134,\"sessionId\":\"7ad76d82-d9ce-5e22-aaf4-62ba98cbfaba\",\"cwd\":\"C:\\\\Users\\\\me\\\\secret\"," +
+                "\"startedAt\":1790998040223,\"procStart\":\"525\",\"version\":\"2.1.288\",\"peerProtocol\":1," +
+                "\"peerFeatures\":[\"notify_idle\",\"artifact_yield\"],\"kind\":\"interactive\",\"entrypoint\":\"claude-desktop\"," +
+                "\"pidDomain\":\"linux:abc:pid:[4026531836]\",\"messagingSocketPath\":\"/tmp/cc-socks/134.sock\"," +
+                "\"name\":\"my-secret-project\",\"nameSource\":\"derived\",\"nameSince\":1790998040223," +
+                "\"updatedAt\":1790998068316,\"status\":\"busy\",\"statusUpdatedAt\":1790998068316," +
+                "\"note\":\"free text with spaces\",\"extra\":{\"b\":1,\"a\":\"x y\"}}");
+            var s = StatusWatch.FromRecord(o);
+
+            Equal("busy", s.Status, "status is read");
+            Equal(1790998068316L, s.StatusUpdatedAtMs, "statusUpdatedAt is read");
+            Equal("7ad76d82", s.ShortId, "the session id is shortened to 8 characters");
+            Equal("claude-desktop", s.Entrypoint, "entrypoint");
+            Equal("2.1.288", s.Version, "version");
+            Equal("interactive", s.Fields.ContainsKey("kind") ? s.Fields["kind"] : null, "unknown short values are shown");
+            Equal("[notify_idle,artifact_yield]", s.Fields.ContainsKey("peerFeatures") ? s.Fields["peerFeatures"] : null,
+                  "arrays of short values are shown");
+            Equal("1", s.Fields.ContainsKey("peerProtocol") ? s.Fields["peerProtocol"] : null, "numbers that are not times");
+            Equal("<text 21>", s.Fields.ContainsKey("note") ? s.Fields["note"] : null, "free text is reduced to its length");
+            Equal("{a,b}", s.Fields.ContainsKey("extra") ? s.Fields["extra"] : null, "objects show their keys only");
+
+            foreach (var key in new[] { "cwd", "name", "sessionId", "messagingSocketPath", "pidDomain",
+                                        "startedAt", "updatedAt", "nameSince", "statusUpdatedAt", "status", "pid" })
+                Check(!s.Fields.ContainsKey(key), key + " is not in the fields");
+
+            var all = StatusWatch.Describe(s);
+            Check(all.IndexOf("secret", StringComparison.Ordinal) < 0, "names and paths never reach the output");
+
+            var old = StatusWatch.FromRecord(Json.ParseObject("{\"pid\":5,\"sessionId\":\"abc\",\"entrypoint\":\"cli\"}"));
+            Equal<string>(null, old.Status, "older versions without status give null");
+            Equal("abc", old.ShortId, "short ids stay as they are");
+
+            // タブの記録では status も項目として出す。
+            var fields = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            StatusWatch.Sanitize(Json.ParseObject(
+                "{\"sessionId\":\"local_1\",\"cliSessionId\":\"7ad7\",\"title\":\"Fix the secret\",\"cwd\":\"C:\\\\x\"," +
+                "\"model\":\"claude-opus-5-5\",\"status\":\"waiting\",\"lastActivityAt\":1790998040223,\"isArchived\":false}"),
+                "tab.", fields);
+            Equal("waiting", fields.ContainsKey("tab.status") ? fields["tab.status"] : null, "a tab's status is shown");
+            Equal("claude-opus-5-5", fields.ContainsKey("tab.model") ? fields["tab.model"] : null, "a tab's model");
+            Equal("false", fields.ContainsKey("tab.isArchived") ? fields["tab.isArchived"] : null, "booleans");
+            Check(!fields.ContainsKey("tab.title") && !fields.ContainsKey("tab.cwd"), "a tab's title and folder are left out");
+            Check(!fields.ContainsKey("tab.lastActivityAt"), "a tab's times are left out");
+        }
+
+        private static void StatusWatchTail()
+        {
+            const string ToolUse =
+                "{\"type\":\"assistant\",\"message\":{\"stop_reason\":\"tool_use\",\"content\":[" +
+                "{\"type\":\"thinking\",\"thinking\":\"secret\"},{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"rm secret\"}}]}}";
+            const string ToolResult =
+                "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"secret\"}]}}";
+            const string ToolError =
+                "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"is_error\":true,\"content\":\"secret\"}]}}";
+            const string Prompt = "{\"type\":\"user\",\"message\":{\"content\":\"please do the secret thing\"}}";
+            const string Interrupt =
+                "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"[Request interrupted by user for tool use]\"}]}}";
+            const string EndTurn =
+                "{\"type\":\"assistant\",\"message\":{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"secret\"}]}}";
+            const string Meta = "{\"type\":\"user\",\"isMeta\":true,\"message\":{\"content\":\"secret\"}}";
+            const string Attachment = "{\"type\":\"attachment\",\"attachment\":{\"type\":\"todo_reminder\"}}";
+            const string System = "{\"type\":\"system\",\"subtype\":\"turn_duration\"}";
+
+            Equal("assistant[thinking,tool_use:Bash] stop=tool_use",
+                  StatusWatch.SummarizeTail(new[] { Prompt, ToolUse }), "a pending tool call");
+            Equal("user[tool_result]", StatusWatch.SummarizeTail(new[] { ToolUse, ToolResult }), "a tool result");
+            Equal("user[tool_result:error]", StatusWatch.SummarizeTail(new[] { ToolUse, ToolError }), "a failed tool");
+            Equal("user[prompt]", StatusWatch.SummarizeTail(new[] { EndTurn, Prompt }), "a prompt");
+            Equal("user[interrupt]", StatusWatch.SummarizeTail(new[] { ToolUse, Interrupt }), "an interrupt");
+            Equal("user[meta]", StatusWatch.SummarizeTail(new[] { EndTurn, Meta }), "meta lines");
+            Equal("assistant[text] stop=end_turn  +attachment:todo_reminder,system:turn_duration",
+                  StatusWatch.SummarizeTail(new[] { Prompt, EndTurn, Attachment, System, "{not json" }),
+                  "later lines of other kinds, in order");
+            Equal("+system:turn_duration", StatusWatch.SummarizeTail(new[] { System }), "no user or assistant line");
+            Equal("empty", StatusWatch.SummarizeTail(new string[0]), "an empty transcript");
+
+            var all = StatusWatch.SummarizeTail(new[] { Prompt, ToolUse, ToolResult, EndTurn, Meta });
+            Check(all.IndexOf("secret", StringComparison.Ordinal) < 0, "conversation text never reaches the output");
+        }
+
+        private static void StatusWatchChanges()
+        {
+            Func<string, long, string, WatchedSession> make = (status, at, last) =>
+            {
+                var w = new WatchedSession { Pid = 1, ShortId = "abcd1234", Status = status, StatusUpdatedAtMs = at, Tail = last };
+                w.Fields["kind"] = "interactive";
+                return w;
+            };
+            var now = new DateTime(2026, 10, 3, 0, 0, 10, DateTimeKind.Utc);
+            var nowMs = (long)(now - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds;
+
+            var busy = make("busy", nowMs - 12500, "user[prompt]");
+            var idle = make("idle", nowMs - 300, "assistant[text] stop=end_turn");
+
+            var lines = StatusWatch.Changes(busy, idle, now);
+            Equal(1, lines.Count, "one line for a status change");
+            Equal("status busy -> idle  after 12.2s  seen 0.3s later  | tail assistant[text] stop=end_turn",
+                  lines.Count > 0 ? lines[0] : null, "the status line");
+
+            Equal(0, StatusWatch.Changes(busy, make("busy", nowMs - 12500, "user[prompt]"), now).Count, "no change, no line");
+
+            var again = StatusWatch.Changes(busy, make("busy", nowMs - 1000, "user[prompt]"), now);
+            Check(again.Count == 1 && again[0].StartsWith("status busy -> busy (set again)", StringComparison.Ordinal),
+                  "the same status written again is shown");
+
+            var tail = StatusWatch.Changes(busy, make("busy", nowMs - 12500, "user[tool_result]"), now);
+            Equal("tail user[tool_result]  | status busy", tail.Count == 1 ? tail[0] : null, "a tail change alone");
+
+            var none = StatusWatch.Changes(make(null, 0, null), make("busy", nowMs - 7_200_000, null), now);
+            Equal("status (none) -> busy  | tail (none)", none.Count == 1 ? none[0] : null,
+                  "old records give no delay");
+
+            var fieldsAfter = make("busy", nowMs - 12500, "user[prompt]");
+            fieldsAfter.Fields["kind"] = "background";
+            fieldsAfter.Fields["mode"] = "plan";
+            fieldsAfter.ShortId = "ffff0000";
+            var f = StatusWatch.Changes(busy, fieldsAfter, now);
+            Check(f.Contains("session abcd1234 -> ffff0000"), "a new session id in the same process");
+            Check(f.Contains("field kind interactive -> background"), "a changed field");
+            Check(f.Contains("field mode = plan (new)"), "a new field");
+            var back = StatusWatch.Changes(fieldsAfter, busy, now);
+            Check(back.Contains("field mode removed (was plan)"), "a removed field");
+        }
+
+        private static void StatusWatchPoll()
+        {
+            var config = Path.Combine(_temp, "watch-config");
+            var sessions = Path.Combine(config, "sessions");
+            var project = Path.Combine(config, "projects", "C--work-proj");
+            var data = Path.Combine(_temp, "watch-data");
+            var tabs = Path.Combine(data, "claude-code-sessions", "acct", "org");
+            Directory.CreateDirectory(sessions);
+            Directory.CreateDirectory(project);
+            Directory.CreateDirectory(tabs);
+
+            // 生きているプロセスとして、この試験プログラム自身の pid を使う（procStart を書かなければ時刻は突き合わせない）。
+            var me = System.Diagnostics.Process.GetCurrentProcess().Id;
+            var mine = Path.Combine(sessions, me + ".json");
+            File.WriteAllText(mine,
+                "{\"pid\":" + me + ",\"sessionId\":\"s-live-0001\",\"cwd\":\"C:\\\\work\\\\proj\"," +
+                "\"entrypoint\":\"claude-desktop\",\"version\":\"2.1.288\",\"status\":\"busy\",\"statusUpdatedAt\":1}");
+            File.WriteAllText(Path.Combine(sessions, "999999.json"),
+                "{\"pid\":999999,\"sessionId\":\"s-dead\",\"procStart\":\"1\",\"status\":\"busy\"}");
+            File.WriteAllText(Path.Combine(project, "s-live-0001.jsonl"),
+                "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n" +
+                "{\"type\":\"assistant\",\"message\":{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}}\n");
+            File.WriteAllText(Path.Combine(tabs, "local_1.json"),
+                "{\"sessionId\":\"local_1\",\"cliSessionId\":\"s-live-0001\",\"title\":\"t\",\"effort\":\"high\"}");
+
+            var watch = new StatusWatch(config, data);
+            var first = watch.Poll(null);
+            Equal(1, first.Count, "only the running process");
+            WatchedSession s;
+            Check(first.TryGetValue(me, out s), "keyed by pid");
+            if (s == null) return;
+            Equal("busy", s.Status, "its status");
+            Equal("assistant[text] stop=end_turn", s.Tail, "its transcript tail");
+            Equal("high", s.Fields.ContainsKey("tab.effort") ? s.Fields["tab.effort"] : null, "its Desktop tab's fields");
+
+            // 書き込みの途中で読めなかったときは、前回の様子を引き継ぐ。
+            File.WriteAllText(mine, "{\"pid\":" + me + ",\"sessi");
+            var second = watch.Poll(first);
+            Check(second.ContainsKey(me) && second[me] == s, "a half-written file keeps the previous state");
+            Equal(0, watch.Poll(null).Count, "with nothing to carry over, it is skipped");
+
+            Equal(0, new StatusWatch(null, null).Poll(null).Count, "no config folder gives nothing");
         }
 
         // --- 判定と通知 --------------------------------------------------------

@@ -473,6 +473,16 @@ namespace CtxTray.Config
             { "cli.minutesAgo", new[] { "{0:N0} 分前", "{0:N0} min ago" } },
             { "cli.hoursAgo",   new[] { "{0:N0} 時間前", "{0:N0} h ago" } },
 
+            // --watch-status
+            { "watch.header",   new[] { "ctxtray {0} --watch-status   開始 {1}",
+                                        "ctxtray {0} --watch-status   started {1}" } },
+            { "watch.privacy",  new[] { "セッション名、フォルダーのパス、会話の本文は出力しません。出力はそのまま貼り付けられます。",
+                                        "Session names, folder paths and conversation text are not printed, so the output can be pasted as is." } },
+            { "watch.stop",     new[] { "状態が変わるたびに 1 行出力します。Ctrl+C で終了します。",
+                                        "One line is printed for each change. Press Ctrl+C to stop." } },
+            { "watch.noneYet",  new[] { "実行中の Claude Code はまだありません。起動すると表示します。",
+                                        "No Claude Code is running yet. It will appear here when one starts." } },
+
             // --verify-weekly
             { "vw.title",       new[] { "週間枠リセットの推定", "Weekly reset estimate" } },
             { "vw.samples",     new[] { "記録数: {0}", "Samples: {0}" } },

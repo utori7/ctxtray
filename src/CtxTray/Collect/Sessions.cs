@@ -219,7 +219,7 @@ namespace CtxTray.Collect
         ///   照会できないプロセスは自分が起動した claude ではないので、
         ///   生きていないものとして扱う。
         /// </summary>
-        private static bool IsProcessAlive(int pid, long expectedFileTime)
+        internal static bool IsProcessAlive(int pid, long expectedFileTime)
         {
             try
             {

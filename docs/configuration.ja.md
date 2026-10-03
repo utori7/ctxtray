@@ -94,6 +94,7 @@ ctxtray --json              状態を JSON で出力
 ctxtray --no-external       Claude Desktop のタブだけを対象にする
 ctxtray --include-archived  終了済みのタブも含める
 ctxtray --verify-weekly     週間枠リセットの推定過程を表示
+ctxtray --watch-status      セッションの状態の変化を記録し続ける（診断用。Ctrl+C で終了）
 ctxtray --icon-preview [dir] トレイアイコンのプレビューを PNG で出力
 ctxtray --hud-preview [dir]  パネルのプレビュー（架空のデータ）を PNG で出力
 ctxtray --version           バージョンを表示
@@ -115,6 +116,20 @@ ctxtray --json | Out-File state.json
 
 `--json` の出力には、セッション名、作業フォルダーのパス、ユーザー名を含むパスが入ります。
 人に見せるときは、それらを消してください。
+
+### `--watch-status`（診断用）
+
+Claude Code が `~/.claude/sessions/<pid>.json` に記録しているセッションの状態（`status`）を 0.5 秒ごとに読み、
+変化があるたびに 1 行出力します。承認待ちや完了のときに Claude Code が何を記録するかを調べるためのものです。
+同じ行に、transcript の末尾（最後の発言の種類とツール名）と、Claude Desktop のタブの記録の項目も出力します。
+
+```powershell
+ctxtray --watch-status | Tee-Object ctxtray-status.log
+```
+
+画面に表示しながらファイルにも保存できます。Ctrl+C で終了します。
+出力にはセッション名、フォルダーのパス、会話の本文は含めません。
+値は英数字と `. _ : -` だけの短いものに限り、それ以外は文字数だけを出力するため、そのまま Issue に貼り付けられます。
 
 ## 書き込むファイル
 

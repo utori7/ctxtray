@@ -127,6 +127,10 @@ namespace CtxTray.Ui
 
         // --- HUD ---
         private CheckBox _hudRate, _hudSessions, _hideIdle, _hideStopped, _external;
+        private CheckBox _highlightWaiting;
+
+        /// <summary>強調の文字が入る名前の幅の下限（パネルで測った値。HudForm.BadgeMinNameWidth）。</summary>
+        private readonly Func<int> _badgeMinNameWidth;
         private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen, _hideFromCapture;
         /// <summary>モデルとエフォートをまとめて切り替える（設定ファイルでは showModel と showEffort の 2 つ）。</summary>
         private CheckBox _showModel;
@@ -239,8 +243,9 @@ namespace CtxTray.Ui
                             Func<IList<Collect.ModelEntry>> models = null, Action checkNow = null,
                             Func<bool> hudVisible = null, Action<bool> setHudVisible = null,
                             Func<Collect.UpdateStatus> updateStatus = null, Action checkUpdatesNow = null,
-                            Action openRelease = null)
+                            Action openRelease = null, Func<int> badgeMinNameWidth = null)
         {
+            _badgeMinNameWidth = badgeMinNameWidth;
             _current = current;
             _config = current().Clone();
             _gaugeFor = gaugeFor;
@@ -582,6 +587,14 @@ namespace CtxTray.Ui
             _showModel.CheckedChanged += (s, e) => UpdateRowLayoutEnabled();
             Full(Flow(Text_("set.rowLayout"), _rowLayout));
 
+            // 状態の丸は常に出るので、ここで選ぶのは待っている行の強調だけ（2026-10-03、利用者の決定）。
+            _highlightWaiting = Check("set.highlightWaiting");
+            Full(_highlightWaiting);
+            // 下限の値はパネルで測ったもの（倍率と書体で変わる）。測れなければ補足は出さない。
+            var badgeMin = BadgeMinNameWidth();
+            if (badgeMin > HudLayout.MinNameWidth)
+                Hint(null).Text = Strings.Format("set.highlightWaitingHint", badgeMin);
+
             Section("set.secHudLook");
             _textSize = Combo(120, Strings.Get("set.sizeXSmall"), Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
                               Strings.Get("set.sizeLarge"), Strings.Get("set.sizeXLarge"));
@@ -601,6 +614,8 @@ namespace CtxTray.Ui
 
             _nameWidth = Number(HudLayout.MinNameWidth, HudLayout.MaxNameWidth);
             Row("set.nameWidth", Flow(_nameWidth, Unit(Strings.Format("set.nameWidthUnit", HudLayout.DefaultNameWidth))));
+            Hint("set.nameWidthHint");
+            _highlightWaiting.CheckedChanged += (s, e) => UpdateNameWidthMinimum();
 
             _showResets = Combo(Strings.Get("set.always"),
                                 Strings.Format("set.autoNear", _config.ResetLeadFiveHourMinutes),
@@ -1730,10 +1745,13 @@ namespace CtxTray.Ui
             _showModel.Checked = c.HudShowModel || c.HudShowEffort;
             _rowLayout.SelectedIndex = IndexOf(c.HudRowLayout, AppConfig.RowLayouts);
             UpdateRowLayoutEnabled();
+            _highlightWaiting.Checked = c.HudHighlightWaiting;
             _showResets.SelectedIndex = IndexOf(c.ShowResets, "always", "auto", "never");
 
             _textSize.SelectedIndex = TextSizeIndex(c.HudTextSize);
-            _nameWidth.Value = Clamp(c.HudNameWidth, HudLayout.MinNameWidth, HudLayout.MaxNameWidth);
+            // 下限は強調のオンオフで変わる（UpdateNameWidthMinimum）。下限より小さい値を入れると例外になるので合わせる。
+            UpdateNameWidthMinimum();
+            _nameWidth.Value = Clamp(c.HudNameWidth, (int)_nameWidth.Minimum, HudLayout.MaxNameWidth);
             _showResets.Enabled = c.HudShowRateLimits;
             _opacity.Value = Clamp((int)Math.Round(c.Opacity * 100), 20, 100);
             _opacityValue.Text = _opacity.Value + "%";
@@ -1815,6 +1833,7 @@ namespace CtxTray.Ui
 
             c.HudShowBar = _showBar.Checked;
             c.HudShowTokens = _showTokens.Checked;
+            c.HudHighlightWaiting = _highlightWaiting.Checked;
             // オンのままなら設定ファイルの組み合わせ（片方だけ、など）を崩さない。
             // オフからオンにしたときだけ両方を出す。
             if (!_showModel.Checked) c.HudShowModel = c.HudShowEffort = false;
@@ -2135,6 +2154,26 @@ namespace CtxTray.Ui
         ///   Delete で「なし」は書かない（直感どおり）。「押しても欄が変わらないキーはほかのアプリが使っている」は README に書いた。
         /// </summary>
         /// <param name="current">いまの値（欄を離れたときに出し直す）。</param>
+        /// <summary>
+        /// 名前の幅の下限。待っている行の強調がオンなら、強調の文字が入る幅（パネルで測った値）まで上げる。
+        /// 入っている値が下限より小さければ、NumericUpDown が下限まで上げる（画面に見えるので黙って変わることはない）。
+        /// 強調をオフに戻しても、上げた値はそのまま（利用者が自分で戻せる）。
+        /// 2026-10-03、名前の幅を狭くすると強調の文字が「App…」と切れる、という利用者の指摘で、下限を設ける形を利用者が選んだ。
+        /// </summary>
+        private void UpdateNameWidthMinimum()
+        {
+            if (_nameWidth == null || _highlightWaiting == null) return;
+            _nameWidth.Minimum = _highlightWaiting.Checked ? BadgeMinNameWidth() : HudLayout.MinNameWidth;
+        }
+
+        /// <summary>強調の文字が入る名前の幅の下限。測れなければ通常の下限。</summary>
+        private int BadgeMinNameWidth()
+        {
+            if (_badgeMinNameWidth == null) return HudLayout.MinNameWidth;
+            try { return Math.Max(HudLayout.MinNameWidth, Math.Min(HudLayout.MaxNameWidth, _badgeMinNameWidth())); }
+            catch { return HudLayout.MinNameWidth; }
+        }
+
         private TextBox KeyBox(Func<string> current)
         {
             var prompt = Strings.Get("set.keyPrompt");

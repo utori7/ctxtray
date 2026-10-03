@@ -59,6 +59,10 @@ namespace CtxTray.Tests
                 Run("Status watch: transcript tail summary", StatusWatchTail);
                 Run("Status watch: change lines", StatusWatchChanges);
                 Run("Status watch: polling the session files", StatusWatchPoll);
+                Run("Session activity: status, waitingFor and unread", SessionActivityRules);
+                Run("Session activity: read from the process and tab records", SessionActivityFiles);
+                Run("Config: highlightWaiting is off unless turned on", HighlightWaitingKey);
+                Run("HUD widths: the name width that fits the highlight words", BadgeNameWidth);
                 Run("Levels with slack", LevelsSlack);
                 Run("Levels: context thresholds use the same % as the panel", LevelsContextWindowScale);
                 Run("Tray: running sessions only", TrayPicksRunning);
@@ -1359,6 +1363,133 @@ namespace CtxTray.Tests
             Equal(0, watch.Poll(null).Count, "with nothing to carry over, it is skipped");
 
             Equal(0, new StatusWatch(null, null).Poll(null).Count, "no config folder gives nothing");
+        }
+
+        // --- セッションの状態の丸 ------------------------------------------------
+
+        private static void SessionActivityRules()
+        {
+            // --watch-status で確かめた値（Desktop 2.1.286・ターミナル 2.1.283）。
+            Equal(SessionActivity.Busy, SessionActivities.Parse("busy", null), "busy");
+            Equal(SessionActivity.Idle, SessionActivities.Parse("idle", null), "idle");
+            Equal(SessionActivity.WaitingPermission, SessionActivities.Parse("waiting", "permission prompt"), "an approval");
+            Equal(SessionActivity.WaitingInput, SessionActivities.Parse("waiting", "input needed"), "a question");
+            Equal(SessionActivity.Waiting, SessionActivities.Parse("waiting", "something new"), "an unknown wait is still a wait");
+            Equal(SessionActivity.Waiting, SessionActivities.Parse("waiting", null), "a wait without waitingFor");
+            Equal(SessionActivity.Unknown, SessionActivities.Parse(null, null), "older versions write no status");
+            Equal(SessionActivity.Unknown, SessionActivities.Parse("sleeping", null), "unknown values are not guessed");
+            Equal(SessionActivity.Unknown, SessionActivities.Parse("BUSY", null), "values are matched exactly");
+            Check(SessionActivities.IsWaiting(SessionActivity.WaitingInput) && SessionActivities.IsWaiting(SessionActivity.Waiting)
+                  && !SessionActivities.IsWaiting(SessionActivity.Busy) && !SessionActivities.IsWaiting(SessionActivity.Unread),
+                  "which ones are waits");
+
+            // 未読: 最後に開いた後に応答があり、応答のときは別のタブを見ていた（2026-10-03 実測の並び）。
+            //   このタブを開いた 14:51:39.4 → 別のタブを開いた 14:51:49.5 → 応答 14:51:49.8 → Desktop は青い丸。
+            const long opened = 1791006699468, otherOpened = 1791006709561, reply = 1791006709800;
+            var other = new[] { otherOpened };
+            Equal(SessionActivity.Unread, SessionActivities.WithUnread(SessionActivity.Idle, reply, opened, other),
+                  "the reply came while another tab was open");
+            Equal(SessionActivity.Idle, SessionActivities.WithUnread(SessionActivity.Idle, reply, reply + 8000, other),
+                  "opened after the reply");
+            Equal(SessionActivity.Idle, SessionActivities.WithUnread(SessionActivity.Idle, reply, opened, new[] { reply + 5000 }),
+                  "watched it finish, then moved to another tab");
+            Equal(SessionActivity.Idle, SessionActivities.WithUnread(SessionActivity.Idle, reply, opened, new long[0]),
+                  "the only tab");
+            Equal(SessionActivity.Busy, SessionActivities.WithUnread(SessionActivity.Busy, reply, opened, other),
+                  "only finished sessions can be unread");
+            Equal(SessionActivity.Idle, SessionActivities.WithUnread(SessionActivity.Idle, 0, opened, other),
+                  "no reply, no guess");
+            // 古いタブを開くとプロセスが起動して idle を書くが、応答は無い（開いた時刻より前の応答だけ）。
+            Equal(SessionActivity.Idle, SessionActivities.WithUnread(SessionActivity.Idle, opened - 86400000L, opened, other),
+                  "opening an old tab is not a new reply");
+            Equal(SessionActivity.Unread, SessionActivities.WithUnread(SessionActivity.Idle, reply, 0, other),
+                  "a tab never opened is unread once it replies");
+
+            // 最後の応答の分類（postTurnSummary.status_category）。blocked の未読は Desktop でアンバー。
+            Equal(SessionActivity.UnreadNeedsAction,
+                  SessionActivities.WithUnread(SessionActivity.Idle, reply, opened, other, "blocked"),
+                  "an unread reply that needs action");
+            Equal(SessionActivity.Unread,
+                  SessionActivities.WithUnread(SessionActivity.Idle, reply, opened, other, "completed"),
+                  "an unread reply that is complete");
+            Equal(SessionActivity.Idle,
+                  SessionActivities.WithUnread(SessionActivity.Idle, reply, reply + 8000, other, "blocked"),
+                  "once opened, a reply that needs action is no longer marked");
+            Check(SessionActivities.IsWaiting(SessionActivity.UnreadNeedsAction), "a reply that needs action counts as waiting");
+        }
+
+        private static void SessionActivityFiles()
+        {
+            var config = Path.Combine(_temp, "activity-config");
+            var sessions = Path.Combine(config, "sessions");
+            var data = Path.Combine(_temp, "activity-data");
+            var tabs = Path.Combine(data, "claude-code-sessions", "acct", "org");
+            Directory.CreateDirectory(sessions);
+            Directory.CreateDirectory(tabs);
+
+            File.WriteAllText(Path.Combine(sessions, "41.json"),
+                "{\"pid\":41,\"sessionId\":\"s-1\",\"entrypoint\":\"claude-desktop\",\"status\":\"waiting\"," +
+                "\"waitingFor\":\"permission prompt\",\"statusUpdatedAt\":1791006705978}");
+            File.WriteAllText(Path.Combine(sessions, "42.json"), "{\"pid\":42,\"sessionId\":\"s-2\",\"entrypoint\":\"cli\"}");
+            File.WriteAllText(Path.Combine(tabs, "local_1.json"),
+                "{\"sessionId\":\"local_1\",\"cliSessionId\":\"s-1\",\"lastFocusedAt\":1791006699468," +
+                "\"postTurnSummary\":{\"needs_action\":\"Answer the secret question\",\"status_category\":\"blocked\"," +
+                "\"status_detail\":\"Asked about the secret\"}}");
+
+            var diag = new Diagnostics();
+            var procs = Sessions.ReadProcesses(config, diag);
+            var p = procs.Find(x => x.Pid == 41);
+            Check(p != null, "the process record is read");
+            if (p != null)
+            {
+                Equal("waiting", p.Status, "status");
+                Equal("permission prompt", p.WaitingFor, "waitingFor");
+            }
+            var old = procs.Find(x => x.Pid == 42);
+            Check(old != null && old.Status == null && old.WaitingFor == null, "older records without status");
+
+            var t = Sessions.ReadDesktopTabs(data, false, diag);
+            Equal(1, t.Count, "the tab record is read");
+            if (t.Count == 1)
+            {
+                Equal(1791006699468L, t[0].LastFocusedMs, "lastFocusedAt");
+                Equal("blocked", t[0].TurnCategory, "postTurnSummary.status_category");
+            }
+        }
+
+        private static void BadgeNameWidth()
+        {
+            // 実測（2026-10-03、Yu Gothic UI）: Approval は ×1.5 で 88px。欄の右半分に入るには名前の欄が 176px 以上、
+            // 丸めの余裕 4px を足して 180px ÷ 1.5 = 120。利用者の画面では 118 未満で切れた。
+            Equal(120, HudLayout.MinNameWidthForBadge(88, 1.5), "Approval at 150%");
+            Equal(HudLayout.MinNameWidthForBadge(88, 1.5), HudLayout.MinNameWidthForBadge(132, 2.25),
+                  "the same word at a larger size needs the same width");
+            Equal(HudLayout.MinNameWidth, HudLayout.MinNameWidthForBadge(10, 1.0), "never below the usual minimum");
+            Equal(HudLayout.MaxNameWidth, HudLayout.MinNameWidthForBadge(5000, 1.0), "never above the maximum");
+            Equal(HudLayout.MinNameWidth, HudLayout.MinNameWidthForBadge(0, 1.0), "nothing measured");
+
+            // 言語によらず同じ下限にするため、全言語の文言を取れること。
+            var all = Strings.All("hud.badgePermission");
+            Check(all.Length == 2 && Array.IndexOf(all, "承認待ち") >= 0 && Array.IndexOf(all, "Approval") >= 0,
+                  "both languages of a badge");
+        }
+
+        private static void HighlightWaitingKey()
+        {
+            var path = UseConfigDir("config-highlight");
+            string problem;
+            bool failed;
+
+            File.WriteAllText(path, "{ \"display\": { \"theme\": \"dark\" } }", new UTF8Encoding(false));
+            var off = AppConfig.Load(out problem, out failed);
+            Check(!off.HudHighlightWaiting, "off by default");
+
+            File.WriteAllText(path, "{ \"display\": { \"highlightWaiting\": true } }", new UTF8Encoding(false));
+            var on = AppConfig.Load(out problem, out failed);
+            Check(on.HudHighlightWaiting, "highlightWaiting is read");
+            Check(on.Save(), "save succeeds");
+            Check(AppConfig.Load(out problem, out failed).HudHighlightWaiting, "and survives a save");
+            Check(on.Clone().HudHighlightWaiting, "a copy keeps it");
         }
 
         // --- 判定と通知 --------------------------------------------------------

@@ -67,6 +67,20 @@ namespace CtxTray.Ui
         public Color IdFiveHour;
         public Color IdWeekly;
 
+        // --- セッションの状態の印（HUD の行の左の丸） --------------------------------
+        //
+        // Claude Desktop のサイドバーでセッション名の左に出る丸と同じ色にする（利用者の希望、2026-10-03）。
+        // 色は Desktop の画面を撮って画素から読んだ値（Desktop 2.19675、ダーク・ライトとも）。
+        //   待ち（承認・回答、対応が要る未読の応答）: 塗りの丸 #FAB219（両テーマ同じ）
+        //   未読（応答が終わった後にタブを開いていない）: 塗りの丸 #2A78D6（両テーマ同じ）
+        //   応答中: 塗りの丸。明滅していて、地から最も離れた側はダーク #87857F・ライト #898781
+        //   終わった・止まっている: 中抜きの輪。ダーク #4D4C49・ライト #C2C1BD
+        // パネルでは明滅させない（常に最前面の窓で動き続けると目障り。2026-10-03 利用者の決定）。
+        public Color StateWaiting;
+        public Color StateUnread;
+        public Color StateBusy;
+        public Color StateIdle;
+
         /// <summary>値の名前から識別色を引く。知らない名前ならコンテキスト扱い。</summary>
         public Color IdentityFor(string value)
         {
@@ -135,6 +149,10 @@ namespace CtxTray.Ui
                 IdContext = text,
                 IdFiveHour = text,
                 IdWeekly = text,
+                StateWaiting = SystemColors.Highlight,
+                StateUnread = SystemColors.HotTrack,
+                StateBusy = SystemColors.GrayText,
+                StateIdle = SystemColors.GrayText,
             };
         }
 
@@ -160,6 +178,10 @@ namespace CtxTray.Ui
                 IdContext = Color.FromArgb(127, 178, 255),   // 青
                 IdFiveHour = Color.FromArgb(110, 231, 168),  // 緑
                 IdWeekly = Color.FromArgb(196, 162, 255),    // 紫
+                StateWaiting = Color.FromArgb(250, 178, 25),
+                StateUnread = Color.FromArgb(42, 120, 214),
+                StateBusy = Color.FromArgb(135, 133, 127),
+                StateIdle = Color.FromArgb(77, 76, 73),
             };
         }
 
@@ -187,6 +209,10 @@ namespace CtxTray.Ui
                 IdContext = Color.FromArgb(47, 111, 224),
                 IdFiveHour = Color.FromArgb(30, 142, 90),
                 IdWeekly = Color.FromArgb(110, 69, 201),
+                StateWaiting = Color.FromArgb(250, 178, 25),
+                StateUnread = Color.FromArgb(42, 120, 214),
+                StateBusy = Color.FromArgb(137, 135, 129),
+                StateIdle = Color.FromArgb(194, 193, 189),
             };
         }
 

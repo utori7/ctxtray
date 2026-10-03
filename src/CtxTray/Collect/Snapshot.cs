@@ -90,6 +90,8 @@ namespace CtxTray.Collect
         public bool ProcessAlive;
         public int Pid;
         public string Entrypoint;
+        /// <summary>いま何をしているか（プロセスの記録から）。プロセスが無ければ Unknown。</summary>
+        public Core.SessionActivity Activity;
     }
 
     internal sealed class Snapshot
@@ -176,6 +178,7 @@ namespace CtxTray.Collect
 
             var latestTranscriptWriteUtc = DateTime.MinValue;
 
+
             // --- Desktop のタブ -------------------------------------------------
             foreach (var tab in tabs)
             {
@@ -198,6 +201,10 @@ namespace CtxTray.Collect
                     row.ProcessAlive = true;
                     row.Pid = proc.Pid;
                     row.Entrypoint = proc.Entrypoint;
+                    row.Activity = Core.SessionActivities.WithUnread(
+                        Core.SessionActivities.Parse(proc.Status, proc.WaitingFor),
+                        row.LastMeasuredUtc.HasValue ? RateLimits.ToUnixMs(row.LastMeasuredUtc.Value) : 0,
+                        tab.LastFocusedMs, OtherFocused(tabs, tab), tab.TurnCategory);
                 }
 
                 snap.Sessions.Add(row);
@@ -225,6 +232,7 @@ namespace CtxTray.Collect
                     row.ProcessAlive = true;
                     row.Pid = p.Pid;
                     row.Entrypoint = p.Entrypoint;
+                    row.Activity = Core.SessionActivities.Parse(p.Status, p.WaitingFor);
                     row.LastActivityUtc = row.LastMeasuredUtc
                         ?? (p.StartedAtMs > 0 ? RateLimits.FromUnixMs(p.StartedAtMs) : (DateTime?)null);
 
@@ -404,6 +412,15 @@ namespace CtxTray.Collect
             }
 
             ClaudeCodeByPath[path] = result;
+            return result;
+        }
+
+        /// <summary>ほかのタブを最後に開いた時刻（未読の判定用）。</summary>
+        private static List<long> OtherFocused(List<DesktopTab> tabs, DesktopTab self)
+        {
+            var result = new List<long>();
+            foreach (var t in tabs)
+                if (t != self && t.LastFocusedMs > 0) result.Add(t.LastFocusedMs);
             return result;
         }
 

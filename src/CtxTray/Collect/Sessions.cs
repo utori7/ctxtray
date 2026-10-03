@@ -17,6 +17,18 @@ namespace CtxTray.Collect
         public long LastActivityMs;
         public long CreatedAtMs;
         public bool IsArchived;
+        /// <summary>
+        /// タブを最後に開いた時刻（lastFocusedAt）。開いてから 2〜4 秒遅れて書かれる。
+        /// 応答がこれより後に終わっていれば、Desktop はサイドバーに青い丸（未読）を出す（2026-10-03 実測）。
+        /// </summary>
+        public long LastFocusedMs;
+        /// <summary>
+        /// Desktop が最後の応答に付けた分類（postTurnSummary.status_category）。completed / blocked。
+        /// 応答が終わって約 3 秒後に書かれ、次の応答が始まると消える。未読のときに blocked なら
+        /// Desktop は青ではなくアンバーの丸を出す（2026-10-03 実測）。
+        /// 同じ記録の要約の文（status_detail・needs_action）は会話の中身なので読まない。
+        /// </summary>
+        public string TurnCategory;
     }
 
     /// <summary>実際に走っている Claude Code のプロセス 1 つ。</summary>
@@ -31,6 +43,8 @@ namespace CtxTray.Collect
         public string Name;
         public long StartedAtMs;
         public bool Alive;
+        public string Status;       // busy / waiting / idle（新しめの版だけ。Core/SessionActivity.cs）
+        public string WaitingFor;   // waiting のときだけ。"permission prompt" / "input needed"
 
         public bool IsDesktop
         {
@@ -93,6 +107,8 @@ namespace CtxTray.Collect
                     Title = Json.Str(o, "title"),
                     LastActivityMs = Json.Long(o, "lastActivityAt"),
                     CreatedAtMs = Json.Long(o, "createdAt"),
+                    LastFocusedMs = Json.Long(o, "lastFocusedAt"),
+                    TurnCategory = TurnCategoryOf(o),
                     IsArchived = archived,
                 });
             }
@@ -101,6 +117,13 @@ namespace CtxTray.Collect
 
             result.Sort((a, b) => b.LastActivityMs.CompareTo(a.LastActivityMs));
             return result;
+        }
+
+        /// <summary>postTurnSummary の status_category だけを取る（要約の文には触れない）。</summary>
+        private static string TurnCategoryOf(Dictionary<string, object> tab)
+        {
+            var summary = Json.Obj(tab, "postTurnSummary");
+            return summary != null ? Json.Str(summary, "status_category") : null;
         }
 
         /// <summary>
@@ -197,6 +220,8 @@ namespace CtxTray.Collect
                 Version = Json.Str(o, "version"),
                 Name = Json.Str(o, "name"),
                 StartedAtMs = Json.Long(o, "startedAt"),
+                Status = Json.Str(o, "status"),
+                WaitingFor = Json.Str(o, "waitingFor"),
             };
 
             long procStart;

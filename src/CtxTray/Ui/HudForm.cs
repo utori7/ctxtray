@@ -736,8 +736,57 @@ namespace CtxTray.Ui
         {
             get
             {
-                return S(HudLayout.PanelWidth(_config.HudNameWidth, _config.HudShowBar,
+                return S(HudLayout.PanelWidth(EffectiveNameWidth, _config.HudShowBar,
                                               _config.HudShowTokens && !TwoLine, ModelColBase));
+            }
+        }
+
+        /// <summary>
+        /// 実際に使う名前の幅。待っている行の強調がオンなら、強調の文字が入る下限（BadgeMinNameWidth）より狭くしない。
+        /// 設定画面でも下限より狭くできないが、設定ファイルを手で書き換えた場合もここで守る（ファイルの値は書き換えない）。
+        /// </summary>
+        private int EffectiveNameWidth
+        {
+            get
+            {
+                return _config.HudHighlightWaiting
+                    ? Math.Max(_config.HudNameWidth, BadgeMinNameWidth)
+                    : _config.HudNameWidth;
+            }
+        }
+
+        private float _badgeMinFactor;
+        private string _badgeMinFace;
+        private int _badgeMin;
+
+        /// <summary>
+        /// 強調の文字が入る名前の幅の下限（標準の文字サイズでの値。Core/HudLayout.MinNameWidthForBadge）。
+        /// 日本語と英語の全部の強調の文字を、いまの書体と倍率で測った最大で決める。言語によらず同じ下限にするのは、
+        /// 言語を切り替えたとたんに文字が切れたり、パネルの幅が変わったりしないようにするため。
+        /// 倍率と書体が変わったときだけ測り直す。設定画面の下限にも使う。
+        /// </summary>
+        public int BadgeMinNameWidth
+        {
+            get
+            {
+                var factor = Factor;
+                if (_badgeMin > 0 && Math.Abs(factor - _badgeMinFactor) < 0.001f
+                    && string.Equals(_fontFace, _badgeMinFace, StringComparison.Ordinal))
+                    return _badgeMin;
+
+                var widest = 0;
+                using (var body = new Font(_fontFace, 12.5f * factor, FontStyle.Regular, GraphicsUnit.Pixel))
+                {
+                    foreach (var key in new[] { "hud.badgePermission", "hud.badgeInput", "hud.badgeNeedsAction", "hud.badgeWaiting" })
+                        foreach (var text in Strings.All(key))
+                            widest = Math.Max(widest, TextRenderer.MeasureText(text, body,
+                                new Size(int.MaxValue, RowHeight), TextFormatFlags.NoPrefix).Width);
+                }
+
+                _badgeMin = HudLayout.MinNameWidthForBadge(widest, factor);
+                _badgeMinFactor = factor;
+                _badgeMinFace = _fontFace;
+                return _badgeMin;
             }
         }
 
@@ -1139,9 +1188,23 @@ namespace CtxTray.Ui
 
                 var modelText = ModelRowText(s);
 
-                DrawRow(g, body, bold, y, name, null, s.IsActive,
+                // 待っている行の強調（設定、既定オフ）。背景を淡く塗り、名前の列の右端に何を待っているかを出す。
+                // コントラストテーマでは淡い色を重ねず、文字だけにする（Theme.IsHighContrast）。
+                string note = null;
+                if (_config.HudHighlightWaiting && SessionActivities.IsWaiting(s.Activity))
+                {
+                    if (!_theme.IsHighContrast)
+                        using (var fill = new SolidBrush(Color.FromArgb(40, _theme.StateWaiting)))
+                            g.FillRectangle(fill, 0, y, Width, SessionRowHeight);
+                    note = BadgeText(s.Activity);
+                }
+
+                DrawActivityDot(g, y, s);
+
+                // 強調の文字はダークでは丸と同じ色、ライトでは読める濃さの注意の色（#FAB219 は白地で薄すぎる）。
+                DrawRow(g, body, bold, y, name, note, s.IsActive,
                         fraction, "context", Levels.ForContext(s, _config), !s.ProcessAlive,
-                        pct, tokens, modelText);
+                        pct, tokens, modelText, _theme.IsDark ? _theme.StateWaiting : _theme.Warn);
 
                 if (TwoLine) DrawSubLine(g, y, modelText, tokens);
 
@@ -1151,6 +1214,68 @@ namespace CtxTray.Ui
             }
 
             return y;
+        }
+
+        /// <summary>
+        /// 行の左の余白に、セッションの状態の丸を描く。Claude Desktop のサイドバーの丸と同じ意味・色
+        /// （2026-10-03、利用者の希望。色は Theme の State* を参照）。
+        ///   待ち（承認・回答）: アンバーの丸 / 未読: 青の丸 / 応答中: 灰の丸 / 終わった・止まっている: 輪
+        /// 状態が分からない（status を書かない古い版）なら何も描かない（推測で埋めない）。
+        /// 余白に置くので、名前の位置もレート枠の行との揃いも変わらない。
+        /// </summary>
+        private void DrawActivityDot(Graphics g, int y, SessionRow s)
+        {
+            Color? fill = null;
+            if (SessionActivities.IsWaiting(s.Activity)) fill = _theme.StateWaiting;
+            else if (s.Activity == SessionActivity.Unread) fill = _theme.StateUnread;
+            else if (s.Activity == SessionActivity.Busy) fill = _theme.StateBusy;
+            var ring = fill == null && (s.Activity == SessionActivity.Idle || !s.ProcessAlive);
+            if (fill == null && !ring) return;
+
+            var d = S(7);
+            var x = (PadX - d) / 2f;
+            var top = y + (RowHeight - d) / 2f;
+            var old = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            if (fill != null)
+            {
+                using (var brush = new SolidBrush(fill.Value))
+                    g.FillEllipse(brush, x, top, d, d);
+            }
+            else
+            {
+                using (var pen = new Pen(_theme.StateIdle, Math.Max(1, S(1.2))))
+                    g.DrawEllipse(pen, x + 0.5f, top + 0.5f, d - 1, d - 1);
+            }
+            g.SmoothingMode = old;
+        }
+
+        /// <summary>強調の文字（名前の列の右端）。行の詳細の文言より短い（英語は 1 語）。</summary>
+        private static string BadgeText(SessionActivity a)
+        {
+            switch (a)
+            {
+                case SessionActivity.WaitingPermission: return Strings.Get("hud.badgePermission");
+                case SessionActivity.WaitingInput: return Strings.Get("hud.badgeInput");
+                case SessionActivity.UnreadNeedsAction: return Strings.Get("hud.badgeNeedsAction");
+                case SessionActivity.Waiting: return Strings.Get("hud.badgeWaiting");
+                default: return null;
+            }
+        }
+
+        /// <summary>状態の文言（行の詳細）。文言の無い状態は null。</summary>
+        private static string ActivityText(SessionActivity a)
+        {
+            switch (a)
+            {
+                case SessionActivity.Busy: return Strings.Get("hud.stateBusy");
+                case SessionActivity.WaitingPermission: return Strings.Get("hud.statePermission");
+                case SessionActivity.WaitingInput: return Strings.Get("hud.stateInput");
+                case SessionActivity.Waiting: return Strings.Get("hud.stateWaiting");
+                case SessionActivity.Unread: return Strings.Get("hud.stateUnread");
+                case SessionActivity.UnreadNeedsAction: return Strings.Get("hud.stateNeedsAction");
+                default: return null;
+            }
         }
 
         /// <summary>
@@ -1193,7 +1318,7 @@ namespace CtxTray.Ui
         private void DrawRow(Graphics g, Font body, Font bold, int y,
                              string name, string note, bool emphasise,
                              double fraction, string value, Level level, bool dimmed,
-                             string pct, string tokens, string model = null)
+                             string pct, string tokens, string model = null, Color? noteColor = null)
         {
             // 淡く出す行（止まっているセッション、参考値のレート枠）は色で区別しない。
             var valueColor = dimmed ? _theme.TextSecondary : _theme.ColorFor(value, level);
@@ -1206,7 +1331,7 @@ namespace CtxTray.Ui
                 var noteW = Math.Min(nameW / 2,
                     TextRenderer.MeasureText(g, note, body, new Size(int.MaxValue, RowHeight),
                                              TextFormatFlags.NoPrefix).Width);
-                DrawRight(g, body, note, _theme.TextSecondary, PadX + nameW - noteW, y, noteW);
+                DrawRight(g, body, note, noteColor ?? _theme.TextSecondary, PadX + nameW - noteW, y, noteW);
                 nameW -= noteW + Gap;
             }
 
@@ -1337,6 +1462,10 @@ namespace CtxTray.Ui
                 else if (string.Equals(s.Entrypoint, "claude-vscode", StringComparison.OrdinalIgnoreCase))
                     lines.Add(new TipLine(Strings.Get("hud.tipVsCode"), true, false));
             }
+
+            // 丸の意味（承認待ちと回答待ちは丸が同じ色なので、ここで言い分ける）。
+            var activity = ActivityText(s.Activity);
+            if (activity != null) lines.Add(new TipLine(activity, false, false));
 
             // モデルとエフォートを 1 行に。表示名が無いモデルは ID のまま出る。
             // 表示名の下に ID も出していたが、重複して不要と利用者の判断で外した（2026-09-26）。

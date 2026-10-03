@@ -75,5 +75,23 @@ namespace CtxTray.Core
         {
             return Math.Max(MinNameWidth, Math.Min(MaxNameWidth, nameWidth));
         }
+
+        /// <summary>
+        /// 待っている行の強調の文字（「承認待ち」"Approval" など）が入る、名前の幅の下限（標準の文字サイズでの値）。
+        ///
+        /// 強調の文字は名前の欄の右半分までしか使えない（HudForm.DrawRow）。文字の幅を実際に測り、
+        /// その 2 倍を倍率で割り戻す。文字と名前の欄は同じ倍率で大きくなるので、下限は文字サイズにほぼよらないが、
+        /// 描画の丸めで数単位ずれる（実測: Approval は ×0.8〜×3 で 110〜122）ので、測ったときの倍率で求める。
+        /// 名前の欄はパネルの幅から他の列を引いて求めるため、丸めで数 px 狭くなることがあり、その分の余裕を足す。
+        /// 2026-10-03、名前の幅を狭くすると「App…」と切れる、という利用者の指摘で追加。
+        /// </summary>
+        /// <param name="widestPx">いちばん幅の広い強調の文字の幅（倍率を掛けた後の px）。</param>
+        /// <param name="factor">そのときの倍率。</param>
+        public static int MinNameWidthForBadge(int widestPx, double factor)
+        {
+            if (widestPx <= 0 || factor <= 0) return MinNameWidth;
+            const int roundingSlackPx = 4;
+            return ClampName((int)Math.Ceiling((2.0 * widestPx + roundingSlackPx) / factor));
+        }
     }
 }

@@ -536,7 +536,7 @@ namespace CtxTray
         /// 残りは「普段は見えないが、見え方を確かめたい」状態（2026-09-20）。
         /// </summary>
         private static readonly string[] HudPreviewStates =
-            { "danger", "reference", "stopped", "welcome" };
+            { "danger", "reference", "stopped", "activity", "highlight", "welcome" };
 
         private static int WriteHudPreview(string outDir)
         {
@@ -577,7 +577,7 @@ namespace CtxTray
         /// <summary>見本のパネルを 1 枚描く。表示はしない（寸法と描画にハンドルだけ要る）。</summary>
         private static Bitmap RenderHud(string theme, bool japanese, string state)
         {
-            using (var hud = new HudForm(new AppConfig { Theme = theme }))
+            using (var hud = new HudForm(new AppConfig { Theme = theme, HudHighlightWaiting = state == "highlight" }))
             {
                 GC.KeepAlive(hud.Handle);
                 hud.SetSnapshot(SampleSnapshot(japanese, state));
@@ -636,6 +636,7 @@ namespace CtxTray
         /// danger … コンテキストも枠も危険。色と（あれば）形の出方を見る
         /// reference … Claude Desktop が起動していない。レート枠が淡く、見出しに「参考値」
         /// stopped … 止まっているセッションが混ざっている
+        /// activity … 状態の丸の全種類。highlight は同じ行で、待っている行の強調をオンにしたもの
         /// welcome … 初めての起動の案内（呼び出し側が ShowNotice する）
         /// </param>
         private static Snapshot SampleSnapshot(bool japanese, string state = "normal")
@@ -667,6 +668,23 @@ namespace CtxTray
             snap.Sessions.Add(SampleRow(japanese ? "不安定なテストの修正" : "Fix flaky tests",
                                         338000, false, false, state != "stopped"));
             snap.Sessions.Add(SampleRow("my-project", 221000, false, true, true));
+
+            // 状態の丸の全種類（応答中・承認待ち・回答待ち・未読・終わった）。highlight は待っている行の強調をオンにした姿。
+            if (state == "activity" || state == "highlight")
+            {
+                snap.Sessions[0].Activity = Core.SessionActivity.Busy;
+                snap.Sessions[1].Activity = Core.SessionActivity.WaitingPermission;
+                snap.Sessions[2].Activity = Core.SessionActivity.WaitingInput;
+                var unread = SampleRow(japanese ? "README の見直し" : "Review README", 152000, false, false);
+                unread.Activity = Core.SessionActivity.Unread;
+                snap.Sessions.Add(unread);
+                var idle = SampleRow(japanese ? "設定画面の調整" : "Tidy settings window", 96000, false, false);
+                idle.Activity = Core.SessionActivity.Idle;
+                snap.Sessions.Add(idle);
+                var action = SampleRow(japanese ? "リリースの準備" : "Prepare the release", 64000, false, false);
+                action.Activity = Core.SessionActivity.UnreadNeedsAction;
+                snap.Sessions.Add(action);
+            }
             return snap;
         }
 
@@ -785,12 +803,29 @@ namespace CtxTray
                     .Add("process_alive", s.ProcessAlive)
                     .Add("pid", s.Pid == 0 ? null : (object)s.Pid)
                     .Add("entrypoint", s.Entrypoint)
+                    // 状態の丸の元（Core/SessionActivity.cs）。unknown は status を書かない版かプロセスが無い。
+                    .Add("activity", ActivityName(s.Activity))
                     .Add("transcript", s.TranscriptPath));
             }
             root.Add("sessions", rows);
             root.Add("diag", snap.Diag.Summary);
 
             return JObj.Write(root, asciiOnly);
+        }
+
+        private static string ActivityName(Core.SessionActivity a)
+        {
+            switch (a)
+            {
+                case Core.SessionActivity.Idle: return "idle";
+                case Core.SessionActivity.Busy: return "busy";
+                case Core.SessionActivity.Waiting: return "waiting";
+                case Core.SessionActivity.WaitingPermission: return "waiting_permission";
+                case Core.SessionActivity.WaitingInput: return "waiting_input";
+                case Core.SessionActivity.Unread: return "unread";
+                case Core.SessionActivity.UnreadNeedsAction: return "unread_needs_action";
+                default: return "unknown";
+            }
         }
 
         private static string LimitSourceName(LimitSource source)

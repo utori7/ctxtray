@@ -88,6 +88,10 @@ this repository to get notified by GitHub.
 | click the tray icon | show / hide the panel |
 | right-click the tray icon or the panel | menu (settings, pass clicks through, start at sign-in, exit, and more) |
 
+- The **dot** to the left of a session name means the same as the dot in Claude Desktop's
+  sidebar: amber is waiting for your approval or answer, or an unread reply that needs you; blue
+  is an unread reply; grey is working; and a ring means it has finished or is not running. The
+  row details say which kind of amber it is. Settings can also highlight the rows that need you.
 - A session name in **grey** means its Claude Code process is not running. Grey sessions are
   left out of the tray icon and the notifications.
 - When the limits heading says **for reference**, Claude Desktop is not running or nothing has
@@ -112,9 +116,9 @@ are all in **Settings…** on the tray menu.
 | Source | Used for |
 |---|---|
 | `plan-usage-history.json` | 5-hour and weekly percentages |
-| `claude-code-sessions/**/local_*.json` | which tabs are open, and their model and working directory |
-| `~/.claude/projects/**/*.jsonl` | token counts from the `usage` field, and the model and effort of that response |
-| `~/.claude/sessions/<pid>.json` | which Claude Code processes are running |
+| `claude-code-sessions/**/local_*.json` | which tabs are open, their model and working directory, when each tab was last opened, and how the last reply was classified (complete / needs action) |
+| `~/.claude/projects/**/*.jsonl` | token counts from the `usage` field, and the model, effort and time of that response |
+| `~/.claude/sessions/<pid>.json` | which Claude Code processes are running, and what each is doing (working, waiting for approval, and so on) |
 
 It also asks Windows:
 

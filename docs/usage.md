@@ -32,6 +32,26 @@ behind it, but you can no longer drag it, hover a row for details, or right-clic
 Turn it back off from the tray menu, or with the click-through shortcut if you set one.
 The panel says how to undo it for a few seconds whenever you turn it on.
 
+The dot to the left of a session name means the same as the dot in Claude Desktop's sidebar,
+in the same colours.
+
+| Dot | State |
+|---|---|
+| amber | waiting for your approval (to run a tool) or your answer (to a question from Claude), or an unread reply that needs action; the row details say which |
+| blue | an unread reply: it finished while you were on another tab; opening the tab clears it |
+| grey | working |
+| ring | finished, or the process is not running |
+
+Rows without a dot come from older versions of Claude Code that do not record their state.
+"Needs action" is an unread reply that Claude Desktop has classified as needing you (for example,
+one that ends with a question). Like blue, it clears when you open the tab.
+Terminal and VS Code sessions have neither (they turn into a ring when they finish).
+Unread is worked out from the time Claude Desktop records for opening a tab, so it takes a few
+seconds to clear after you open the tab.
+
+Turn on **Highlight sessions waiting for you** on the Settings **Panel** tab to give amber rows a
+coloured background and the word "Approval", "Answer" or "Action" at the right end of the session name column.
+
 A session name in grey means its Claude Code process is not running right now
 (for example, a tab that has been idle). Grey sessions are left out of the tray icon and
 the notifications: their usage cannot grow until they run again. You can hide them

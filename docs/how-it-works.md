@@ -150,12 +150,14 @@ Two independent sources, which mean different things:
 
 **`<data folder>/claude-code-sessions/<account>/<org>/local_*.json`** — one file per open
 Claude Desktop tab. Provides `cliSessionId` (which matches the transcript filename),
-`cwd`, `model`, `title`, `lastActivityAt`. Closing a tab deletes the entry rather than
+`cwd`, `model`, `title`, `lastActivityAt`, `lastFocusedAt`, and `status_category` inside
+`postTurnSummary`. Closing a tab deletes the entry rather than
 archiving it, so this list is always "tabs open right now". Terminal and VS Code sessions
 never appear here.
 
 **`~/.claude/sessions/<pid>.json`** — one file per running Claude Code process, with
-`pid`, `sessionId`, `cwd`, `entrypoint`, `procStart`. Files of exited processes remain,
+`pid`, `sessionId`, `cwd`, `entrypoint`, `procStart`, and in recent versions `status` and
+`waitingFor` (see [What a session is doing](#what-a-session-is-doing)). Files of exited processes remain,
 so ctxtray checks that the PID is alive and compares `procStart` against the process
 start time to rule out PID reuse. The same folder also holds other files
 (`<pid>.<hash>.key` in Claude Code 2.1.271); ctxtray opens only `*.json`.
@@ -197,6 +199,41 @@ A tab without a live process is still shown in the panel, greyed out, because it
 resumed with the same context. It is not used for the tray icon, the tooltip or the
 notifications: its usage cannot grow while it is stopped, and counting it would announce a
 high value again every time ctxtray started. Once the tab runs again, it counts again.
+
+### What a session is doing
+
+The dot at the left of a row follows two more fields of the process file, which Claude Code
+writes in recent versions (checked with 2.1.286 in Claude Desktop and 2.1.283 in a terminal):
+
+| `status` | `waitingFor` | Dot |
+|---|---|---|
+| `busy` | — | grey: working |
+| `waiting` | `"permission prompt"` | amber: waiting for approval to run a tool |
+| `waiting` | `"input needed"` | amber: waiting for an answer to a question |
+| `idle` | — | ring: finished |
+
+Interrupting with Esc, while it works or while it waits for approval, goes straight to `idle`.
+A `waiting` with any other `waitingFor` is still shown as waiting. Without `status`, or with a
+value not listed here, the row has no dot. The colours were read from Claude Desktop's sidebar,
+and are the same in its light and dark themes.
+
+Claude Desktop also shows a blue dot for a reply that finished while another tab was open,
+until that tab is opened. The tab record keeps only `lastFocusedAt`, the last time the tab was
+opened (written 2–4 seconds later), so ctxtray marks a tab unread when it is `idle`, the latest
+response in its transcript is newer than its `lastFocusedAt`, and another tab was opened in
+between. Comparing against the time `idle` was written instead would be wrong: opening an old
+tab starts its process, which writes `idle` straight away without any new reply. If the same
+other tab is opened both before and after the reply, only the later time is kept and the
+unread mark is missed.
+
+About three seconds after a reply finishes, Claude Desktop also classifies it in the tab record
+(`postTurnSummary.status_category`: `completed`, or `blocked` when it needs you, such as a reply
+that ends with a question). An unread `blocked` reply gets an amber dot instead of a blue one, in
+Claude Desktop and in ctxtray, and opening the tab clears it the same way. ctxtray reads only that
+category; the same record also holds a summary of the reply, which it does not read.
+
+ctxtray watches the process files and the tab records, so a change shows up within about a
+second instead of at the next refresh.
 
 ## 4. Context
 

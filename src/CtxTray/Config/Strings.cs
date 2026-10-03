@@ -39,6 +39,13 @@ namespace CtxTray.Config
             return _japanese ? pair[0] : pair[1];
         }
 
+        /// <summary>すべての言語の文言（いまの言語によらず寸法を決めるときに使う）。</summary>
+        public static string[] All(string key)
+        {
+            string[] pair;
+            return Map.TryGetValue(key, out pair) ? (string[])pair.Clone() : new[] { key };
+        }
+
         public static string Format(string key, params object[] args)
         {
             return string.Format(CultureInfo.CurrentCulture, Get(key), args);
@@ -99,6 +106,21 @@ namespace CtxTray.Config
             { "hud.capReference", new[] { "参考値",           "for reference" } },
             // 使用中なのに Claude Desktop の記録が 30 分以上止まっているとき。{0} は「40 分前」など。
             { "hud.capRecorded",  new[] { "{0}に記録",        "recorded {0}" } },
+
+            // セッションの行の状態（Core/SessionActivity.cs）。強調の文字（名前の列の右端）と行の詳細に出すので短く。
+            { "hud.stateBusy",       new[] { "応答中",     "Working" } },
+            { "hud.statePermission", new[] { "承認待ち",   "Needs approval" } },
+            { "hud.stateInput",      new[] { "回答待ち",   "Needs answer" } },
+            { "hud.stateWaiting",    new[] { "待機中",     "Waiting" } },
+            { "hud.stateUnread",     new[] { "未読の応答", "Unread reply" } },
+            // 未読の応答のうち、Desktop が「対応が必要」と分類したもの（質問で終わった応答など）。
+            { "hud.stateNeedsAction", new[] { "対応待ち",  "Needs action" } },
+            // 強調の文字（名前の列の右端、幅は名前の列の半分まで）。英語は "Needs approval" だと切れて
+            // 「Needs…」になり何を待っているか読めないので、1 語にする（2026-10-03、実寸の見本で利用者が決定）。
+            { "hud.badgePermission", new[] { "承認待ち", "Approval" } },
+            { "hud.badgeInput",      new[] { "回答待ち", "Answer" } },
+            { "hud.badgeNeedsAction", new[] { "対応待ち", "Action" } },
+            { "hud.badgeWaiting",    new[] { "待機中",   "Waiting" } },
 
             // HUD の行にマウスを乗せたときに出す詳細（行は簡潔なまま、確かな値だけをここに出す）。
             { "hud.tipTerminal",  new[] { "ターミナルで実行中",        "Running in a terminal" } },
@@ -261,6 +283,12 @@ namespace CtxTray.Config
             // モデルとエフォート・トークン数の両方に効く（2026-09-29、利用者の決定）。以前はモデルとエフォートだけの
             // 「表示位置: セッション名の右／下」だった。2 段目のどこに何が出るかは見れば分かるので選択肢に書かない。
             { "set.rowLayout",     new[] { "並べ方",                 "Layout" } },
+            { "set.highlightWaiting", new[] { "対応が必要な行を強調", "Highlight sessions waiting for you" } },
+            // 1 行目は何が起きるか（項目名だけでは分からない、と利用者の指摘）。2 行目は、オンにするとセッション名の幅の下限が
+            // 上がること（SettingsForm.UpdateNameWidthMinimum）。幅の欄は「詳細設定」に畳まれていて気付きにくいので、
+            // チェックボックスの側に書く（2026-10-03、利用者の依頼）。{0} はパネルで測った下限。
+            { "set.highlightWaitingHint", new[] { "承認待ち・回答待ち・対応待ちの行に色を付け、セッション名の欄の右端に「承認待ち」などと表示します。\n文字が入るように、セッション名の幅を {0} px 以上にします。",
+                                                  "Colours the rows waiting for your approval, answer or action, and shows which at the right end of the session name column.\nThe session name width is kept at {0} px or more so the words fit." } },
             { "set.layoutOneLine", new[] { "1 段（パネルの幅が広がる）", "One line (wider panel)" } },
             { "set.layoutTwoLine", new[] { "2 段（行が高くなる）",     "Two lines (taller rows)" } },
             // 対象が 5時間枠だけであることを名前で伝える。項目名の列が最長の項目名に合わせて広がるようになったので、
@@ -280,6 +308,10 @@ namespace CtxTray.Config
             // 「名前」だけでは何の名前か分からない（2026-09-27、利用者の指摘）。単位は倍率 100%・標準の文字サイズでのピクセル。
             { "set.nameWidth",     new[] { "セッション名の幅",     "Session name width" } },
             { "set.nameWidthUnit", new[] { "px（既定値: {0}）",      "px (default {0})" } },
+            // px は画面上の実寸ではない。文字と同じ倍率を掛けるので、文字サイズを変えても名前の入る文字数は変わらない
+            // （2026-10-03、利用者の指摘「文字サイズによらないのに px なのか」。単位は px のまま補足を足す、と利用者が決定）。
+            { "set.nameWidthHint", new[] { "表示倍率 100%・文字サイズ「標準」のときの幅です。実際の幅は、表示倍率、Windows のテキストのサイズ、文字サイズに合わせて広がります。",
+                                           "Width at 100% scaling and Normal text size. On screen it grows with the display scale, Windows text size and the text size here." } },
             { "set.opacity",       new[] { "不透明度",             "Opacity" } },
             { "set.clickThrough",  new[] { "クリックを後ろのウィンドウへ透過する",
                                            "Pass clicks through to windows behind" } },

@@ -142,6 +142,10 @@ namespace CtxTray.Config
         public bool HudShowModel = false;
         public bool HudShowEffort = false;
 
+        // 承認待ち・回答待ちのセッションの行を、背景の色と「承認待ち」などの文字で強調するか。
+        // 状態の丸（行の左）は常に出す。強調は既定オフ（2026-10-03、利用者の決定）。
+        public bool HudHighlightWaiting = false;
+
         /// <summary>
         /// セッションの行の段数。モデルとエフォート・トークン数の両方に効く。
         /// oneLine = どれも 1 段に並べ、オンにした分だけパネルが広がる。
@@ -513,6 +517,7 @@ namespace CtxTray.Config
                     : string.Equals(Json.Str(display, "density"), "detailed", StringComparison.OrdinalIgnoreCase);
                 HudShowModel = Json.Bool(display, "showModel", HudShowModel);
                 HudShowEffort = Json.Bool(display, "showEffort", HudShowEffort);
+                HudHighlightWaiting = Json.Bool(display, "highlightWaiting", HudHighlightWaiting);
                 // 知らない値は既定のまま（手で書き換えた設定で行が描けなくならないように）。
                 // 0.6.x までの modelLayout（column / twoLine）は、rowLayout が無いときだけ引き継ぐ。
                 var layout = display.ContainsKey("rowLayout")
@@ -619,6 +624,7 @@ namespace CtxTray.Config
                 .Add("showTokens", HudShowTokens)
                 .Add("showModel", HudShowModel)
                 .Add("showEffort", HudShowEffort)
+                .Add("highlightWaiting", HudHighlightWaiting)
                 .Add("rowLayout", HudRowLayout)
                 .Add("showResets", ShowResets)
                 .Add("resetLeadMinutes", new JObj()

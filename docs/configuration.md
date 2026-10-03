@@ -50,7 +50,7 @@ ctxtray rewrites the file when you press OK in the dialog or move the panel.
   "display": {
     "theme": "auto",             // "light" | "dark"
     "textSize": "normal",        // "xsmall" | "small" | "large" | "xlarge"
-    "nameWidth": 180,            // width of the session-name column at normal text size; the panel is this plus the columns you turn on
+    "nameWidth": 180,            // width of the session-name column in px at 100% scaling and Normal text size (on screen it grows with both); the panel is this plus the columns you turn on; with highlightWaiting on, never narrower than the highlight words need
     "showRateLimits": true,
     "showSessions": true,
     "hideIdleSessions": true,
@@ -61,6 +61,7 @@ ctxtray rewrites the file when you press OK in the dialog or move the panel.
     "showModel": false,          // model name on the row (e.g. Opus 5.5)
     "showEffort": false,         // effort on the row (e.g. high)
     "rowLayout": "oneLine",      // "oneLine" (token counts and model side by side, wider panel) | "twoLine" (on a second line, taller rows)
+    "highlightWaiting": false,   // colour the rows that need you (approval, answer, or an unread reply that needs action), and say which
     "showResets": "auto",        // "always" | "auto" | "never" (5-hour reset time; auto = only in the last 30 minutes)
     "opacity": 0.9,
     "clickThrough": false,

@@ -48,7 +48,7 @@
   "display": {
     "theme": "auto",             // "light" | "dark"
     "textSize": "normal",        // "xsmall" | "small" | "large" | "xlarge"
-    "nameWidth": 180,            // セッション名の列の幅（標準の文字サイズでの値）。パネルの幅はこれとオンにした列の合計
+    "nameWidth": 180,            // セッション名の列の幅（表示倍率 100%・文字サイズ「標準」での px。実際は倍率と文字サイズに合わせて広がる）。パネルの幅はこれとオンにした列の合計。highlightWaiting がオンのときは強調の文字が入る幅より狭くしない
     "showRateLimits": true,
     "showSessions": true,
     "hideIdleSessions": true,
@@ -59,6 +59,7 @@
     "showModel": false,          // 行にモデル名を表示（例: Opus 5.5）
     "showEffort": false,         // 行にエフォートを表示（例: high）
     "rowLayout": "oneLine",      // "oneLine"（トークン数とモデルを横に並べる。パネルの幅が広がる）| "twoLine"（2 段目に表示。行が高くなる）
+    "highlightWaiting": false,   // 対応が必要な行（承認待ち・回答待ち・対応待ち）に色を付け、どれかを表示
     "showResets": "auto",        // "always" | "auto" | "never"（5時間枠のリセット時刻。auto は残り 30 分を切ったときだけ）
     "opacity": 0.9,
     "clickThrough": false,

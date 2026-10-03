@@ -68,6 +68,8 @@ namespace CtxTray.Ui
         private FileSystemWatcher _dataWatcher;
         private FileSystemWatcher _projectWatcher;
         private FileSystemWatcher _configWatcher;
+        private FileSystemWatcher _sessionsWatcher;
+        private FileSystemWatcher _tabsWatcher;
 
         private volatile bool _dirty = true;
         private volatile bool _configDirty;
@@ -842,6 +844,13 @@ namespace CtxTray.Ui
             if (configDir != null)
                 _projectWatcher = TryWatch(Path.Combine(configDir, "projects"), "*.jsonl", true);
 
+            // セッションの状態の丸を、5 秒の間隔を待たずに変える（承認待ちになった・タブを開いた）。
+            // プロセスの記録（sessions/<pid>.json の status）と、タブの記録（lastFocusedAt）の書き換えを拾う。
+            if (configDir != null)
+                _sessionsWatcher = TryWatch(Path.Combine(configDir, "sessions"), "*.json", false);
+            if (dataRoot != null)
+                _tabsWatcher = TryWatch(Path.Combine(dataRoot, "claude-code-sessions"), "local_*.json", true);
+
             // 設定ファイルの変更を拾って、保存した瞬間に反映する。
             try
             {
@@ -1099,7 +1108,8 @@ namespace CtxTray.Ui
                                          ModelEntries, CheckModelsNow,
                                          () => HudWanted, SetHudVisible,
                                          _updates.Status, CheckUpdatesNow,
-                                         () => OpenRelease(_updates.Status().Latest));
+                                         () => OpenRelease(_updates.Status().Latest),
+                                         () => _hud != null && !_hud.IsDisposed ? _hud.BadgeMinNameWidth : HudLayout.MinNameWidth);
             if (modelsTab) _settings.ShowModelsTab();
             _settings.ResetHudPositionRequested += (s, e) =>
             {
@@ -1157,6 +1167,8 @@ namespace CtxTray.Ui
                 Application.ThreadException -= OnThreadException;
                 if (_dataWatcher != null) _dataWatcher.Dispose();
                 if (_projectWatcher != null) _projectWatcher.Dispose();
+                if (_sessionsWatcher != null) _sessionsWatcher.Dispose();
+                if (_tabsWatcher != null) _tabsWatcher.Dispose();
                 if (_configWatcher != null) _configWatcher.Dispose();
                 _timer.Dispose();
 

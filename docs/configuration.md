@@ -135,7 +135,11 @@ ctxtray --watch-status | Tee-Object ctxtray-status.log
 This shows the lines and saves them to a file at the same time. Press Ctrl+C to stop.
 The output contains no session names, folder paths or conversation text. Values are printed only
 when they are short and use letters, digits and `. _ : -`; anything else is printed as its length,
-so the output can be pasted into an issue as is.
+so the output can be pasted into an issue as is. The one exception is `waitingFor`, which says
+what the session is waiting for: it is printed when it is a phrase of up to 40 letters and spaces.
+Values that look like IDs are replaced with a number for that run (`id#1` and so on); the same
+value always gets the same number, so you can still see when it changes. Nested fields are
+printed as `parent.child`, for example `postTurnSummary.status_category`.
 
 ## Files it writes
 

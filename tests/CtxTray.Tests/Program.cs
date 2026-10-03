@@ -1161,7 +1161,9 @@ namespace CtxTray.Tests
                   "arrays of short values are shown");
             Equal("1", s.Fields.ContainsKey("peerProtocol") ? s.Fields["peerProtocol"] : null, "numbers that are not times");
             Equal("<text 21>", s.Fields.ContainsKey("note") ? s.Fields["note"] : null, "free text is reduced to its length");
-            Equal("{a,b}", s.Fields.ContainsKey("extra") ? s.Fields["extra"] : null, "objects show their keys only");
+            Equal("<text 3>", s.Fields.ContainsKey("extra.a") ? s.Fields["extra.a"] : null, "objects are opened one level");
+            Equal("1", s.Fields.ContainsKey("extra.b") ? s.Fields["extra.b"] : null, "objects are opened one level (2)");
+            Check(!s.Fields.ContainsKey("extra"), "an opened object has no line of its own");
 
             foreach (var key in new[] { "cwd", "name", "sessionId", "messagingSocketPath", "pidDomain",
                                         "startedAt", "updatedAt", "nameSince", "statusUpdatedAt", "status", "pid" })
@@ -1185,6 +1187,55 @@ namespace CtxTray.Tests
             Equal("false", fields.ContainsKey("tab.isArchived") ? fields["tab.isArchived"] : null, "booleans");
             Check(!fields.ContainsKey("tab.title") && !fields.ContainsKey("tab.cwd"), "a tab's title and folder are left out");
             Check(!fields.ContainsKey("tab.lastActivityAt"), "a tab's times are left out");
+
+            // Desktop 2.1.286 のタブの記録の形（値は変えてある）。ID は番号に置き換え、入れ子は 1 段だけ開く。
+            var ids = new IdAliases();
+            var tabFields = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            StatusWatch.Sanitize(Json.ParseObject(
+                "{\"bridgeSessionIds\":[\"session_01AbCdEfGhIjKlMnOpQrStUv\"]," +
+                "\"lastAssistantUuid\":\"1f0e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b\"," +
+                "\"postTurnSummary\":{\"needs_action\":true,\"status_category\":\"awaiting_input\",\"status_detail\":\"Asked about the secret\"," +
+                "\"summarizes_uuid\":\"1f0e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b\"}," +
+                "\"postTurnSummaryFor\":\"1f0e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b\"," +
+                "\"toolSurfaceSnapshot\":{\"recordedAt\":1790998040223,\"familyHashes\":{\"a\":\"x\"}}," +
+                "\"spawnSeed\":{},\"permissionMode\":\"skip_all_permission_checks\",\"model\":\"claude-opus-5-5\"}"),
+                "tab.", tabFields, ids);
+            Func<string, string> get = k => tabFields.ContainsKey(k) ? tabFields[k] : null;
+            Equal("[id#1]", get("tab.bridgeSessionIds"), "ids inside arrays are replaced");
+            Equal("id#2", get("tab.lastAssistantUuid"), "a uuid is replaced");
+            Equal("id#2", get("tab.postTurnSummaryFor"), "the same id gets the same number");
+            Equal("id#2", get("tab.postTurnSummary.summarizes_uuid"), "the same id inside an object");
+            Equal("true", get("tab.postTurnSummary.needs_action"), "a nested boolean");
+            Equal("awaiting_input", get("tab.postTurnSummary.status_category"), "a nested short value");
+            Equal("<text 22>", get("tab.postTurnSummary.status_detail"), "nested free text is reduced to its length");
+            Equal("{a}", get("tab.toolSurfaceSnapshot.familyHashes"), "deeper objects show their keys only");
+            Check(!tabFields.ContainsKey("tab.toolSurfaceSnapshot.recordedAt"), "nested times are left out");
+            Equal("{}", get("tab.spawnSeed"), "an empty object");
+            Equal("skip_all_permission_checks", get("tab.permissionMode"), "long names with short parts are not ids");
+            Equal("claude-opus-5-5", get("tab.model"), "model names are not ids");
+            foreach (var kv in tabFields)
+                Check(kv.Value.IndexOf("session_01", StringComparison.Ordinal) < 0 &&
+                      kv.Value.IndexOf("1f0e2d3c", StringComparison.Ordinal) < 0 &&
+                      kv.Value.IndexOf("secret", StringComparison.Ordinal) < 0, kv.Key + " shows no id or text");
+            Equal("<id>", StatusWatch.Value("session_01AbCdEfGhIjKlMnOpQrStUv"), "without aliases, ids are hidden");
+
+            // waitingFor だけは、英字と空白の短い定型文なら中身を出す（回答待ちと承認待ちを見分けるため）。
+            var waiting = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            StatusWatch.Sanitize(Json.ParseObject(
+                "{\"waitingFor\":\"tool approval\",\"note\":\"tool approval\"}"), "", waiting);
+            Equal("\"tool approval\"", waiting.ContainsKey("waitingFor") ? waiting["waitingFor"] : null, "a waitingFor phrase is shown");
+            Equal("<text 13>", waiting.ContainsKey("note") ? waiting["note"] : null, "the same phrase in another field is not");
+            foreach (var text in new[] { "edit C:\\Users\\me\\secret.txt", "run rm -rf secret", "approve 3 tools",
+                                         "a very long phrase that goes on and on past forty letters" })
+            {
+                var w = new SortedDictionary<string, string>(StringComparer.Ordinal);
+                StatusWatch.Sanitize(new Dictionary<string, object> { { "waitingFor", text } }, "", w);
+                Equal("<text " + text.Length + ">", w.ContainsKey("waitingFor") ? w["waitingFor"] : null,
+                      "a waitingFor with digits, symbols or paths is reduced to its length: " + text.Length);
+            }
+            var single = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            StatusWatch.Sanitize(new Dictionary<string, object> { { "waitingFor", "approval" } }, "", single);
+            Equal("approval", single.ContainsKey("waitingFor") ? single["waitingFor"] : null, "a one-word waitingFor stays a plain value");
         }
 
         private static void StatusWatchTail()

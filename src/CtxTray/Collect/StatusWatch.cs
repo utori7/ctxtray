@@ -25,12 +25,36 @@ namespace CtxTray.Collect
     }
 
     /// <summary>
+    /// ID らしい値を、監視 1 回の間だけ通じる番号（id#1, id#2, ...）に置き換える。
+    /// 値そのもの（claude.ai のセッション ID など）は貼り付け先に出したくないが、
+    /// 「変わったか」「ほかの項目と同じ値か」は状態の突き合わせに使える。
+    /// </summary>
+    internal sealed class IdAliases
+    {
+        private readonly Dictionary<string, string> _map = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        public string For(string id)
+        {
+            string alias;
+            if (!_map.TryGetValue(id, out alias))
+            {
+                alias = "id#" + (_map.Count + 1).ToString(CultureInfo.InvariantCulture);
+                _map[id] = alias;
+            }
+            return alias;
+        }
+    }
+
+    /// <summary>
     /// --watch-status: セッションの状態が変わるたびに 1 行ずつ書く診断用の監視。
     ///
-    /// ~/.claude/sessions/&lt;pid&gt;.json には、新しめの Claude Code（2.1.288 で確認）が
+    /// ~/.claude/sessions/&lt;pid&gt;.json には、新しめの Claude Code（2.1.286・2.1.288 で確認）が
     ///   "status":"busy", "statusUpdatedAt":1790998068316
-    /// を書いている。取りうる値（承認待ちや完了で何が入るか）はまだ確かめていないので、
-    /// 表示に使う前に、実際の値をこのモードで集める。
+    /// を書いている。Desktop の Code タブ（2.1.286）で確かめた値は次のとおり。
+    ///   busy     応答を作っている
+    ///   waiting  利用者を待っている（質問への回答、ツールの承認）。この間だけ waitingFor に何を待っているかの文が付く
+    ///   idle     応答が終わった。数秒後にタブの記録の postTurnSummary.status_category が completed / blocked になる
+    /// ほかの場面（ターミナル版、VS Code 拡張、中断など）の値は、表示に使う前にこのモードで集める。
     ///
     /// 突き合わせのために、同じ時点の transcript の末尾（最後の発言の種類やツール名）と、
     /// Desktop のタブの記録（local_*.json）の項目も並べて出す。
@@ -38,6 +62,7 @@ namespace CtxTray.Collect
     /// ★ 出力は Issue やチャットにそのまま貼れるようにする。
     ///   セッション名、フォルダーのパス、会話の本文は出さない。値は列挙値のような
     ///   短いもの（英数字と . _ : - だけ）に限り、それ以外は長さだけを書く。
+    ///   ID らしい値（UUID、session_ のあとの長い英数字など）は id#N に置き換える。
     ///   未知の項目も同じ規則で出すので、新しく増えた項目にも気付ける。
     /// </summary>
     internal sealed class StatusWatch
@@ -57,11 +82,25 @@ namespace CtxTray.Collect
 
         private static readonly Regex TokenPattern = new Regex(@"^[A-Za-z0-9_.:\-]{1,64}$", RegexOptions.CultureInvariant);
 
+        // 文でも中身を出す項目。waitingFor は「何を待っているか」の定型文で、
+        // 回答待ちと承認待ちを見分けるのに要る。英字と空白だけの短い文に限る
+        // （数字・記号・パスが入ったら文字数だけにする）。会話の要約（status_detail など）は対象にしない。
+        private static readonly HashSet<string> PhraseKeys = new HashSet<string>(StringComparer.Ordinal) { "waitingFor" };
+        private static readonly Regex PhrasePattern = new Regex(@"^[A-Za-z][A-Za-z ']{0,39}$", RegexOptions.CultureInvariant);
+
+        // ID らしい値: UUID を含むもの、または英字と数字が混ざった 16 文字以上の並びを含むもの
+        // （session_0143Mhty... や、ハッシュ値）。claude-opus-5-5 のような名前は区切りごとに短いので当たらない。
+        private static readonly Regex UuidPattern = new Regex(
+            @"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", RegexOptions.CultureInvariant);
+        private static readonly Regex LongRunPattern = new Regex(
+            @"(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{16,}", RegexOptions.CultureInvariant);
+
         // transcript の末尾から見る行数。最後の user / assistant 行は普通この範囲にある。
         private const int TailLines = 60;
 
         private readonly string _configDir;
         private readonly string _dataRoot;
+        private readonly IdAliases _ids = new IdAliases();
 
         // 終了したプロセスのファイルは残り続けるので、一度死んでいると分かったファイルは
         // 書き換わるまで調べ直さない（PID は再利用されるが、そのときはファイルも書き換わる）。
@@ -129,14 +168,14 @@ namespace CtxTray.Collect
                     }
                     _deadStamps.Remove(f);
 
-                    var s = FromRecord(o);
+                    var s = FromRecord(o, _ids);
 
                     var sessionId = Json.Str(o, "sessionId");
                     if (!string.IsNullOrEmpty(sessionId))
                     {
                         if (tabs == null) tabs = ReadTabs();
                         Dictionary<string, object> tab;
-                        if (tabs.TryGetValue(sessionId, out tab)) Sanitize(tab, "tab.", s.Fields);
+                        if (tabs.TryGetValue(sessionId, out tab)) Sanitize(tab, "tab.", s.Fields, _ids);
 
                         s.Tail = ReadTail(Transcript.Find(_configDir, Json.Str(o, "cwd"), sessionId));
                     }
@@ -153,7 +192,7 @@ namespace CtxTray.Collect
         }
 
         /// <summary>sessions/&lt;pid&gt;.json の 1 件を、出してよい形に直す。</summary>
-        public static WatchedSession FromRecord(Dictionary<string, object> o)
+        public static WatchedSession FromRecord(Dictionary<string, object> o, IdAliases ids = null)
         {
             var sessionId = Json.Str(o, "sessionId") ?? "";
             var s = new WatchedSession
@@ -162,10 +201,10 @@ namespace CtxTray.Collect
                 ShortId = sessionId.Length > 8 ? sessionId.Substring(0, 8) : sessionId,
                 Entrypoint = Token(Json.Str(o, "entrypoint")),
                 Version = Token(Json.Str(o, "version")),
-                Status = o.ContainsKey("status") ? Value(o["status"]) : null,
+                Status = o.ContainsKey("status") ? Value(o["status"], ids) : null,
                 StatusUpdatedAtMs = Json.Long(o, "statusUpdatedAt"),
             };
-            Sanitize(o, "", s.Fields);
+            Sanitize(o, "", s.Fields, ids);
             return s;
         }
 
@@ -235,8 +274,19 @@ namespace CtxTray.Collect
         /// 名前・パス・時刻の項目は出さない。時刻は数値で、キーが At / Since / Ms で終わるもの
         /// （updatedAt、startedAt、nameSince、lastActivityAt など）。毎回変わるので、
         /// 出すと状態の変化の行が埋もれる。
+        ///
+        /// 入れ子の項目は 1 段だけ開いて「親.子」で出す。タブの記録の postTurnSummary
+        /// （needs_action・status_category を持つ）のように、状態そのものが入れ子の中にあるため。
+        /// 2 段目より深いものはキーだけを出す。
         /// </summary>
-        public static void Sanitize(Dictionary<string, object> o, string prefix, SortedDictionary<string, string> into)
+        public static void Sanitize(Dictionary<string, object> o, string prefix, SortedDictionary<string, string> into,
+                                    IdAliases ids = null)
+        {
+            Sanitize(o, prefix, into, ids, true);
+        }
+
+        private static void Sanitize(Dictionary<string, object> o, string prefix, SortedDictionary<string, string> into,
+                                     IdAliases ids, bool expand)
         {
             if (o == null) return;
             foreach (var kv in o)
@@ -244,7 +294,14 @@ namespace CtxTray.Collect
                 if (SkippedKeys.Contains(kv.Key)) continue;
                 if (prefix.Length == 0 && ProcessKeys.Contains(kv.Key)) continue;
                 if (IsTimestamp(kv.Key, kv.Value)) continue;
-                into[prefix + (Token(kv.Key) ?? "?")] = Value(kv.Value);
+
+                var key = prefix + (Token(kv.Key) ?? "?");
+                var inner = kv.Value as Dictionary<string, object>;
+                var phrase = kv.Value as string;
+                if (expand && inner != null && inner.Count > 0) Sanitize(inner, key + ".", into, ids, false);
+                else if (phrase != null && PhraseKeys.Contains(kv.Key) && PhrasePattern.IsMatch(phrase) && Token(phrase) == null)
+                    into[key] = "\"" + phrase + "\"";
+                else into[key] = Value(kv.Value, ids);
             }
         }
 
@@ -256,8 +313,11 @@ namespace CtxTray.Collect
                 || key.EndsWith("Ms", StringComparison.Ordinal);
         }
 
-        /// <summary>値を短い文字列にする。列挙値のようなもの以外は中身を出さない。</summary>
-        public static string Value(object v)
+        /// <summary>
+        /// 値を短い文字列にする。列挙値のようなもの以外は中身を出さない。
+        /// ID らしい値は ids の番号に、ids が無ければ &lt;id&gt; にする。
+        /// </summary>
+        public static string Value(object v, IdAliases ids = null)
         {
             if (v == null) return "null";
             if (v is bool) return (bool)v ? "true" : "false";
@@ -265,7 +325,11 @@ namespace CtxTray.Collect
                 return Convert.ToString(v, CultureInfo.InvariantCulture);
 
             var s = v as string;
-            if (s != null) return Token(s) ?? ("<text " + s.Length + ">");
+            if (s != null)
+            {
+                if (Token(s) == null) return "<text " + s.Length + ">";
+                return LooksLikeId(s) ? (ids != null ? ids.For(s) : "<id>") : s;
+            }
 
             var arr = v as object[];
             if (arr != null)
@@ -275,7 +339,7 @@ namespace CtxTray.Collect
                 {
                     var t = item as string;
                     if (t == null || Token(t) == null) return "<array " + arr.Length + ">";
-                    parts.Add(t);
+                    parts.Add(Value(t, ids));
                 }
                 return "[" + string.Join(",", parts.ToArray()) + "]";
             }
@@ -297,6 +361,11 @@ namespace CtxTray.Collect
         {
             if (string.IsNullOrEmpty(s)) return null;
             return TokenPattern.IsMatch(s) ? s : null;
+        }
+
+        public static bool LooksLikeId(string s)
+        {
+            return !string.IsNullOrEmpty(s) && (UuidPattern.IsMatch(s) || LongRunPattern.IsMatch(s));
         }
 
         // --- transcript の末尾 --------------------------------------------------

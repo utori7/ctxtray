@@ -76,7 +76,7 @@ elapsed time:
 | sample time ≥ newest transcript write | `current` — shown as is |
 | sample time < newest transcript write | `behind` — the value is a lower bound; shown as is |
 | Desktop not running, or sample older than 24 h | `reference` — greyed out |
-| `behind` for 30 minutes with no new sample | `stalled` — greyed out, heading says "recorded 40 min ago" |
+| `behind` for 30 minutes with no new sample | `stalled` — greyed out, heading says "recorded N min ago" |
 
 "Desktop running" means a process named `Claude` whose executable is not Claude Code.
 Claude Code's own binary is also called `claude.exe` (Claude Desktop's bundled copy under

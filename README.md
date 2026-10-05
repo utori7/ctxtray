@@ -11,7 +11,7 @@ plus bars drawn into the tray icon.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ctxtray-hud-en-dark.png">
-  <img alt="The ctxtray panel: context usage for four sessions, each with a dot showing whether it is working, waiting for approval, has an unread reply or has finished, then the 5-hour and weekly limits" src="docs/images/ctxtray-hud-en-light.png" width="352">
+  <img alt="The ctxtray panel: context usage for four sessions, each with a dot showing whether it is working, waiting for approval, has an unread reply or has finished replying, then the 5-hour and weekly limits" src="docs/images/ctxtray-hud-en-light.png" width="352">
 </picture>
 
 <picture>
@@ -30,7 +30,7 @@ The tray icon can show one icon per value (left) or one combined icon (right).
 
 - **Context usage per session** — Claude Desktop Code tabs, and Claude Code running in a
   terminal or VS Code.
-- **5-hour and weekly rate limits**, plus the 5-hour reset time (estimated from the sample history).
+- **5-hour and weekly rate limits**, plus the 5-hour reset time (estimated from the sample history; by default shown only above the warn threshold).
 - **Notifications** when a value crosses a threshold you set (for each value, you choose
   whether warn, danger, or both notify).
 
@@ -96,7 +96,7 @@ this repository to get notified by GitHub.
   left out of the tray icon and the notifications.
 - When the limits heading says **for reference**, Claude Desktop is not running or nothing has
   been recorded for over 24 hours, so the last recorded values are shown.
-- When it says **recorded 40 min ago** and the values are grey, Claude Desktop has stopped recording
+- When it says **recorded N min ago** and the values are grey, Claude Desktop has stopped recording
   while you work. Restarting Claude Desktop may fix it.
 - The panel is **kept out of screen sharing and screenshots** (you still see it on your own screen),
   so session names do not show up in a shared screen in a meeting. It relies on a Windows feature,

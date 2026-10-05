@@ -124,7 +124,7 @@ been sampled for over 24 hours. Only Claude Desktop records rate limits, so whil
 Claude Code in a terminal or VS Code with Claude Desktop closed, the rate limits stay at
 Claude Desktop's last sample and are greyed out; those sessions' context keeps updating.
 
-**Greyed out with "recorded 40 min ago"** means you have been using Claude Code for 30 minutes
+**Greyed out with "recorded N min ago"** means you have been using Claude Code for 30 minutes
 but Claude Desktop has not recorded a new value. Claude Desktop normally records every
 15 minutes while in use. Restarting Claude Desktop may fix it.
 

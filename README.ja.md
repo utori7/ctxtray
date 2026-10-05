@@ -62,7 +62,7 @@ ctxtray が読むのは、Claude Desktop と Claude Code が書き出したフ�
    あとで `ctxtray.exe` を別の場所に移動した場合は、新しい場所から一度起動し、「サインイン時に起動」をもう一度オンにしてください。
 
 動作環境: Windows 10 バージョン 1903 以降、または Windows 11（必要な .NET Framework 4.8 は OS に標準で含まれています）。
-動作を確認しているのは、Windows 11（25H2、表示倍率 150%）と、Claude Desktop に同梱の Claude Code 2.1.284 です。
+動作を確認しているのは、Windows 11（25H2・26H2、表示倍率 100%〜150%）と、Claude Desktop に同梱の Claude Code 2.1.286 です。
 Windows 10 では確認していません。
 
 ダウンロードしたファイルが本物かどうかは、[ダウンロードしたファイルの確認](docs/verify.ja.md)の手順で確かめられます。

@@ -66,7 +66,7 @@ ctxtray reads files that Claude Desktop and Claude Code wrote themselves, opened
    If you move `ctxtray.exe` later, start it once from the new place and turn **Start at sign-in** on again.
 
 Requirements: Windows 10 version 1903 or later, or Windows 11 (.NET Framework 4.8 is part of the OS on those versions).
-It has been checked on Windows 11 (25H2, 150% display scale) with the Claude Code 2.1.284 that
+It has been checked on Windows 11 (25H2 and 26H2, 100–150% display scale) with the Claude Code 2.1.286 that
 Claude Desktop bundles. It has not been checked on Windows 10.
 
 To check that a download is genuine, see [Verifying the download](docs/verify.md).

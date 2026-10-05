@@ -162,10 +162,10 @@ It connects to the network only if you turn on one of these:
   (English or Japanese). Replies may take a while.
 - If you paste the output of `ctxtray --json` into a report, remove the session names (`title`),
   folder paths (`cwd`), and the paths that contain your user name (`paths`, `transcript`) first.
-- Throughout 1.x, the meaning of config file keys and command-line options will not change;
-  a change like that would come as 2.0.0. The output of `--json` is for looking into problems
-  and its fields may change (it is not covered by this promise). Fixes for changes in Claude's
-  own file formats are made within 1.x.
+- While ctxtray is at 0.x, the meaning of config file keys or what you see by default may change.
+  When that happens, the middle number goes up (for example 0.11 → 0.12) and the changes are
+  listed at the top of the release notes. The output of `--json` is for looking into problems,
+  and its fields may change.
 - Changes are listed in [Releases](../../releases).
 
 ## Uninstall

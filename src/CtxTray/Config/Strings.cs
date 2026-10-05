@@ -225,7 +225,8 @@ namespace CtxTray.Config
 
             // 設定ダイアログ
             { "set.title",         new[] { "ctxtray の設定",      "ctxtray settings" } },
-            { "set.tabHud",        new[] { "パネル",                  "Panel" } },
+            { "set.tabHud",        new[] { "パネルの操作",            "Panel controls" } },
+            { "set.tabHudContent", new[] { "パネルの表示項目",        "Panel content" } },
             { "set.tabTray",       new[] { "トレイアイコン",        "Tray icon" } },
             { "set.tabThresholds", new[] { "しきい値と通知",        "Thresholds and notifications" } },
             { "set.tabGeneral",    new[] { "全般",                 "General" } },
@@ -237,8 +238,9 @@ namespace CtxTray.Config
                                            "Look up unknown models in the official docs" } },
             // 「通信しない」を既定にしているので、オンにしたら何が起きるかを具体的に書く。
             // 説明文はどれも短くする（2026-09-26、利用者の指摘「冗長で読みにくい」）。ただし通信の中身は削らない。
-            { "set.fetchDocsHint", new[] { "未登録のモデルのときだけ、platform.claude.com の公開ページを 1 回読み込みます。会話やアカウントの情報は送信しません。",
-                                           "Only for a model it doesn't know: reads its public page on platform.claude.com once. Nothing about your conversations or account is sent." } },
+            // 「未登録のモデルのときだけ」はチェックボックスの名前と重なるので外した。通信の中身は残す（2026-10-03、利用者の決定）。
+            { "set.fetchDocsHint", new[] { "platform.claude.com にあるそのモデルの公開ページを 1 回読み込みます。\n会話やアカウントの情報は送信しません。",
+                                           "Reads the model's public page on platform.claude.com once.\nNothing about your conversations or account is sent." } },
             { "set.checkNow",      new[] { "今すぐ確認",           "Check now" } },
             { "set.checkNowStarted", new[] { "確認を開始しました。結果はパネルに表示されます。",
                                              "Checking. Results will show in the panel." } },
@@ -253,16 +255,15 @@ namespace CtxTray.Config
             { "set.builtInShow",   new[] { "▸ 組み込みのモデル（{0} 件）を表示", "▸ Show built-in models ({0})" } },
             { "set.builtInHide",   new[] { "▾ 組み込みのモデル（{0} 件）を非表示", "▾ Hide built-in models ({0})" } },
             { "set.limitUnset",    new[] { "未設定",               "Not set" } },
-            { "set.modelListHint", new[] { "「不明」のモデルは上限を選択すると % が表示されます。その他の値は設定ファイルの modelLimits で変更できます。",
-                                           "Choose a context window for an \"Unknown\" model to see a percentage. Other values go in modelLimits in the config file." } },
+            { "set.modelListHint", new[] { "「不明」のモデルは上限を選択すると % が表示されます。\nその他の値は設定ファイルの modelLimits で変更できます。",
+                                           "Choose a context window for an \"Unknown\" model to see a percentage.\nOther values go in modelLimits in the config file." } },
 
             // 設定ダイアログ: HUD
             { "set.secHudContent", new[] { "表示する内容",          "What to show" } },
+            { "set.secHudSessions", new[] { "表示するセッション",    "Sessions to show" } },
             { "set.hudShowRate",   new[] { "レート枠（5時間枠・週間枠）", "Rate limits (5-hour and weekly)" } },
             { "set.hudShowSessions", new[] { "セッションごとのコンテキスト", "Context for each session" } },
 
-            { "set.moreShow",      new[] { "▸ 詳細設定を表示",     "▸ Show more settings" } },
-            { "set.moreHide",      new[] { "▾ 詳細設定を非表示",     "▾ Hide more settings" } },
             // 語順が日英で違うので、数値の前後を別の文言にする。
             { "set.hideIdlePre",   new[] { "",                     "Hide sessions not used for" } },
             { "set.hideIdlePost",  new[] { "時間以上使用していないセッションを非表示にする", "hours or more" } },
@@ -275,27 +276,30 @@ namespace CtxTray.Config
 
             { "set.secHudColumns", new[] { "各行の表示項目",          "On each row" } },
             { "set.showBar",       new[] { "バー",                 "Bar" } },
-            { "set.showTokens",    new[] { "トークン数（例: 284k/1M）", "Token count (e.g. 284k/1M)" } },
+            // 一般的な言葉で、オンにすればすぐ見て分かる項目は例を付けない（2026-10-03、利用者の指摘）。
+            { "set.showTokens",    new[] { "トークン数",           "Token count" } },
             // モデルとエフォートは 1 つのチェックボックスで両方を切り替える（2026-09-27、利用者の提案）。
             // 片方だけにしたいときは設定ファイルの showModel／showEffort で分けられる。
-            { "set.showModel",     new[] { "モデルとエフォート（例: Opus 5.5 · high）",
-                                           "Model and effort (e.g. Opus 5.5 · high)" } },
+            { "set.showModel",     new[] { "モデルとエフォート",   "Model and effort" } },
             // モデルとエフォート・トークン数の両方に効く（2026-09-29、利用者の決定）。以前はモデルとエフォートだけの
             // 「表示位置: セッション名の右／下」だった。2 段目のどこに何が出るかは見れば分かるので選択肢に書かない。
             { "set.rowLayout",     new[] { "並べ方",                 "Layout" } },
             { "set.highlightWaiting", new[] { "対応が必要な行を強調", "Highlight sessions waiting for you" } },
             // 1 行目は何が起きるか（項目名だけでは分からない、と利用者の指摘）。2 行目は、オンにするとセッション名の幅の下限が
-            // 上がること（SettingsForm.UpdateNameWidthMinimum）。幅の欄は「詳細設定」に畳まれていて気付きにくいので、
+            // 上がること（SettingsForm.UpdateNameWidthMinimum）。幅の欄は当時「詳細設定」に畳まれていて気付きにくかったので、
             // チェックボックスの側に書く（2026-10-03、利用者の依頼）。{0} はパネルで測った下限。
-            { "set.highlightWaitingHint", new[] { "承認待ち・回答待ち・対応待ちの行に色を付け、セッション名の欄の右端に「承認待ち」などと表示します。\n文字が入るように、セッション名の幅を {0} px 以上にします。",
-                                                  "Colours the rows waiting for your approval, answer or action, and shows which at the right end of the session name column.\nThe session name width is kept at {0} px or more so the words fit." } },
-            { "set.layoutOneLine", new[] { "1 段（パネルの幅が広がる）", "One line (wider panel)" } },
-            { "set.layoutTwoLine", new[] { "2 段（行が高くなる）",     "Two lines (taller rows)" } },
+            // 設定画面の高さを抑えるため 3 行から 2 行に詰めた（2026-10-03、利用者の決定）。
+            { "set.highlightWaitingHint", new[] { "承認待ち・回答待ち・対応待ちの行に色と文字を付けます。\nセッション名の幅は {0} px 以上になります。",
+                                                  "Colours and labels rows that need your attention.\nSession name width is kept at {0} px or more." } },
+            // 幅が広がる／行が高くなるは、選べばすぐ見て分かるので書かない（2026-10-03）。
+            { "set.layoutOneLine", new[] { "1 段",                 "One line" } },
+            { "set.layoutTwoLine", new[] { "2 段",                 "Two lines" } },
             // 対象が 5時間枠だけであることを名前で伝える。項目名の列が最長の項目名に合わせて広がるようになったので、
             // 「リセット時刻」＋補足から戻した（日本語の入力欄は 54px 右へ寄る。2026-09-28、利用者の決定）。
             { "set.showResets",    new[] { "5時間枠のリセット時刻", "5-hour reset time" } },
             { "set.always",        new[] { "常に表示",             "Always" } },
-            { "set.autoNear",      new[] { "リセットの {0} 分前から", "From {0} min before reset" } },
+            // 注意の値は「しきい値と通知」タブの 5時間枠の注意（行の色が変わる値と同じ）。
+            { "set.resetWarn",     new[] { "注意の値を超えたら",   "Over the warn threshold" } },
             { "set.never",         new[] { "表示しない",           "Never" } },
 
             { "set.secHudLook",    new[] { "外観",               "Look" } },
@@ -310,8 +314,9 @@ namespace CtxTray.Config
             { "set.nameWidthUnit", new[] { "px（既定値: {0}）",      "px (default {0})" } },
             // px は画面上の実寸ではない。文字と同じ倍率を掛けるので、文字サイズを変えても名前の入る文字数は変わらない
             // （2026-10-03、利用者の指摘「文字サイズによらないのに px なのか」。単位は px のまま補足を足す、と利用者が決定）。
-            { "set.nameWidthHint", new[] { "表示倍率 100%・文字サイズ「標準」のときの幅です。実際の幅は、表示倍率、Windows のテキストのサイズ、文字サイズに合わせて広がります。",
-                                           "Width at 100% scaling and Normal text size. On screen it grows with the display scale, Windows text size and the text size here." } },
+            // 「実際は倍率などに合わせて広がる」の後半は、設定画面の高さを抑えるため外した（「のときの幅」で伝わる。2026-10-03、利用者の決定）。
+            { "set.nameWidthHint", new[] { "表示倍率 100%・文字サイズ「標準」のときの幅です。",
+                                           "Width at 100% scaling and Normal text size." } },
             { "set.opacity",       new[] { "不透明度",             "Opacity" } },
             { "set.clickThrough",  new[] { "クリックを後ろのウィンドウへ透過する",
                                            "Pass clicks through to windows behind" } },
@@ -358,8 +363,9 @@ namespace CtxTray.Config
 
             // 設定ダイアログ: トレイアイコン
             { "set.secTrayCount",  new[] { "アイコンの数",          "Number of icons" } },
-            { "set.modeMulti",     new[] { "値ごとに分ける（ラベルとバー、最大 3 個）", "One icon per value (label and bar, up to 3)" } },
-            { "set.modeSingle",    new[] { "1 個にまとめる（横のバー）", "One combined icon (horizontal bars)" } },
+            // アイコンの形はプレビューですぐ見えるので書かない。個数の上限だけ残す（2026-10-03）。
+            { "set.modeMulti",     new[] { "値ごとに分ける（最大 3 個）", "One icon per value (up to 3)" } },
+            { "set.modeSingle",    new[] { "1 個にまとめる",       "One combined icon" } },
 
             { "set.secTrayValues", new[] { "表示する値",            "Values to show" } },
             // 選び方は SessionFilter.MostPressed（実行中で % が最も大きいもの）。
@@ -370,13 +376,12 @@ namespace CtxTray.Config
             { "set.valFiveHour",   new[] { "5時間枠",              "5-hour limit" } },
             { "set.valWeekly",     new[] { "週間枠",               "Weekly limit" } },
 
-            // ラジオボタンの文は折り返せないので、目印と値の対応は補足の行に書く。
+            // 目印と値の対応（左から順に…）の補足は、並びが「表示する値」と同じで色の四角でも分かるので外した（2026-10-03、利用者の決定）。
             { "set.secTrayLabel",  new[] { "値ごとに分けるときのラベル", "Label on each icon" } },
             { "set.labelLetters",  new[] { "文字（C・5h・W）",      "Letters (C, 5h, W)" } },
-            { "set.labelGlyphs",   new[] { "記号（吹き出し・時計・カレンダー）", "Symbols (speech bubble, clock, calendar)" } },
-            { "set.labelPercent",  new[] { "数値（現在の %）",      "Numbers (current %)" } },
-            { "set.labelHint",     new[] { "左から順にコンテキスト、5時間枠、週間枠です。",
-                                           "From the left: context, 5-hour, weekly." } },
+            // 記号の形と数値はプレビューですぐ見えるので例を書かない。文字は短く中身そのものなので残す（2026-10-03、利用者の決定）。
+            { "set.labelGlyphs",   new[] { "記号",                 "Symbols" } },
+            { "set.labelPercent",  new[] { "数値（%）",            "Numbers (%)" } },
 
             { "set.trayOverflowHint", new[] { "「^」の中に隠れたアイコンは、タスクバーへドラッグすると常に表示できます。",
                                               "Drag an icon out of the ^ overflow onto the taskbar to keep it visible." } },
@@ -464,7 +469,7 @@ namespace CtxTray.Config
             // 通信の中身は削らない（set.fetchDocsHint と同じ考え方）。
             // 1 行に収まらず「アカウ／ント」と語の途中で折り返したので、文の区切りで改行する。
             { "set.checkUpdatesHint", new[] { "1 日 1 回、GitHub で最新のバージョン番号を確認します。\n会話やアカウントの情報は送信しません。",
-                                              "Once a day, checks GitHub for the latest version number. Nothing about your conversations or account is sent." } },
+                                              "Once a day, checks GitHub for the latest version number.\nNothing about your conversations or account is sent." } },
             { "set.updChecking",   new[] { "確認中…",              "Checking…" } },
             { "set.updUpToDate",   new[] { "最新のバージョンです（{0}）", "Up to date ({0})" } },
             { "set.updAvailable",  new[] { "バージョン {0} があります", "Version {0} is available" } },

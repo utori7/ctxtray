@@ -39,6 +39,8 @@ namespace CtxTray.Tests
                 Run("Config: hideFromCapture is on unless turned off", HideFromCaptureKey);
                 Run("Config: a copy is independent of the original", ConfigClone);
                 Run("Config: tray label (letters / glyphs / percent)", TrayLabel);
+                Run("Reset time: shown over the warn threshold by default", ResetTimeDisplay);
+                Run("Config: showResets (auto from 0.11.0 reads as warn)", ResetTimeConfig);
                 Run("Percent text: the same rounding everywhere", PercentRounding);
                 Run("ModelLimits lookup", ModelLimitsLookup);
                 Run("Model docs: page URL and parsing", ModelDocsParsing);
@@ -228,6 +230,65 @@ namespace CtxTray.Tests
 
             File.WriteAllText(path, "{ \"tray\": { \"label\": \"digits\" } }", new UTF8Encoding(false));
             Equal("letters", AppConfig.Load(out problem, out failed).TrayLabel, "an unknown label falls back to letters");
+        }
+
+        /// <summary>
+        /// 5時間枠のリセット時刻は、既定では注意の使用率（行の色が変わる値）を超えたときだけ出す。
+        /// リセットまでの残り時間には左右されない（0.11.0 までは残り 30 分からだった）。
+        /// </summary>
+        private static void ResetTimeDisplay()
+        {
+            var now = new DateTime(2026, 10, 3, 12, 0, 0, DateTimeKind.Utc);
+            var cfg = new AppConfig();   // 5時間枠の注意は 80%
+            Equal(ResetDisplay.Warn, cfg.ShowResets, "warn is the default");
+
+            var high = new RateLimitStatus { FiveHourPct = 95, NextFiveHourResetUtc = now.AddHours(3) };
+            Check(ResetDisplay.ShouldShow(high, cfg, now), "95% with 3 hours left is shown");
+
+            var low = new RateLimitStatus { FiveHourPct = 10, NextFiveHourResetUtc = now.AddMinutes(10) };
+            Check(!ResetDisplay.ShouldShow(low, cfg, now), "10% with 10 minutes left is not shown");
+
+            var atWarn = new RateLimitStatus { FiveHourPct = 80, NextFiveHourResetUtc = now.AddHours(1) };
+            Check(ResetDisplay.ShouldShow(atWarn, cfg, now), "exactly the warn value is shown, like the row colour");
+
+            var past = new RateLimitStatus { FiveHourPct = 95, NextFiveHourResetUtc = now.AddMinutes(-5) };
+            Check(!ResetDisplay.ShouldShow(past, cfg, now), "a reset that has already passed is not shown");
+
+            var unknown = new RateLimitStatus { FiveHourPct = 95 };
+            Check(!ResetDisplay.ShouldShow(unknown, cfg, now), "no estimate, nothing to show");
+
+            cfg.FiveHourWarn = 50;
+            var mid = new RateLimitStatus { FiveHourPct = 60, NextFiveHourResetUtc = now.AddHours(2) };
+            Check(ResetDisplay.ShouldShow(mid, cfg, now), "follows the warn threshold set by the user");
+
+            cfg.ShowResets = ResetDisplay.Always;
+            Check(ResetDisplay.ShouldShow(low, cfg, now), "always shows at a low %");
+            cfg.ShowResets = ResetDisplay.Never;
+            Check(!ResetDisplay.ShouldShow(high, cfg, now), "never hides it at a high %");
+        }
+
+        private static void ResetTimeConfig()
+        {
+            var path = UseConfigDir("config-show-resets");
+            string problem;
+            bool failed;
+
+            File.WriteAllText(path, "{ \"display\": { \"showResets\": \"auto\", \"resetLeadMinutes\": { \"fiveHour\": 30 } } }",
+                              new UTF8Encoding(false));
+            var c = AppConfig.Load(out problem, out failed);
+            Check(!failed, "a 0.11.0 file loads");
+            Equal(ResetDisplay.Warn, c.ShowResets, "auto from 0.11.0 reads as warn");
+
+            Check(c.Save(), "save succeeds");
+            var saved = File.ReadAllText(path);
+            Check(!saved.Contains("resetLeadMinutes"), "resetLeadMinutes is no longer written");
+            Equal(ResetDisplay.Warn, AppConfig.Load(out problem, out failed).ShowResets, "warn survives a save");
+
+            File.WriteAllText(path, "{ \"display\": { \"showResets\": \"Always\" } }", new UTF8Encoding(false));
+            Equal(ResetDisplay.Always, AppConfig.Load(out problem, out failed).ShowResets, "always is read (any case)");
+
+            File.WriteAllText(path, "{ \"display\": { \"showResets\": \"sometimes\" } }", new UTF8Encoding(false));
+            Equal(ResetDisplay.Warn, AppConfig.Load(out problem, out failed).ShowResets, "an unknown value falls back to warn");
         }
 
         /// <summary>

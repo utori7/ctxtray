@@ -24,7 +24,7 @@
 | click the tray icon | show / hide the panel |
 | right-click the tray icon or the panel | show / hide panel, pass clicks through, start at sign-in, settings, refresh now, open config file, about, exit |
 
-To change a shortcut, open Settings (**Panel** tab), click its box and press a key together with Ctrl, Alt, or Shift;
+To change a shortcut, open Settings (**Panel controls** tab), click its box and press a key together with Ctrl, Alt, or Shift;
 Delete sets it to none. If the box does not change when you press a key, another app has already taken that key.
 
 **Pass clicks through** makes the panel ignore the mouse entirely: you can click what is
@@ -49,7 +49,7 @@ Terminal and VS Code sessions have neither (they turn into a ring when they fini
 Unread is worked out from the time Claude Desktop records for opening a tab, so it takes a few
 seconds to clear after you open the tab.
 
-Turn on **Highlight sessions waiting for you** on the Settings **Panel** tab to give amber rows a
+Turn on **Highlight sessions waiting for you** on the Settings **Panel content** tab to give amber rows a
 coloured background and the word "Approval", "Answer" or "Action" at the right end of the session name column.
 
 A session name in grey means its Claude Code process is not running right now
@@ -133,8 +133,8 @@ but Claude Desktop has not recorded a new value. Claude Desktop normally records
 The 5-hour reset is derived from the sample history. Because samples are 5–15 minutes
 apart, the estimate can be early by up to one sampling interval; when it was checked
 against an actual reset (once), it was one minute off.
-By default the time is shown only during the last 30 minutes before the reset (it can also be
-always shown or never shown).
+By default the time is shown only while the 5-hour limit is over its warn threshold (set on the
+**Thresholds and notifications** tab); it can also be always shown or never shown.
 
 The weekly reset is **not recorded anywhere**. ctxtray can narrow it down to a weekday
 from the history (`ctxtray --verify-weekly` shows the derivation), but that estimate is
@@ -182,10 +182,10 @@ conversation is compacted first. Settings warns about this in red.
 
 Each session's model and effort always appear in the details when you hover over a row
 (for example `Opus 5.5 · high`). Turn on **Model and effort** under **On each row** on the
-**Panel** tab in Settings to show them on the row as well (off by default).
+**Panel content** tab in Settings to show them on the row as well (off by default).
 To show only one of the two, set `showModel` and `showEffort` separately in the config file.
 
-The panel's width is the session-name column (**Session name width** under **Show more settings**) plus whatever
+The panel's width is the session-name column (**Session name width** under **Look**) plus whatever
 you turn on — the bar, token counts, the model column. Turning any of them on never squeezes
 the names; the panel gets wider instead.
 To keep the panel narrow, set **Layout** under **On each row** to **Two lines**. The model and effort then appear

@@ -689,15 +689,8 @@ namespace CtxTray.Ui
 
         private string FiveHourResetSuffix(RateLimitStatus r)
         {
-            if (r == null || !r.NextFiveHourResetUtc.HasValue) return null;
-
-            var mode = (_config.ShowResets ?? "auto").ToLowerInvariant();
-            if (mode == "never") return null;
-
-            var remain = r.NextFiveHourResetUtc.Value - DateTime.UtcNow;
-            if (mode == "auto" && (remain.TotalSeconds <= 0 ||
-                                   remain.TotalMinutes > _config.ResetLeadFiveHourMinutes))
-                return null;
+            // パネルの行と同じ判定（既定は注意の使用率を超えたときだけ）。
+            if (!ResetDisplay.ShouldShow(r, _config, DateTime.UtcNow)) return null;
 
             return "→" + r.NextFiveHourResetUtc.Value.ToLocalTime()
                           .ToString("H:mm", System.Globalization.CultureInfo.InvariantCulture);

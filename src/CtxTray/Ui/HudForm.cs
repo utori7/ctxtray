@@ -1535,10 +1535,10 @@ namespace CtxTray.Ui
             if (_snapshot != null && _snapshot.Freshness == RateFreshness.Stalled)
                 lines.Add(new TipLine(Strings.Get("hud.tipStalled"), true, false));
 
-            // 行には残り 30 分からしか出さないリセット見込みも、ここでは常に出す
+            // 行には注意の使用率を超えてからしか出さないリセット見込みも、ここでは常に出す
             //（自分で見に来たときだけなので、雑音にならない）。「表示しない」設定のときは出さない。
             if (fiveHour && r.NextFiveHourResetUtc.HasValue
-                && !string.Equals(_config.ShowResets, "never", StringComparison.OrdinalIgnoreCase))
+                && ResetDisplay.Normalize(_config.ShowResets) != ResetDisplay.Never)
             {
                 lines.Add(new TipLine(Strings.Format("hud.tipReset",
                     r.NextFiveHourResetUtc.Value.ToLocalTime()
@@ -1573,25 +1573,9 @@ namespace CtxTray.Ui
 
         private string FiveHourResetText(RateLimitStatus r)
         {
-            if (!ShouldShowReset(r)) return null;
+            if (!ResetDisplay.ShouldShow(r, _config, DateTime.UtcNow)) return null;
             return "→" + r.NextFiveHourResetUtc.Value.ToLocalTime()
                           .ToString("H:mm", CultureInfo.InvariantCulture);
-        }
-
-        /// <summary>
-        /// auto のときはリセットが近いときだけ出す。
-        /// 常時出すと、残りの数時間はただ行が伸びるだけになる。
-        /// </summary>
-        private bool ShouldShowReset(RateLimitStatus r)
-        {
-            if (r == null || !r.NextFiveHourResetUtc.HasValue) return false;
-
-            var mode = (_config.ShowResets ?? "auto").ToLowerInvariant();
-            if (mode == "never") return false;
-            if (mode == "always") return true;
-
-            var remain = r.NextFiveHourResetUtc.Value - DateTime.UtcNow;
-            return remain.TotalSeconds > 0 && remain.TotalMinutes <= _config.ResetLeadFiveHourMinutes;
         }
 
         private static string Compact(int tokens)

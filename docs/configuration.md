@@ -9,8 +9,8 @@
 
 ## Config file
 
-Day-to-day settings are in the dialog that **Settings…** on the tray menu opens, with five tabs
-(**Panel**, **Tray icon**, **Thresholds and notifications**, **Models**, **General**).
+Day-to-day settings are in the dialog that **Settings…** on the tray menu opens, with six tabs
+(**Panel controls**, **Panel content**, **Tray icon**, **Thresholds and notifications**, **Models**, **General**).
 Everything is stored in `%LOCALAPPDATA%\ctxtray\config.json`. You can also edit that file
 directly — **save it and changes apply immediately**, no restart.
 If the file cannot be read while ctxtray is running, the previous settings stay in effect
@@ -62,7 +62,7 @@ ctxtray rewrites the file when you press OK in the dialog or move the panel.
     "showEffort": false,         // effort on the row (e.g. high)
     "rowLayout": "oneLine",      // "oneLine" (token counts and model side by side, wider panel) | "twoLine" (on a second line, taller rows)
     "highlightWaiting": false,   // colour the rows that need you (approval, answer, or an unread reply that needs action), and say which
-    "showResets": "auto",        // "always" | "auto" | "never" (5-hour reset time; auto = only in the last 30 minutes)
+    "showResets": "warn",        // "warn" | "always" | "never" (5-hour reset time; warn = only while the 5-hour limit is over its warn threshold)
     "opacity": 0.9,
     "clickThrough": false,
     "showAtStartup": true,

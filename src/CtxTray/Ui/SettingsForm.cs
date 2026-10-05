@@ -114,9 +114,10 @@ namespace CtxTray.Ui
         private readonly List<ScrollPage> _pages = new List<ScrollPage>();
         private readonly List<ThinScrollBar> _bars = new List<ThinScrollBar>();
         private readonly List<TableLayoutPanel> _grids = new List<TableLayoutPanel>();
-        private readonly List<TableLayoutPanel> _groups = new List<TableLayoutPanel>();   // 折りたたみの表（BeginGroup）
-        // Row で作った項目名と、その行の字下げ（折りたたみの中なら GroupIndent）。FitLabelColumn が列の幅を決める。
-        private readonly List<KeyValuePair<Label, int>> _rowLabels = new List<KeyValuePair<Label, int>>();
+        // Row で作った項目名。FitLabelColumn が列の幅を決める。
+        private readonly List<Label> _rowLabels = new List<Label>();
+        // Hint で作った補足。折り返す幅は FitToContent が窓の幅に合わせる。
+        private readonly List<Label> _hints = new List<Label>();
 
         /// <summary>
         /// 入力欄とその角丸の枠の対応。値の出し入れは部品に対して行い、
@@ -143,8 +144,6 @@ namespace CtxTray.Ui
         }
         private ThemedNumeric _idleHours, _externalMax, _nameWidth;
 
-        /// <summary>BeginGroup で行き先を入れ子の表に差し替えている間、元の表を覚えておく。</summary>
-        private TableLayoutPanel _groupParent;
         private ComboBox _showResets, _textSize;
         private TrackBar _opacity;
         private Label _opacityValue;
@@ -441,6 +440,13 @@ namespace CtxTray.Ui
             PerformLayout();
 
             var inner = ClientSize.Width - S(16) * 2;
+
+            // 補足は窓の幅いっぱいまで使って折り返す。決め打ちの幅（540）だと、窓が広い（タブが 6 つ・英語）ときに
+            // 窓の幅よりずっと手前で文の途中が改行され、不自然だった（2026-10-03、利用者の指摘）。
+            // ラベルの外側の余白の分だけ狭める。高さが変わるので、いちばん高いタブを測る前に行う。
+            foreach (var hint in _hints)
+                hint.MaximumSize = new Size(Math.Max(S(200), inner - hint.Margin.Horizontal), 0);
+
             var tallest = 0;
             foreach (var grid in _grids)
                 tallest = Math.Max(tallest, grid.GetPreferredSize(new Size(inner, 0)).Height);
@@ -514,6 +520,7 @@ namespace CtxTray.Ui
             Hold(_pageHost);
 
             BuildHudPage();
+            BuildHudContentPage();
             BuildTrayPage();
             BuildThresholdPage();
             BuildModelsPage();
@@ -548,44 +555,59 @@ namespace CtxTray.Ui
             _held.Add(c);
         }
 
+        /// <summary>
+        /// パネルのタブ（操作だけ）。表示する内容と見た目は次の「パネルの内容」タブ。
+        ///
+        /// 1 枚だった頃は中身がほかのタブの約 2 倍の高さで、窓の高さがこのタブに合わせて決まるため、
+        /// ほかのタブの下が大きく空いた（2026-10-03、利用者の指摘）。操作と見た目で 2 枚に分けた（実寸の見本 2 案から利用者が選択）。
+        /// </summary>
         private void BuildHudPage()
         {
             BeginPage("set.tabHud");
-
             BuildHudControls();
+        }
+
+        private void BuildHudContentPage()
+        {
+            BeginPage("set.tabHudContent");
 
             // HUD と同じ並び（セッションごとのコンテキスト → レート枠）。
+            // 詳細設定の折りたたみをやめて全部を表に出し、高さは横に並べて抑える（2026-10-03、利用者の提案）。
             Section("set.secHudContent");
             _hudSessions = Check("set.hudShowSessions");
             _hudRate = Check("set.hudShowRate");
             // 両方外すと HUD が空になるので、最後の 1 つは外させない。
             _hudRate.CheckedChanged += (s, e) => { if (!_hudRate.Checked && !_hudSessions.Checked) _hudRate.Checked = true; };
             _hudSessions.CheckedChanged += (s, e) => { if (!_hudRate.Checked && !_hudSessions.Checked) _hudSessions.Checked = true; };
-            Full(_hudSessions);
-            Full(_hudRate);
+            Full(Side(_hudSessions, _hudRate));
+
+            // 並びは ResetDisplay.Modes と同じで、既定値（注意の値を超えたら）が先頭（2026-10-03、利用者の指摘）。
+            _showResets = Combo(Strings.Get("set.resetWarn"),
+                                Strings.Get("set.always"),
+                                Strings.Get("set.never"));
+            // リセット時刻はレート枠の行にだけ出るので、レート枠を出さないときは押せなくする。
+            _hudRate.CheckedChanged += (s, e) => _showResets.Enabled = _hudRate.Checked;
+            Row("set.showResets", _showResets);
 
             // 行に出すもの。どれもオンにした分だけパネルが広がる（名前は縮まない。Core/HudLayout.cs）。
             Section("set.secHudColumns");
             _showBar = Check("set.showBar");
-            Full(_showBar);
 
             // モデルとエフォート → トークン数 の順。パネルでもモデルとエフォートが左、トークン数が右にあるため
             // （2026-09-29、利用者の指摘。以前はトークン数が先だった）。
             // モデル名とエフォート。出し方は実寸の見本で選んだ 2 つ（2026-09-26）。
             // 別々に選べても使い分ける場面が無いので、1 つのチェックボックスにした（2026-09-27、利用者の提案）。
             _showModel = Check("set.showModel");
-            Full(_showModel);
             // 「オフでも行の詳細には出る」の補足は、説明を短くしたときに外した（2026-09-26、利用者の指摘）。
-
             _showTokens = Check("set.showTokens");
-            Full(_showTokens);
+            Full(Side(_showBar, _showModel, _showTokens));
 
             // 1 段／2 段。トークン数とモデルとエフォートの両方に効くので、どちらかの下に字下げせず並べる
             // （2026-09-29。以前はモデルとエフォートだけの「表示位置」で、その下に字下げしていた）。
             _rowLayout = Combo(Strings.Get("set.layoutOneLine"), Strings.Get("set.layoutTwoLine"));
             _showTokens.CheckedChanged += (s, e) => UpdateRowLayoutEnabled();
             _showModel.CheckedChanged += (s, e) => UpdateRowLayoutEnabled();
-            Full(Flow(Text_("set.rowLayout"), _rowLayout));
+            Row("set.rowLayout", _rowLayout);
 
             // 状態の丸は常に出るので、ここで選ぶのは待っている行の強調だけ（2026-10-03、利用者の決定）。
             _highlightWaiting = Check("set.highlightWaiting");
@@ -595,39 +617,18 @@ namespace CtxTray.Ui
             if (badgeMin > HudLayout.MinNameWidth)
                 Hint(null).Text = Strings.Format("set.highlightWaitingHint", badgeMin);
 
-            Section("set.secHudLook");
-            _textSize = Combo(120, Strings.Get("set.sizeXSmall"), Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
-                              Strings.Get("set.sizeLarge"), Strings.Get("set.sizeXLarge"));
-            Row("set.textSize", _textSize);
-
-            _opacity = new TrackBar
-            {
-                Minimum = 20, Maximum = 100, TickFrequency = 10,
-                SmallChange = 5, LargeChange = 10, Width = S(200), AutoSize = false, Height = S(34),
-            };
-            _opacityValue = new Label { AutoSize = true, Padding = P(4, 8, 0, 0) };
-            _opacity.ValueChanged += (s, e) => _opacityValue.Text = _opacity.Value + "%";
-            Row("set.opacity", Flow(_opacity, _opacityValue));
-
-            // 普段は触らないものは畳んでおく（2026-09-26、利用者の決定。画面から外すものは無し）。
-            var more = BeginGroup();
-
-            _nameWidth = Number(HudLayout.MinNameWidth, HudLayout.MaxNameWidth);
-            Row("set.nameWidth", Flow(_nameWidth, Unit(Strings.Format("set.nameWidthUnit", HudLayout.DefaultNameWidth))));
-            Hint("set.nameWidthHint");
-            _highlightWaiting.CheckedChanged += (s, e) => UpdateNameWidthMinimum();
-
-            _showResets = Combo(Strings.Get("set.always"),
-                                Strings.Format("set.autoNear", _config.ResetLeadFiveHourMinutes),
-                                Strings.Get("set.never"));
-            // リセット時刻はレート枠の行にだけ出るので、レート枠を出さないときは押せなくする。
-            _hudRate.CheckedChanged += (s, e) => _showResets.Enabled = _hudRate.Checked;
-            Row("set.showResets", _showResets);
-
+            Section("set.secHudSessions");
             _hideIdle = new CheckBox { AutoSize = true, Margin = InlineCheckMargin };
             _idleHours = Number(1, 8760);
             _hideIdle.CheckedChanged += (s, e) => _idleHours.Enabled = _hideIdle.Checked;
-            Full(Flow(_hideIdle, Toggles(Text_("set.hideIdlePre"), _hideIdle), _idleHours,
+            // 英語は文字が四角の後に来る。ほかのチェックボックスの文字と同じ位置にそろえる（日本語は空）。
+            var idlePre = Text_("set.hideIdlePre");
+            if (idlePre != null)
+            {
+                idlePre.Padding = P(0, 6, 4, 0);
+                idlePre.Margin = new Padding(0, idlePre.Margin.Top, idlePre.Margin.Right, idlePre.Margin.Bottom);
+            }
+            Full(Flow(_hideIdle, Toggles(idlePre, _hideIdle), _idleHours,
                       Toggles(Text_("set.hideIdlePost"), _hideIdle)));
 
             _hideStopped = Check("set.hideStopped");
@@ -636,10 +637,26 @@ namespace CtxTray.Ui
             _external = Check("set.external");
             _externalMax = Number(1, 99);
             _external.CheckedChanged += (s, e) => _externalMax.Enabled = _external.Checked;
-            Full(_external);
-            Full(Flow(Indent(), Text_("set.externalMaxPre"), _externalMax, Text_("set.externalMaxPost")));
+            Full(Flow(_external, Text_("set.externalMaxPre"), _externalMax, Text_("set.externalMaxPost")));
 
-            EndGroup(more, "set.moreShow", "set.moreHide");
+            Section("set.secHudLook");
+            _textSize = Combo(120, Strings.Get("set.sizeXSmall"), Strings.Get("set.sizeSmall"), Strings.Get("set.sizeNormal"),
+                              Strings.Get("set.sizeLarge"), Strings.Get("set.sizeXLarge"));
+            _opacity = new TrackBar
+            {
+                Minimum = 20, Maximum = 100, TickFrequency = 10,
+                SmallChange = 5, LargeChange = 10, Width = S(200), AutoSize = false, Height = S(34),
+            };
+            _opacityValue = new Label { AutoSize = true, Padding = P(4, 8, 0, 0) };
+            _opacity.ValueChanged += (s, e) => _opacityValue.Text = _opacity.Value + "%";
+            var opacityLabel = Text_("set.opacity");
+            opacityLabel.Margin = new Padding(S(24), 0, 0, 0);
+            Row("set.textSize", Flow(_textSize, opacityLabel, _opacity, _opacityValue));
+
+            _nameWidth = Number(HudLayout.MinNameWidth, HudLayout.MaxNameWidth);
+            Row("set.nameWidth", Flow(_nameWidth, Unit(Strings.Format("set.nameWidthUnit", HudLayout.DefaultNameWidth))));
+            Hint("set.nameWidthHint");
+            _highlightWaiting.CheckedChanged += (s, e) => UpdateNameWidthMinimum();
         }
 
         /// <summary>
@@ -648,7 +665,7 @@ namespace CtxTray.Ui
         /// 自動起動は以前からトレイのメニュー（ログオン時に起動）にあったが、設定画面には無く、
         /// 選べないように見えた（2026-09-26、利用者の指摘）。
         /// 中身はメニューと同じ AutoStart（スタートアップフォルダのショートカット）で、設定ファイルには入らない。
-        /// 「起動したときに HUD を表示する」は HUD のことなので HUD タブの「HUD の操作」に置く。
+        /// 「起動したときに HUD を表示する」は HUD のことなので、パネルのタブの「パネルの操作」に置く。
         /// </summary>
         private void BuildStartup()
         {
@@ -662,13 +679,13 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// HUD の操作（表示・起動時の表示・全画面・クリック透過・位置）。HUD タブの先頭。
+        /// HUD の操作（表示・起動時の表示・全画面・クリック透過・位置）。パネルのタブの中身。
         ///
         /// 経緯：2026-09-26 午後、HUD タブがごちゃごちゃしている（利用者の指摘）のを受けて、
         /// 「見た目ではなく振る舞い」として全般タブの先頭へ移した。同じ日の夜に「HUD を表示する」・
         /// 切り替えのキー・「起動」の節が増えて全般タブがいちばん長くなり、HUD の項目が HUD 以外のタブにある
-        /// ちぐはぐさも目立ったので、HUD タブへ戻した（利用者の決定）。HUD タブのごちゃごちゃは
-        /// 「▸ 詳細設定」に畳んだことで主に解消している。
+        /// ちぐはぐさも目立ったので、HUD タブへ戻した（利用者の決定）。その後も HUD タブが長すぎたので、
+        /// 2026-10-03 に操作（このタブ）と内容・見た目（「パネルの内容」タブ）に分けた。
         ///
         /// キーは、それが切り替えるもののチェックボックスの直下に字下げして置く（2026-09-26、利用者の決定）。
         /// 2 つの欄の操作（押し方・Delete で「なし」）は同じ（欄ごとに変えると、片方にしか効かない操作に見えた）。
@@ -676,7 +693,7 @@ namespace CtxTray.Ui
         /// </summary>
         private void BuildHudControls()
         {
-            Section("set.secHudControl");
+            // 見出し「パネルの操作」はタブの名前と同じになったので置かない（2026-10-03）。
 
             // 「いま HUD を表示する」とその切り替えのキー。下のクリック透過と同じ並びにする。
             // 「起動時にパネルを表示する」との違いは、名前（「起動時に」の有無）で伝える（2026-09-27、利用者の指摘で補足文を外した）。
@@ -736,7 +753,8 @@ namespace CtxTray.Ui
             _modeSingle = Radio("set.modeSingle");
             _modeMulti.CheckedChanged += (s, e) => UpdateTrayEnabled();
             // 同じ親に入れたラジオボタンだけが排他になる（タブ列や目印の選択とは別の親）。
-            Full(Stack(_modeMulti, _modeSingle));
+            // 既定値（1 個にまとめる）を上に置く（2026-10-03、利用者の指摘）。
+            Full(Stack(_modeSingle, _modeMulti));
 
             Section("set.secTrayValues");
             _showContext = IdentityCheck("set.valContext", "context");
@@ -753,8 +771,6 @@ namespace CtxTray.Ui
             _labelGlyphs.CheckedChanged += (s, e) => InvalidatePreview();
             _labelPercent.CheckedChanged += (s, e) => InvalidatePreview();
             Full(Stack(_labelLetters, _labelGlyphs, _labelPercent));
-            Hint("set.labelHint");
-
             Hint("set.trayOverflowHint");
 
             Section("set.secTrayPreview");
@@ -1322,7 +1338,7 @@ namespace CtxTray.Ui
             // このパネルだけ横幅を広く取るため。
             // 上下の余白はページではなく中の表に持たせる。WinForms の AutoScroll はページの Padding を
             // スクロールの範囲に数えないので、ページに持たせるといちばん下までスクロールしても
-            // 最後の行が下端に張り付いた（詳細設定の「最大 [20] 件」、2026-09-27、利用者の指摘）。
+            // 最後の行が下端に張り付いた（当時の詳細設定の「最大 [20] 件」、2026-09-27、利用者の指摘）。
             var page = new ScrollPage
             {
                 Padding = P(16, 0, 16, 0),
@@ -1415,7 +1431,7 @@ namespace CtxTray.Ui
                 Text = Strings.Get(key),
                 AutoSize = true,
                 Font = new Font(Font, FontStyle.Bold),
-                // 節の間隔は詰めめにする。HUD タブが 150% 表示の画面の高さに収まらなかったため。
+                // 節の間隔は詰めめにする。HUD タブ（2 枚に分ける前）が 150% 表示の画面の高さに収まらなかったため。
                 Padding = P(0, _grid.RowCount == 0 ? 6 : 10, 0, 2),
             };
             AddFull(label);
@@ -1437,12 +1453,12 @@ namespace CtxTray.Ui
             _grid.Controls.Add(label, 0, row);
             _grid.Controls.Add(Place(control), 1, row);
             _grid.RowCount++;
-            _rowLabels.Add(new KeyValuePair<Label, int>(label, _groupParent != null ? GroupIndent : 0));
+            _rowLabels.Add(label);
             return label;
         }
 
         /// <summary>
-        /// 項目名の列の幅を、いちばん長い項目名が 1 行に収まる幅にそろえる（全タブ・折りたたみの中も同じ位置）。
+        /// 項目名の列の幅を、いちばん長い項目名が 1 行に収まる幅にそろえる（全タブで同じ位置）。
         ///
         /// ★ 決め打ちの幅（LabelColumn）だと、英語や大きい文字サイズで項目名が 2〜3 行に折り返した
         ///   （「Session name width」「When auto-compaction happens」など、2026-09-27、利用者の指摘）。
@@ -1451,19 +1467,17 @@ namespace CtxTray.Ui
         private void FitLabelColumn()
         {
             var column = S(LabelColumn);
-            foreach (var pair in _rowLabels)
+            foreach (var label in _rowLabels)
             {
-                var label = pair.Key;
                 var text = TextRenderer.MeasureText(label.Text, Font, new Size(int.MaxValue, 0), TextFormatFlags.NoPrefix).Width;
-                // Row の MaximumSize（列の幅 − S(8)）と、折りたたみの字下げの分を足し戻す。
+                // Row の MaximumSize（列の幅 − S(8)）の分を足し戻す。
                 // ちょうどの幅だと丸めの差で折り返しうるので、少しだけ余らせる。
-                column = Math.Max(column, text + label.Padding.Horizontal + S(8) + pair.Value + S(4));
+                column = Math.Max(column, text + label.Padding.Horizontal + S(8) + S(4));
             }
 
             foreach (var grid in _grids) grid.ColumnStyles[0].Width = column;
-            foreach (var group in _groups) group.ColumnStyles[0].Width = column - GroupIndent;
-            foreach (var pair in _rowLabels)
-                pair.Key.MaximumSize = new Size(Math.Max(S(40), column - pair.Value - S(8)), 0);
+            foreach (var label in _rowLabels)
+                label.MaximumSize = new Size(Math.Max(S(40), column - S(8)), 0);
         }
 
         /// <summary>ラベルの列を使わず、行いっぱいに置く。</summary>
@@ -1486,11 +1500,13 @@ namespace CtxTray.Ui
             {
                 Text = key == null ? string.Empty : Strings.Get(key),
                 AutoSize = true,
+                // 仮の幅。窓の幅が決まったら FitToContent が広げ直す。
                 MaximumSize = new Size(S(540), 0),
                 Padding = P(0, 0, 0, 4),
                 Tag = HintTag,
             };
             AddFull(label);
+            _hints.Add(label);
             return label;
         }
 
@@ -1633,60 +1649,6 @@ namespace CtxTray.Ui
             return label;
         }
 
-        /// <summary>
-        /// 折りたたむ行の組み立てを始める。EndGroup までの Row・Full・Hint は入れ子の表に入る。
-        /// 入れ子の表は字下げし、ラベルの列はその分だけ狭めて、入力欄の位置を外の表と揃える。
-        /// </summary>
-        private int GroupIndent { get { return S(18); } }
-
-        private TableLayoutPanel BeginGroup()
-        {
-            var indent = GroupIndent;
-            var group = new TableLayoutPanel
-            {
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                ColumnCount = 2,
-                Margin = new Padding(0),
-                Padding = new Padding(indent, 0, 0, 0),
-                Visible = false,
-            };
-            group.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(LabelColumn) - indent));
-            group.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            Hold(group);
-            _groups.Add(group);
-
-            _groupParent = _grid;
-            _grid = group;
-            return group;
-        }
-
-        /// <summary>
-        /// 折りたたむ行の組み立てを終え、開閉の見出し（モデルタブの「▸ 組み込みのモデルを表示」と同じ作り）と
-        /// 入れ子の表を元の表に置く。開いたかどうかは記憶しない（設定画面を開くたびに閉じている）。
-        /// </summary>
-        private void EndGroup(TableLayoutPanel group, string showKey, string hideKey)
-        {
-            _grid = _groupParent;
-            _groupParent = null;
-
-            var toggle = new Label
-            {
-                AutoSize = true,
-                Cursor = Cursors.Hand,
-                Padding = P(0, 10, 0, 4),
-                Text = Strings.Get(showKey),
-            };
-            toggle.Click += (s, e) =>
-            {
-                group.Visible = !group.Visible;
-                toggle.Text = Strings.Get(group.Visible ? hideKey : showKey);
-                LayoutPages();
-            };
-            Full(toggle);
-            Full(group);
-        }
-
         private Control Indent()
         {
             return new Label { AutoSize = false, Width = S(18), Height = 1, Margin = new Padding(0) };
@@ -1714,6 +1676,17 @@ namespace CtxTray.Ui
             foreach (var c in controls)
                 if (c != null) p.Controls.Add(Place(c));
             return p;
+        }
+
+        /// <summary>チェックボックスなどを横に並べる。間をあけて、1 つずつの区切りが分かるようにする。</summary>
+        private Control Side(params Control[] controls)
+        {
+            for (var i = 0; i < controls.Length - 1; i++)
+            {
+                var m = controls[i].Margin;
+                controls[i].Margin = new Padding(m.Left, m.Top, S(24), m.Bottom);
+            }
+            return Flow(controls);
         }
 
         private Button Button(string key, EventHandler onClick)
@@ -1746,7 +1719,7 @@ namespace CtxTray.Ui
             _rowLayout.SelectedIndex = IndexOf(c.HudRowLayout, AppConfig.RowLayouts);
             UpdateRowLayoutEnabled();
             _highlightWaiting.Checked = c.HudHighlightWaiting;
-            _showResets.SelectedIndex = IndexOf(c.ShowResets, "always", "auto", "never");
+            _showResets.SelectedIndex = IndexOf(ResetDisplay.Normalize(c.ShowResets), ResetDisplay.Modes);
 
             _textSize.SelectedIndex = TextSizeIndex(c.HudTextSize);
             // 下限は強調のオンオフで変わる（UpdateNameWidthMinimum）。下限より小さい値を入れると例外になるので合わせる。
@@ -1839,7 +1812,7 @@ namespace CtxTray.Ui
             if (!_showModel.Checked) c.HudShowModel = c.HudShowEffort = false;
             else if (!c.HudShowModel && !c.HudShowEffort) c.HudShowModel = c.HudShowEffort = true;
             c.HudRowLayout = Pick(_rowLayout.SelectedIndex, AppConfig.RowLayouts);
-            c.ShowResets = Pick(_showResets.SelectedIndex, "always", "auto", "never");
+            c.ShowResets = Pick(_showResets.SelectedIndex, ResetDisplay.Modes);
 
             c.HudTextSize = Pick(_textSize.SelectedIndex, AppConfig.TextSizes);
             c.HudNameWidth = (int)_nameWidth.Value;
@@ -1984,8 +1957,8 @@ namespace CtxTray.Ui
                 _pages.Clear();
                 _bars.Clear();
                 _grids.Clear();
-                _groups.Clear();
                 _rowLabels.Clear();
+                _hints.Clear();
                 _frames.Clear();
                 _swatches.Clear();
                 _levelSwatches.Clear();

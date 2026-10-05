@@ -128,8 +128,7 @@ namespace CtxTray.Config
         // --- HUD ------------------------------------------------------------
         public double Opacity = 0.90;
         public bool ClickThrough = false;
-        public string ShowResets = "auto";          // always / auto / never（5時間枠のリセット時刻）
-        public int ResetLeadFiveHourMinutes = 30;
+        public string ShowResets = Core.ResetDisplay.Warn;   // warn / always / never（5時間枠のリセット時刻。Core/ResetDisplay.cs）
 
         // 出す節と列。レート枠・セッションの両方を外したときは HUD 側でセッションを出す。
         public bool HudShowRateLimits = true;
@@ -484,7 +483,7 @@ namespace CtxTray.Config
                 Theme = Json.Str(display, "theme") ?? Theme;
                 Opacity = Dbl(display, "opacity", Opacity);
                 ClickThrough = Json.Bool(display, "clickThrough", ClickThrough);
-                ShowResets = Json.Str(display, "showResets") ?? ShowResets;
+                ShowResets = Core.ResetDisplay.Normalize(Json.Str(display, "showResets") ?? ShowResets);
                 // 位置は hudX と hudY の両方があるときだけ。0.7.0 までは -1, -1 を未設定として書いていた。
                 if (display.ContainsKey("hudX") && display.ContainsKey("hudY"))
                 {
@@ -537,10 +536,7 @@ namespace CtxTray.Config
                 else if (display.ContainsKey("hudWidth"))
                     HudNameWidth = Core.HudLayout.NameWidthFromPanel(
                         (int)Json.Long(display, "hudWidth", 0), HudShowBar, HudShowTokens);
-
-                var lead = Json.Obj(display, "resetLeadMinutes");
-                if (lead != null)
-                    ResetLeadFiveHourMinutes = (int)Json.Long(lead, "fiveHour", ResetLeadFiveHourMinutes);
+                // resetLeadMinutes（0.11.0 までの「リセットの 30 分前から」の分数）は使わなくなったので読まない。
             }
 
             var ext = Json.Obj(o, "externalSessions");
@@ -627,8 +623,6 @@ namespace CtxTray.Config
                 .Add("highlightWaiting", HudHighlightWaiting)
                 .Add("rowLayout", HudRowLayout)
                 .Add("showResets", ShowResets)
-                .Add("resetLeadMinutes", new JObj()
-                    .Add("fiveHour", ResetLeadFiveHourMinutes))
                 .Add("showAtStartup", HudShowAtStartup);
             // 未設定なら位置のキーを書かない（キーが無い＝右下の隅）。
             if (HasHudPosition) display.Add("hudX", HudX).Add("hudY", HudY);

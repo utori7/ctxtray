@@ -30,7 +30,8 @@ The tray icon can show one icon per value (left) or one combined icon (right).
 
 - **Context usage per session** — Claude Desktop Code tabs, and Claude Code running in a
   terminal or VS Code.
-- **5-hour and weekly rate limits**, plus the 5-hour reset time (estimated from the sample history; by default shown only above the warn threshold).
+- **5-hour and weekly rate limits**, plus the 5-hour reset time (estimated from the sample
+  history; by default shown only above the warn threshold).
 - **Notifications** when a value crosses a threshold you set (for each value, you choose
   whether warn, danger, or both notify).
 
@@ -86,7 +87,7 @@ this repository to get notified by GitHub.
 | drag | move the panel |
 | hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, and when the value was recorded |
 | click the tray icon | show / hide the panel |
-| right-click the tray icon or the panel | menu (settings, pass clicks through, start at sign-in, exit, and more) |
+| right-click the tray icon or the panel | menu (**Settings…**, **Pass clicks through**, **Start at sign-in**, **Exit**, and more) |
 
 - The **dot** to the left of a session name means the same as the dot in Claude Desktop's
   sidebar: amber is waiting for your approval or answer, or an unread reply that needs you; blue

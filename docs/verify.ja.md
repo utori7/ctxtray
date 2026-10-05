@@ -5,7 +5,7 @@
 Release ページの `.sha256` ファイルで確かめられるのは、ダウンロード中にファイルが壊れていないかだけです。
 `.sha256` は zip と同じ Release に置かれているため、Release ごと差し替えられた場合は見分けられません。
 
-v0.9.0 以降の版は、[GitHub CLI](https://cli.github.com/)（`gh`）で次の 2 点を確かめられます。
+v0.9.0 以降のバージョンは、[GitHub CLI](https://cli.github.com/)（`gh`）で次の 2 点を確かめられます。
 
 ```powershell
 # このリポジトリのリリース用の GitHub Actions がビルドしたものか

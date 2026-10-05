@@ -27,7 +27,7 @@
     "weekly":   { "warn": 80,   "danger": 95 }
   },
   "notify": {
-    // 値ごとに、注意と危険のどちらで通知するか。
+    // 値ごとに、注意と危険のどちらで（または両方で）通知するか。
     "enabled": {
       "context":  { "warn": true, "danger": true },
       "fiveHour": { "warn": true, "danger": true },
@@ -59,7 +59,7 @@
     "showModel": false,          // 行にモデル名を表示（例: Opus 5.5）
     "showEffort": false,         // 行にエフォートを表示（例: high）
     "rowLayout": "oneLine",      // "oneLine"（トークン数とモデルを横に並べる。パネルの幅が広がる）| "twoLine"（2 段目に表示。行が高くなる）
-    "highlightWaiting": false,   // 対応が必要な行（承認待ち・回答待ち・対応待ち）に色を付け、どれかを表示
+    "highlightWaiting": false,   // 対応が必要な行（承認待ち・回答待ち・対応待ち）に色を付け、待っている内容を表示
     "showResets": "warn",        // "warn" | "always" | "never"（5時間枠のリセット時刻。warn は 5時間枠が注意の値を超えたときだけ）
     "opacity": 0.9,
     "clickThrough": false,
@@ -139,12 +139,12 @@ ID のような値は、実行ごとの番号（`id#1` など）に置き換え�
 
 書き込むのは、ctxtray 自身のファイルだけです。
 
-- `%LOCALAPPDATA%\ctxtray\config.json` — 設定（読み込めなかったファイルを退避したときは `config.json.bak` も）
-- `%LOCALAPPDATA%\ctxtray\model-limits.json` — 公式ドキュメントから取得したモデルの上限と名前、
+- `%LOCALAPPDATA%\ctxtray\config.json`：設定（読み込めなかったファイルを退避したときは `config.json.bak` も）
+- `%LOCALAPPDATA%\ctxtray\model-limits.json`：公式ドキュメントから取得したモデルの上限と名前、
   上限が不明なモデルを通知したかどうかの記録
-- `%LOCALAPPDATA%\ctxtray\update-check.json` — 最後に更新を確認した時刻、最新のバージョン番号、
+- `%LOCALAPPDATA%\ctxtray\update-check.json`：最後に更新を確認した時刻、最新のバージョン番号、
   通知したバージョンの記録（「新しいバージョンを確認する」をオンにした後だけ）
-- スタートアップフォルダーの `ctxtray.lnk` — 「サインイン時に起動」がオンの間だけ
+- スタートアップフォルダーの `ctxtray.lnk`：「サインイン時に起動」がオンの間だけ
 
 ## 通信
 
@@ -160,5 +160,5 @@ ID のような値は、実行ごとの番号（`id#1` など）に置き換え�
   最新リリースのバージョン番号だけを取り出します。確認に失敗した場合は 1 時間後にもう一度確認します。
   ダウンロードや ctxtray.exe の入れ替えは行いません。
 
-どちらも HTTPS だけを使い、ほかのサイトへの転送には従わず、10 秒で打ち切り、読み込むのは最大 256 KB です。
+どちらも HTTPS だけを使い、他のサイトへの転送には従わず、10 秒で打ち切り、読み込むのは最大 256 KB です。
 詳しくは [how-it-works.md](how-it-works.md#6-what-it-does-not-do-and-the-network)（英語）を参照してください。

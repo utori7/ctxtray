@@ -27,7 +27,7 @@ Claude Desktop でもこれらの値は確認できますが、インジケー�
 
 ## できること
 
-- **セッションごとのコンテキスト使用量** — Claude Desktop の Code タブと、
+- **セッションごとのコンテキスト使用量**：Claude Desktop の Code タブと、
   ターミナルや VS Code で実行中の Claude Code が対象です。
 - **5時間枠と週間枠**の使用率と、5時間枠のリセット時刻（記録の履歴からの推定。既定では注意の値を超えたときだけ表示）
 - しきい値を超えたときの**通知**（値ごとに、注意と危険のどちらで（または両方で）通知するかを選べます）
@@ -182,4 +182,4 @@ tests/CtxTray.Tests/bin/Release/ctxtray-tests.exe
 
 ## ライセンス
 
-MIT — [LICENSE](LICENSE) をご覧ください。
+MIT ライセンスです。詳しくは [LICENSE](LICENSE) をご覧ください。

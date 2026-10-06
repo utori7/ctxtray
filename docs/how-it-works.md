@@ -48,7 +48,7 @@ organization in the newest sample, so switching accounts does not mix two sets o
 numbers. A sample without `t`, `fh` or `sd` is skipped rather than read as 0%.
 Other fields (a newer `u.xu` has appeared) are ignored.
 
-Sampling interval was 5 minutes most often, sometimes 15, in July and August 2026; since
+The sampling interval was most often 5 minutes, sometimes 15, in July and August 2026; since
 mid-September it has been 15 minutes almost every time. **Sampling stops when you are
 not using the app**, even while Claude Desktop is running.
 
@@ -340,7 +340,7 @@ and the model's context window. With the default this gives 967K on a 1M model a
 200K model, both as documented. The settings dialog accepts the same forms as `/autocompact`
 (`200000`, `500k`, `1M`, a bare `100`–`1000` meaning thousands, `auto`).
 
-ctxtray does not read Claude Code's settings, so the user enters the value they gave
+ctxtray does not read Claude Code's settings, so you enter the value you gave
 `/autocompact`. One value applies to every session; a project-level setting, `--autocompact`
 for one launch, or the environment variable is not picked up. When a window is set, ctxtray
 takes the point to be the window itself; whether Claude Code compacts exactly there or slightly
@@ -431,6 +431,6 @@ If something reads wrong after an update, `ctxtray --json` shows the resolved pa
 a `diag` string, which is the fastest way to see which of the four sources stopped
 working.
 
-From Claude Code 2.1.229 through 2.1.284 (the copy bundled with Claude Desktop, last checked on
-2026-10-02) ctxtray read all four sources without a diagnostic, although the contents of
+From Claude Code 2.1.229 through 2.1.286 (the copy bundled with Claude Desktop, last checked on
+2026-10-06) ctxtray read all four sources without a diagnostic, although the contents of
 `plan-usage-history.json` were reset around 2.1.247.

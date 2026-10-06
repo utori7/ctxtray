@@ -18,11 +18,11 @@
 | Action | Result |
 |---|---|
 | `Ctrl+Alt+C` | show / hide the panel (configurable, or none) |
-| a shortcut you choose | pass clicks through the panel, or stop (none by default; set one in Settings) |
+| a shortcut you choose | turn click-through on or off (none by default; set one in Settings) |
 | drag | move the panel |
 | hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, and when the value was recorded |
 | click the tray icon | show / hide the panel |
-| right-click the tray icon or the panel | show / hide panel, pass clicks through, start at sign-in, settings, refresh now, open config file, about, exit |
+| right-click the tray icon or the panel | menu: **Show panel**, **Pass clicks through**, **Start at sign-in**, **Settings…**, **Refresh now**, **Open config file**, **About ctxtray…**, **Exit** |
 
 To change a shortcut, open Settings (**Panel controls** tab), click its box and press a key together with Ctrl, Alt, or Shift;
 Delete sets it to none. If the box does not change when you press a key, another app has already taken that key.
@@ -30,7 +30,7 @@ Delete sets it to none. If the box does not change when you press a key, another
 **Pass clicks through** makes the panel ignore the mouse entirely: you can click what is
 behind it, but you can no longer drag it, hover a row for details, or right-click it.
 Turn it back off from the tray menu, or with the click-through shortcut if you set one.
-The panel says how to undo it for a few seconds whenever you turn it on.
+Whenever you turn it on, the panel shows how to undo it for a few seconds.
 
 The dot to the left of a session name means the same as the dot in Claude Desktop's sidebar,
 in the same colours.
@@ -45,9 +45,9 @@ in the same colours.
 Rows without a dot come from older versions of Claude Code that do not record their state.
 "Needs action" is an unread reply that Claude Desktop has classified as needing you (for example,
 one that ends with a question). Like blue, it clears when you open the tab.
-Terminal and VS Code sessions have neither (they turn into a ring when they finish).
-Unread is worked out from the time Claude Desktop records for opening a tab, so it takes a few
-seconds to clear after you open the tab.
+Terminal and VS Code sessions are never unread or "needs action" (they turn into a ring when they finish).
+ctxtray works out "unread" from the time Claude Desktop records when you open a tab, so the dot
+takes a few seconds to clear after you open the tab.
 
 Turn on **Highlight sessions waiting for you** on the Settings **Panel content** tab to give amber rows a
 coloured background and the word "Approval", "Answer" or "Action" at the right end of the session name column.
@@ -82,8 +82,8 @@ Before Windows 10 version 2004, the panel shows up as an empty box instead.
 
 Claude Code sessions started from a terminal or VS Code are also listed, marked `>_`,
 while their Claude Code process is running. The row disappears when that process exits
-(a Claude Desktop tab stays, greyed out), and a conversation that has not been sent
-anything yet is not listed.
+(a Claude Desktop tab stays, greyed out), and a conversation where you have not sent a
+message yet is not listed.
 
 The name is the one Claude Code gives the process, so it can change when you restart or resume
 the session. A conversation open in both Claude Desktop and VS Code is listed once, as the
@@ -119,13 +119,13 @@ While you are working, the number shown can therefore trail your real usage: mea
 growth reaches 2.8 points/min, so a 7-minute-old sample can understate the 5-hour limit by
 ~20 points. `ctxtray --json` reports this as `"freshness": "behind"`.
 
-**Greyed out means "for reference only"** — Claude Desktop is not running, or nothing has
+**Greyed out with "for reference"** means Claude Desktop is not running, or nothing has
 been sampled for over 24 hours. Only Claude Desktop records rate limits, so while you use
 Claude Code in a terminal or VS Code with Claude Desktop closed, the rate limits stay at
 Claude Desktop's last sample and are greyed out; those sessions' context keeps updating.
 
-**Greyed out with "recorded N min ago"** means you have been using Claude Code for 30 minutes
-but Claude Desktop has not recorded a new value. Claude Desktop normally records every
+**Greyed out with "recorded N min ago"** means you are using Claude Code but Claude Desktop
+has not recorded a new value for 30 minutes or more. Claude Desktop normally records every
 15 minutes while in use. Restarting Claude Desktop may fix it.
 
 ## Reset times
@@ -134,7 +134,7 @@ The 5-hour reset is derived from the sample history. Because samples are 5–15 
 apart, the estimate can be early by up to one sampling interval; when it was checked
 against an actual reset (once), it was one minute off.
 By default the time is shown only while the 5-hour limit is over its warn threshold (set on the
-**Thresholds and notifications** tab); it can also be always shown or never shown.
+**Thresholds and notifications** tab); you can also choose **Always** or **Never**.
 
 The weekly reset is **not recorded anywhere**. ctxtray can narrow it down to a weekday
 from the history (`ctxtray --verify-weekly` shows the derivation), but that estimate is
@@ -212,11 +212,11 @@ When you switch to a newer model, either of these brings the percentage back:
 
 - Pick its context window in **Settings > Models** (200K or 1M). Other values go in `modelLimits`
   in the config file.
-- Turn on **Look up unknown models in the official docs** (off by default). Only when
-  ctxtray meets a model it does not know, it reads that model's public docs page on
-  `platform.claude.com` (for example `…/docs/en/models/opus-5-5/overview.md`) and uses
-  the context window only if the page's model ID matches. A model that is not listed is checked again
-  after 24 hours. Only the page URL is requested; no conversation, account, or sign-in data is used.
+- Turn on **Look up unknown models in the official docs** (off by default). ctxtray reads a
+  model's public docs page on `platform.claude.com` (for example
+  `…/docs/en/models/opus-5-5/overview.md`) only when it comes across a model it does not know,
+  and uses the context window only if the page's model ID matches. A model that is not listed
+  is checked again after 24 hours. Only the page URL is requested; no conversation, account, or sign-in data is used.
 
 The first time you use a model with an unknown context window, ctxtray tells you once with a
 notification (not if context notifications are off for both warn and danger). The **Models** tab
@@ -226,7 +226,7 @@ lists every known context window and where it came from (built-in, official docs
 
 Under a Windows contrast theme, ctxtray uses the theme's own colours and stays opaque.
 In the panel, values are then told apart by the row labels and by the stripes on warn
-and danger rather than by colour; the tray icon has neither, so hover it for the values.
+and danger rather than by colour; the tray icon has neither, so hover over it for the values.
 
 The panel cannot be read by a screen reader. It is drawn as a single surface on a
 window that never takes focus, so there is nothing for Narrator to walk. The same values

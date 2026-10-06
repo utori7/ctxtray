@@ -92,7 +92,7 @@ danger on / off. The file is written in the new form the next time it is saved.
 ## Command line
 
 ```
-ctxtray                     run resident (tray + panel)
+ctxtray                     run in the background (tray icon + panel)
 ctxtray --status            print the current state as a table
 ctxtray --json              print the current state as JSON
 ctxtray --no-external       only Claude Desktop tabs

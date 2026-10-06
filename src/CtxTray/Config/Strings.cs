@@ -104,7 +104,7 @@ namespace CtxTray.Config
             // レート枠が淡いときの理由。灰色なだけでは「壊れている」と読まれうるので、
             // 見出しの右に言葉で出す（記号は付けない。▲ も + も意味が伝わらなかった）。
             { "hud.capReference", new[] { "参考値",           "for reference" } },
-            // 使用中なのに Claude Desktop の記録が 30 分以上止まっているとき。{0} は「40 分前」など。
+            // 使用中なのに Claude Desktop の記録が 20 分以上止まっているとき。{0} は「40 分前」など。
             { "hud.capRecorded",  new[] { "{0}に記録",        "recorded {0}" } },
 
             // セッションの行の状態（Core/SessionActivity.cs）。強調の文字（名前の列の右端）と行の詳細に出すので短く。

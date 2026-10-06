@@ -26,7 +26,7 @@ namespace CtxTray.Collect
         Reference,
 
         /// <summary>
-        /// 使用中なのに Desktop が記録を止めている（Behind が同じ記録のまま 30 分続いた）。
+        /// 使用中なのに Desktop が記録を止めている（Behind が同じ記録のまま 20 分続いた）。
         /// 判定は常駐側の Core.RateStall が行う。
         /// </summary>
         Stalled,

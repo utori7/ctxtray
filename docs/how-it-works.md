@@ -76,7 +76,7 @@ elapsed time:
 | sample time ≥ newest transcript write | `current` — shown as is |
 | sample time < newest transcript write | `behind` — the value is a lower bound; shown as is |
 | Desktop not running, or sample older than 24 h | `reference` — greyed out |
-| `behind` for 30 minutes with no new sample | `stalled` — greyed out, heading says "recorded N min ago" |
+| `behind` for 20 minutes with no new sample | `stalled` — greyed out, heading says "recorded N min ago" |
 
 "Desktop running" means a process named `Claude` whose executable is not Claude Code.
 Claude Code's own binary is also called `claude.exe` (Claude Desktop's bundled copy under
@@ -95,8 +95,10 @@ The judgement is exposed as `freshness` in `ctxtray --json`. The panel greys out
 `stalled` covers Claude Desktop that stops sampling while you keep working. On 2026-10-02
 Desktop wrote one sample right after it started and nothing for the next 40 minutes of use;
 its own usage indicator showed 26% while the file still said 0%. Restarting Desktop brought
-the samples back. Samples normally arrive every 15 minutes in use, so ctxtray waits for
-30 minutes of `behind` on the same sample. It counts from the moment it first sees
+the samples back. The same has happened after the PC woke from sleep. Samples normally
+arrive every 15 minutes in use, so ctxtray waits for 20 minutes of `behind` on the same
+sample. The interval is not exact: a sample now and then comes 20 to 30 minutes apart,
+and the panel shows `stalled` until it arrives. It counts from the moment it first sees
 `behind`, not from the sample time, because after a long break the sample is old but Desktop
 records a new one soon after you start again. The count lives in the running tray app, so
 a one-off `ctxtray --json` never reports `stalled`.

@@ -50,7 +50,7 @@ ctxtray rewrites the file when you press OK in the dialog or move the panel.
   "display": {
     "theme": "auto",             // "light" | "dark"
     "textSize": "normal",        // "xsmall" | "small" | "large" | "xlarge"
-    "nameWidth": 180,            // width of the session-name column in px at 100% scaling and Normal text size (on screen it grows with both); the panel is this plus the columns you turn on; with highlightWaiting on, never narrower than the highlight words need
+    "nameWidth": 180,            // width of the session-name column in px at 100% scaling and Normal text size (on screen it grows with both); the panel is this plus the columns you turn on; with highlightWaiting or showSubagents on, never narrower than their labels need
     "showRateLimits": true,
     "showSessions": true,
     "hideIdleSessions": true,

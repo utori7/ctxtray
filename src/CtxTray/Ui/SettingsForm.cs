@@ -133,6 +133,8 @@ namespace CtxTray.Ui
 
         /// <summary>強調の文字が入る名前の幅の下限（パネルで測った値。HudForm.BadgeMinNameWidth）。</summary>
         private readonly Func<int> _badgeMinNameWidth;
+        /// <summary>サブエージェントの札が入る名前の幅の下限（パネルで測った値。HudForm.SubagentMinNameWidth）。</summary>
+        private readonly Func<int> _subagentMinNameWidth;
         private CheckBox _showBar, _showTokens, _clickThrough, _showAtStartup, _hideFullscreen, _hideFromCapture;
         /// <summary>モデルとエフォートをまとめて切り替える（設定ファイルでは showModel と showEffort の 2 つ）。</summary>
         private CheckBox _showModel;
@@ -243,9 +245,11 @@ namespace CtxTray.Ui
                             Func<IList<Collect.ModelEntry>> models = null, Action checkNow = null,
                             Func<bool> hudVisible = null, Action<bool> setHudVisible = null,
                             Func<Collect.UpdateStatus> updateStatus = null, Action checkUpdatesNow = null,
-                            Action openRelease = null, Func<int> badgeMinNameWidth = null)
+                            Action openRelease = null, Func<int> badgeMinNameWidth = null,
+                            Func<int> subagentMinNameWidth = null)
         {
             _badgeMinNameWidth = badgeMinNameWidth;
+            _subagentMinNameWidth = subagentMinNameWidth;
             _current = current;
             _config = current().Clone();
             _gaugeFor = gaugeFor;
@@ -614,13 +618,17 @@ namespace CtxTray.Ui
             _highlightWaiting = Check("set.highlightWaiting");
             Full(_highlightWaiting);
             // 下限の値はパネルで測ったもの（倍率と書体で変わる）。測れなければ補足は出さない。
-            var badgeMin = BadgeMinNameWidth();
+            var badgeMin = MeasuredMinimum(_badgeMinNameWidth);
             if (badgeMin > HudLayout.MinNameWidth)
                 Hint(null).Text = Strings.Format("set.highlightWaitingHint", badgeMin);
 
             _showSubagents = Check("set.showSubagents");
             Full(_showSubagents);
-            Hint("set.showSubagentsHint");
+            // 下限の補足は強調と同じ書き方。測れなければ 1 行目だけ。
+            var subagentMin = MeasuredMinimum(_subagentMinNameWidth);
+            Hint(null).Text = subagentMin > HudLayout.MinNameWidth
+                ? Strings.Format("set.showSubagentsHint", subagentMin)
+                : Strings.Get("set.showSubagentsHintShort");
 
             Section("set.secHudSessions");
             _hideIdle = new CheckBox { AutoSize = true, Margin = InlineCheckMargin };
@@ -662,6 +670,7 @@ namespace CtxTray.Ui
             Row("set.nameWidth", Flow(_nameWidth, Unit(Strings.Format("set.nameWidthUnit", HudLayout.DefaultNameWidth))));
             Hint("set.nameWidthHint");
             _highlightWaiting.CheckedChanged += (s, e) => UpdateNameWidthMinimum();
+            _showSubagents.CheckedChanged += (s, e) => UpdateNameWidthMinimum();
         }
 
         /// <summary>
@@ -2135,22 +2144,26 @@ namespace CtxTray.Ui
         /// </summary>
         /// <param name="current">いまの値（欄を離れたときに出し直す）。</param>
         /// <summary>
-        /// 名前の幅の下限。待っている行の強調がオンなら、強調の文字が入る幅（パネルで測った値）まで上げる。
+        /// 名前の幅の下限。待っている行の強調がオンなら強調の文字が入る幅、サブエージェントの札がオンなら札が入る幅
+        /// （どちらもパネルで測った値）まで上げる。
         /// 入っている値が下限より小さければ、NumericUpDown が下限まで上げる（画面に見えるので黙って変わることはない）。
         /// 強調をオフに戻しても、上げた値はそのまま（利用者が自分で戻せる）。
         /// 2026-10-03、名前の幅を狭くすると強調の文字が「App…」と切れる、という利用者の指摘で、下限を設ける形を利用者が選んだ。
         /// </summary>
         private void UpdateNameWidthMinimum()
         {
-            if (_nameWidth == null || _highlightWaiting == null) return;
-            _nameWidth.Minimum = _highlightWaiting.Checked ? BadgeMinNameWidth() : HudLayout.MinNameWidth;
+            if (_nameWidth == null || _highlightWaiting == null || _showSubagents == null) return;
+            var min = HudLayout.MinNameWidth;
+            if (_highlightWaiting.Checked) min = Math.Max(min, MeasuredMinimum(_badgeMinNameWidth));
+            if (_showSubagents.Checked) min = Math.Max(min, MeasuredMinimum(_subagentMinNameWidth));
+            _nameWidth.Minimum = min;
         }
 
-        /// <summary>強調の文字が入る名前の幅の下限。測れなければ通常の下限。</summary>
-        private int BadgeMinNameWidth()
+        /// <summary>パネルで測った名前の幅の下限。測れなければ通常の下限。</summary>
+        private static int MeasuredMinimum(Func<int> measure)
         {
-            if (_badgeMinNameWidth == null) return HudLayout.MinNameWidth;
-            try { return Math.Max(HudLayout.MinNameWidth, Math.Min(HudLayout.MaxNameWidth, _badgeMinNameWidth())); }
+            if (measure == null) return HudLayout.MinNameWidth;
+            try { return Math.Max(HudLayout.MinNameWidth, Math.Min(HudLayout.MaxNameWidth, measure())); }
             catch { return HudLayout.MinNameWidth; }
         }
 

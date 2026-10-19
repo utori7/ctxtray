@@ -29,7 +29,8 @@ namespace CtxTray.Core
     ///   注意・危険   「サブ 2 · 84%」（その色）。色だけに頼らないよう、% が出ること自体を合図にする。
     ///                普段は % を出さない（行の % と紛れるため）
     ///   圧縮あり     末尾に「↻」（結果の質が落ちうる、という合図）
-    /// 札の文字は 2 段目と同じ小さめの字。名前の欄の半分に収まらなければ、件数 → ↻ の順に落とす。
+    /// 札の文字は 2 段目と同じ小さめの字。名前の欄は、Widest の札が欄の半分に入る幅より狭くしない
+    /// （承認待ちの強調と同じ下限の決め方。収まらないときに件数などを省く案から、利用者が下限の方を選んだ。2026-10-19）。
     ///
     /// トレイアイコンと通知には使わない。サブエージェントの使用量は利用者が手を打てる対象ではないため。
     /// </summary>
@@ -64,29 +65,26 @@ namespace CtxTray.Core
             return sum;
         }
 
-        /// <summary>札の文字。長い順に並べる。描く側は名前の欄の半分に収まる最初のものを使う。</summary>
+        /// <summary>札の文字。</summary>
         /// <param name="label">「サブ」「Sub」。</param>
-        public static List<string> Forms(SubagentSummary sum, string label)
+        public static string Text(SubagentSummary sum, string label)
         {
-            var forms = new List<string>();
-            if (sum == null) return forms;
+            if (sum == null) return null;
 
-            var count = " " + sum.Running;
-            var mark = sum.Compacted ? " ↻" : "";
+            var text = label + " " + sum.Running;
             if (sum.Level != Level.Normal && sum.MaxPct.HasValue)
-            {
-                var pct = PercentText.Format(sum.MaxPct.Value) + "%";
-                forms.Add(label + count + " · " + pct + mark);
-                forms.Add(label + " " + pct + mark);
-                forms.Add(label + " " + pct);
-            }
-            else
-            {
-                forms.Add(label + count + mark);
-                forms.Add(label + mark);
-                forms.Add(label);
-            }
-            return forms;
+                text += " · " + PercentText.Format(sum.MaxPct.Value) + "%";
+            if (sum.Compacted) text += " ↻";
+            return text;
+        }
+
+        /// <summary>
+        /// 名前の欄の下限を決めるときに測る札。件数は 2 桁（同時に動かせる数の既定の上限は 20）、% も 2 桁
+        /// （自動圧縮は 100% より手前で起きる）で、↻ 付き。これより長い札（上限を上げて 100 件以上など）は「…」で切れる。
+        /// </summary>
+        public static string Widest(string label)
+        {
+            return label + " 20 · 99% ↻";
         }
     }
 }

@@ -742,16 +742,51 @@ namespace CtxTray.Ui
         }
 
         /// <summary>
-        /// 実際に使う名前の幅。待っている行の強調がオンなら、強調の文字が入る下限（BadgeMinNameWidth）より狭くしない。
+        /// 実際に使う名前の幅。待っている行の強調がオンなら強調の文字が入る下限（BadgeMinNameWidth）、
+        /// サブエージェントの札がオンなら札が入る下限（SubagentMinNameWidth）より狭くしない。
+        /// 札は動いている間しか出ないが、出るたびにパネルの幅が変わらないよう、オンなら常に下限を守る。
         /// 設定画面でも下限より狭くできないが、設定ファイルを手で書き換えた場合もここで守る（ファイルの値は書き換えない）。
         /// </summary>
         private int EffectiveNameWidth
         {
             get
             {
-                return _config.HudHighlightWaiting
-                    ? Math.Max(_config.HudNameWidth, BadgeMinNameWidth)
-                    : _config.HudNameWidth;
+                var width = _config.HudNameWidth;
+                if (_config.HudHighlightWaiting) width = Math.Max(width, BadgeMinNameWidth);
+                if (_config.HudShowSubagents) width = Math.Max(width, SubagentMinNameWidth);
+                return width;
+            }
+        }
+
+        private float _subagentMinFactor;
+        private string _subagentMinFace;
+        private int _subagentMin;
+
+        /// <summary>
+        /// サブエージェントの札（Core/SubagentBadge.Widest）が入る名前の幅の下限。決め方は BadgeMinNameWidth と同じ
+        /// （両方の言語で測った最大、倍率と書体が変わったときだけ測り直す）。札は 2 段目と同じ 10.5px で測る。
+        /// </summary>
+        public int SubagentMinNameWidth
+        {
+            get
+            {
+                var factor = Factor;
+                if (_subagentMin > 0 && Math.Abs(factor - _subagentMinFactor) < 0.001f
+                    && string.Equals(_fontFace, _subagentMinFace, StringComparison.Ordinal))
+                    return _subagentMin;
+
+                var widest = 0;
+                using (var small = new Font(_fontFace, 10.5f * factor, FontStyle.Regular, GraphicsUnit.Pixel))
+                {
+                    foreach (var label in Strings.All("hud.subBadge"))
+                        widest = Math.Max(widest, TextRenderer.MeasureText(SubagentBadge.Widest(label), small,
+                            new Size(int.MaxValue, RowHeight), TextFormatFlags.NoPrefix).Width);
+                }
+
+                _subagentMin = HudLayout.MinNameWidthForBadge(widest, factor);
+                _subagentMinFactor = factor;
+                _subagentMinFace = _fontFace;
+                return _subagentMin;
             }
         }
 
@@ -1210,7 +1245,7 @@ namespace CtxTray.Ui
                     var subs = SubagentBadge.Summarize(s, _config);
                     if (subs != null)
                     {
-                        note = FitSubagentBadge(g, small, subs);
+                        note = SubagentBadge.Text(subs, Strings.Get("hud.subBadge"));
                         noteColor = subs.Level == Level.Normal ? _theme.TextSecondary : _theme.For(subs.Level);
                         noteFont = small;
                     }
@@ -1264,23 +1299,6 @@ namespace CtxTray.Ui
                     g.DrawEllipse(pen, x + 0.5f, top + 0.5f, d - 1, d - 1);
             }
             g.SmoothingMode = old;
-        }
-
-        /// <summary>
-        /// サブエージェントの札の文字。名前の欄の半分（DrawRow で札が使える幅）に収まる、いちばん長い形を選ぶ。
-        /// どれも収まらなければ最後の形を渡し、DrawRow が「…」で切る。
-        /// </summary>
-        private string FitSubagentBadge(Graphics g, Font font, SubagentSummary subs)
-        {
-            var forms = SubagentBadge.Forms(subs, Strings.Get("hud.subBadge"));
-            var room = NameW / 2;
-            foreach (var f in forms)
-            {
-                var w = TextRenderer.MeasureText(g, f, font, new Size(int.MaxValue, RowHeight),
-                                                 TextFormatFlags.NoPrefix).Width;
-                if (w <= room) return f;
-            }
-            return forms[forms.Count - 1];
         }
 
         /// <summary>強調の文字（名前の列の右端）。行の詳細の文言より短い（英語は 1 語）。</summary>

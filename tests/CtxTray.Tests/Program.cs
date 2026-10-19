@@ -1097,6 +1097,38 @@ namespace CtxTray.Tests
                   "no write for 16 minutes: not running, whatever the end says");
             Check(Subagents.JudgeRunning(new[] { Turn("tool_use") }, now.AddMinutes(-14), now),
                   "a long tool call within 15 minutes: still running");
+
+            // サブエージェントは end_turn ではなく SubagentHandback の呼び出しと結果で終わる
+            // （Claude Code 2.1.299 の実物の形、2026-10-19）。呼び出しはブロックごとに別の行になる。
+            var thinking = "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-test\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\"}]}}";
+            var read = Call("toolu_r", "Read");
+            var handback = Call("toolu_h", "SubagentHandback");
+            var handbackResult = Result("toolu_h");
+            Check(!Subagents.JudgeRunning(new[] { read, Result("toolu_r"), thinking, handback, handbackResult, attachment },
+                                          now, now), "the handback result: finished");
+            Check(!Subagents.JudgeRunning(new[] { read, Result("toolu_r"), handback }, now, now),
+                  "the handback call before its result: finished");
+            Check(Subagents.JudgeRunning(new[] { handback, handbackResult, read, Result("toolu_r") }, now, now),
+                  "another tool's result: running");
+            Check(Subagents.JudgeRunning(new[] { read, Result("toolu_r"), handback, handbackResult,
+                  "{\"type\":\"user\",\"message\":{\"content\":\"one more thing\"}}" }, now, now),
+                  "resumed after the handback: running again");
+            Check(Subagents.JudgeRunning(new[] { handbackResult }, now, now),
+                  "a result whose call is out of reach: running");
+            Check(Subagents.JudgeRunning(new[] { Call("toolu_a", "Read"), Call("toolu_b", "SubagentHandback"),
+                  Result("toolu_a") }, now, now), "the result of a parallel call that is not the handback: running");
+        }
+
+        private static string Call(string id, string name)
+        {
+            return "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-test\",\"stop_reason\":null,\"content\":"
+                 + "[{\"type\":\"tool_use\",\"id\":\"" + id + "\",\"name\":\"" + name + "\",\"input\":{}}]}}";
+        }
+
+        private static string Result(string id)
+        {
+            return "{\"type\":\"user\",\"message\":{\"content\":[{\"tool_use_id\":\"" + id
+                 + "\",\"type\":\"tool_result\",\"content\":\"ok\"}]}}";
         }
 
         private static string SubUsage(string stop, int tokens)

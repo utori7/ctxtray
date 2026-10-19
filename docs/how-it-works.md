@@ -273,19 +273,23 @@ VS Code transcripts carry `effort` on every real response; only `<synthetic>` li
 
 Each subagent writes its own transcript, `<sessionId>/subagents/agent-<agentId>.jsonl`, in a folder
 next to the session's transcript, and `agent-<agentId>.meta.json` beside it holds its `agentType` and
-`description`. ctxtray reads them only for sessions whose process is running, and opens only files
-written in the last 15 minutes.
+`description`. A subagent started by another subagent is written to the same folder, not below it.
+ctxtray reads them only for sessions whose process is running, and opens only files written in the
+last 15 minutes. Checked on 2026-10-19 with Claude Code 2.1.299 (the copy bundled with Claude Desktop),
+running subagents in the background, in the foreground and nested, and stopping one from the agent panel.
 
 - **Usage** is read the same way as a session's (the last `assistant` line with `usage`), and the context
   window is looked up from the subagent's own model, so the percentage means the same thing.
 - **Auto-compactions** are `{"type":"system","subtype":"compact_boundary"}` lines. They are counted
   from where the previous count stopped, so a long transcript is read in full only once.
 - **Running** is not recorded anywhere, so it is worked out from the last `user` or `assistant` line.
-  An `assistant` line with `stop_reason` `end_turn` is the final answer, a `<synthetic>` one is an error,
-  and a `user` line starting `[Request interrupted by user` is an interruption. Anything else (a tool call,
-  a tool result, or a message sent to resume it) means it is still running. A file with no write for
-  15 minutes counts as finished whatever its last line says, because a subagent stopped from the agent
-  panel is left in the middle of a tool call. A single Bash call runs for at most 10 minutes.
+  A subagent hands its report back with a `SubagentHandback` tool call, so that call or its result
+  means it has finished. An `assistant` line with `stop_reason` `end_turn` is also a final answer, a
+  `<synthetic>` one is an error, and a `user` line starting `[Request interrupted by user` is an
+  interruption; stopping a subagent from the agent panel writes that line straight away. Anything else
+  (another tool call or result, or a message sent to resume it) means it is still running. A file with
+  no write for 15 minutes counts as finished whatever its last line says, in case Claude Code ends
+  without writing a last line. A single Bash call runs for at most 10 minutes.
 
 The label on the row uses the largest percentage among the running subagents and the session's context
 thresholds. `--json` lists every recently written subagent under its session, with `running`, so the

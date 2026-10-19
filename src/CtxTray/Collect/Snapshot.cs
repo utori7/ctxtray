@@ -92,6 +92,12 @@ namespace CtxTray.Collect
         public string Entrypoint;
         /// <summary>いま何をしているか（プロセスの記録から）。プロセスが無ければ Unknown。</summary>
         public Core.SessionActivity Activity;
+
+        /// <summary>
+        /// 最近書かれたサブエージェント（Collect/Subagents.cs）。終わったものも Running = false で入る。
+        /// プロセスが動いていないセッションと、パネルの設定で出さないときは空。
+        /// </summary>
+        public List<SubagentInfo> Subagents = new List<SubagentInfo>();
     }
 
     internal sealed class Snapshot
@@ -141,13 +147,14 @@ namespace CtxTray.Collect
         ///   失敗は diag に残し、読めたところまでを返す。
         /// </summary>
         /// <param name="modelLimits">分母を引くときに見るもの（設定・取得済みの値・確認の状態）。</param>
+        /// <param name="includeSubagents">サブエージェントを読むか（パネルで出さない設定なら読まない）。</param>
         public static Snapshot Build(bool includeExternal = true, bool includeArchived = false,
-                                     LimitSources modelLimits = null)
+                                     LimitSources modelLimits = null, bool includeSubagents = true)
         {
             var snap = new Snapshot { GeneratedAtUtc = DateTime.UtcNow };
             try
             {
-                Collect(snap, includeExternal, includeArchived, modelLimits);
+                Collect(snap, includeExternal, includeArchived, modelLimits, includeSubagents);
             }
             catch (Exception ex)
             {
@@ -157,7 +164,7 @@ namespace CtxTray.Collect
         }
 
         private static void Collect(Snapshot snap, bool includeExternal, bool includeArchived,
-                                    LimitSources modelLimits)
+                                    LimitSources modelLimits, bool includeSubagents)
         {
             var diag = snap.Diag;
 
@@ -245,6 +252,14 @@ namespace CtxTray.Collect
             snap.Sessions.Sort((a, b) =>
                 Nullable.Compare(b.LastActivityUtc, a.LastActivityUtc));
             if (snap.Sessions.Count > 0) snap.Sessions[0].IsActive = true;
+
+            // サブエージェントは、プロセスが動いているセッションだけ読む（止まっていれば動いているはずがない）。
+            if (includeSubagents)
+            {
+                foreach (var row in snap.Sessions)
+                    if (row.ProcessAlive)
+                        row.Subagents = Subagents.Read(row.TranscriptPath, snap.GeneratedAtUtc, modelLimits);
+            }
 
             snap.DesktopRunning = IsDesktopRunning();
             snap.Freshness = JudgeFreshness(snap, latestTranscriptWriteUtc);

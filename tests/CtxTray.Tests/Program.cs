@@ -53,6 +53,10 @@ namespace CtxTray.Tests
                 Run("Rate samples: in use for 20 minutes without a new sample", RateStalled);
                 Run("JSON writer: ASCII-only output", AsciiJson);
                 Run("Transcript: latest usage", TranscriptLatest);
+                Run("Subagents: running or finished, from the end of the transcript", SubagentRunning);
+                Run("Subagents: files, metadata and compactions", SubagentFiles);
+                Run("Subagents: the badge on the row", SubagentBadgeForms);
+                Run("Config: showSubagents is on unless turned off", ShowSubagentsKey);
                 Run("Effort: transcript first, then the tab record", TranscriptEffort);
                 Run("HUD widths: the name width, every column widens the panel", HudWidths);
                 Run("Model names: checked names only, no guessing", ModelDisplayNames);
@@ -1053,6 +1057,170 @@ namespace CtxTray.Tests
             Equal(6000, latest.PromptTokens, "input + cache creation + cache read (output excluded)");
             Equal("claude-opus-5", latest.Model, "model of the last real turn");
             Equal(new DateTime(2026, 9, 16, 12, 1, 0, DateTimeKind.Utc), latest.AtUtc, "timestamp");
+        }
+
+        private static string Turn(string stop, string model = "claude-test")
+        {
+            return "{\"type\":\"assistant\",\"message\":{\"model\":\"" + model + "\",\"stop_reason\":\"" + stop
+                 + "\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}}";
+        }
+
+        /// <summary>
+        /// サブエージェントが動いているかは、最後の user / assistant 行で決める（Collect/Subagents.cs）。
+        /// </summary>
+        private static void SubagentRunning()
+        {
+            var now = DateTime.UtcNow;
+            var toolResult = "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"x\"}]}}";
+            var attachment = "{\"type\":\"attachment\",\"attachment\":{\"type\":\"todo\"}}";
+            var meta = "{\"type\":\"user\",\"isMeta\":true,\"message\":{\"content\":\"context\"}}";
+
+            Check(Subagents.JudgeRunning(new[] { Turn("tool_use") }, now, now), "a tool call: running");
+            Check(Subagents.JudgeRunning(new[] { Turn("tool_use"), toolResult }, now, now), "a tool result: running");
+            Check(!Subagents.JudgeRunning(new[] { Turn("tool_use"), toolResult, Turn("end_turn") }, now, now),
+                  "the final answer: finished");
+            Check(!Subagents.JudgeRunning(new[] { Turn("end_turn"), attachment, meta }, now, now),
+                  "attachment and meta lines after the answer do not count");
+            Check(Subagents.JudgeRunning(new[] { Turn("end_turn"),
+                  "{\"type\":\"user\",\"message\":{\"content\":\"one more thing\"}}" }, now, now),
+                  "resumed with SendMessage: running again");
+            Check(!Subagents.JudgeRunning(new[] { Turn("tool_use"),
+                  "{\"type\":\"user\",\"message\":{\"content\":\"[Request interrupted by user]\"}}" }, now, now),
+                  "interrupted (text): finished");
+            Check(!Subagents.JudgeRunning(new[] { Turn("tool_use"),
+                  "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"[Request interrupted by user for tool use]\"}]}}" },
+                  now, now), "interrupted (block): finished");
+            Check(!Subagents.JudgeRunning(new[] { Turn("tool_use"), Turn("stop_sequence", "<synthetic>") }, now, now),
+                  "an error turn: finished");
+            Check(Subagents.JudgeRunning(new string[0], now, now), "nothing yet: just started");
+            Check(!Subagents.JudgeRunning(new[] { Turn("tool_use") }, now.AddMinutes(-16), now),
+                  "no write for 16 minutes: not running, whatever the end says");
+            Check(Subagents.JudgeRunning(new[] { Turn("tool_use") }, now.AddMinutes(-14), now),
+                  "a long tool call within 15 minutes: still running");
+        }
+
+        private static string SubUsage(string stop, int tokens)
+        {
+            return "{\"type\":\"assistant\",\"timestamp\":\"2026-10-19T10:00:00Z\",\"message\":{\"model\":\"claude-test\","
+                 + "\"stop_reason\":\"" + stop + "\",\"usage\":{\"input_tokens\":" + tokens
+                 + ",\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":10}}}";
+        }
+
+        private static void SubagentFiles()
+        {
+            var project = Path.Combine(_temp, "sub-project");
+            var transcript = Path.Combine(project, "sess-1.jsonl");
+            var dir = Path.Combine(project, "sess-1", "subagents");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(transcript, "", new UTF8Encoding(false));
+            Equal(dir, Subagents.DirFor(transcript), "the folder sits beside the session transcript");
+
+            var compact = "{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"compactMetadata\":{\"trigger\":\"auto\"}}";
+            // 本文に同じ言葉が出てくるだけの行は数えない。
+            var mention = "{\"type\":\"user\",\"message\":{\"content\":\"what is compact_boundary?\"}}";
+
+            var running = Path.Combine(dir, "agent-a1.jsonl");
+            File.WriteAllText(running, string.Join("\n", new[] { mention, SubUsage("tool_use", 50000), compact,
+                                                               SubUsage("tool_use", 150000) }) + "\n",
+                              new UTF8Encoding(false));
+            File.WriteAllText(Path.ChangeExtension(running, ".meta.json"),
+                              "{\"agentType\":\"Explore\",\"description\":\"Find the parser\"}", new UTF8Encoding(false));
+
+            var done = Path.Combine(dir, "agent-a2.jsonl");
+            File.WriteAllText(done, SubUsage("end_turn", 20000) + "\n", new UTF8Encoding(false));
+
+            var old = Path.Combine(dir, "agent-old.jsonl");
+            File.WriteAllText(old, SubUsage("tool_use", 20000) + "\n", new UTF8Encoding(false));
+            File.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddHours(-1));
+
+            var limits = new LimitSources { Config = new Dictionary<string, int> { { "claude-test", 200000 } } };
+            var list = Subagents.Read(transcript, DateTime.UtcNow, limits);
+            Equal(2, list.Count, "files not written for 15 minutes are not opened");
+
+            var a1 = list.Find(x => x.AgentId == "a1");
+            var a2 = list.Find(x => x.AgentId == "a2");
+            Check(a1 != null && a2 != null, "both recent files are read");
+            if (a1 == null || a2 == null) return;
+
+            Check(a1.Running, "a1 is running");
+            Check(!a2.Running, "a2 has answered");
+            Equal("Explore", a1.AgentType, "type from the .meta.json");
+            Equal("Find the parser", a1.Description, "description from the .meta.json");
+            Check(a2.AgentType == null, "no .meta.json, no type");
+            Equal(150000, a1.Tokens.Value, "tokens from the last turn");
+            Equal(200000, a1.Limit.Value, "context window looked up like a session's");
+            Equal(75.0, a1.Pct.Value, "percentage of the window");
+            Equal(1, a1.Compactions, "one compact_boundary line");
+
+            // 追記分だけ読む。書きかけの行（改行の無い末尾）は次回に回す。
+            File.AppendAllText(running, compact + "\n" + compact, new UTF8Encoding(false));
+            Equal(2, Subagents.CountCompactions(running, DateTime.UtcNow), "the appended line is counted");
+            File.AppendAllText(running, "\n", new UTF8Encoding(false));
+            Equal(3, Subagents.CountCompactions(running, DateTime.UtcNow), "the finished line is counted next time");
+
+            Equal(0, Subagents.Read(Path.Combine(project, "no-such.jsonl"), DateTime.UtcNow, limits).Count,
+                  "no subagents folder, no subagents");
+        }
+
+        private static SubagentInfo Sub(double? pct, bool running = true, int compactions = 0, int tokens = 1000)
+        {
+            return new SubagentInfo { Pct = pct, Running = running, Compactions = compactions, Tokens = tokens };
+        }
+
+        private static void SubagentBadgeForms()
+        {
+            var cfg = new AppConfig { ContextWarn = 0.75, ContextDanger = 0.90 };
+
+            var none = new SessionRow { ProcessAlive = true };
+            none.Subagents.Add(Sub(40, false));
+            Check(SubagentBadge.Summarize(none, cfg) == null, "finished subagents give no badge");
+
+            var stopped = new SessionRow { ProcessAlive = false };
+            stopped.Subagents.Add(Sub(40));
+            Check(SubagentBadge.Summarize(stopped, cfg) == null, "a session that is not running gives no badge");
+
+            var normal = new SessionRow { ProcessAlive = true };
+            normal.Subagents.Add(Sub(41));
+            normal.Subagents.Add(Sub(18));
+            normal.Subagents.Add(Sub(60, false));
+            var sum = SubagentBadge.Summarize(normal, cfg);
+            Equal(2, sum.Running, "only running ones are counted");
+            Equal(Level.Normal, sum.Level, "41% is normal");
+            Equal("Sub 2|Sub|Sub", string.Join("|", SubagentBadge.Forms(sum, "Sub").ToArray()),
+                  "normal: the count, without a percentage");
+
+            var warn = new SessionRow { ProcessAlive = true };
+            warn.Subagents.Add(Sub(22, true, 1, 2000));
+            warn.Subagents.Add(Sub(null, true, 0, 9000));
+            warn.Subagents.Add(Sub(84.2));
+            sum = SubagentBadge.Summarize(warn, cfg);
+            Equal(Level.Warn, sum.Level, "the largest one sets the level");
+            Check(sum.Compacted, "a compaction in any of them is shown");
+            Equal("Sub 3 · 84% ↻|Sub 84% ↻|Sub 84%", string.Join("|", SubagentBadge.Forms(sum, "Sub").ToArray()),
+                  "warn: the percentage, then shorter forms");
+            Equal(84.2, sum.Items[0].Pct.Value, "the details list the largest first");
+            Check(!sum.Items[2].Pct.HasValue, "and unknown windows last");
+
+            var danger = new SessionRow { ProcessAlive = true };
+            danger.Subagents.Add(Sub(93));
+            Equal(Level.Danger, SubagentBadge.Summarize(danger, cfg).Level, "93% is danger");
+        }
+
+        private static void ShowSubagentsKey()
+        {
+            var path = UseConfigDir("config-subagents");
+            string problem;
+            bool failed;
+
+            File.WriteAllText(path, "{ \"display\": { \"theme\": \"dark\" } }", new UTF8Encoding(false));
+            Check(AppConfig.Load(out problem, out failed).HudShowSubagents, "on by default");
+
+            File.WriteAllText(path, "{ \"display\": { \"showSubagents\": false } }", new UTF8Encoding(false));
+            var off = AppConfig.Load(out problem, out failed);
+            Check(!off.HudShowSubagents, "showSubagents is read");
+            Check(off.Save(), "save succeeds");
+            Check(!AppConfig.Load(out problem, out failed).HudShowSubagents, "and survives a save");
+            Check(!off.Clone().HudShowSubagents, "a copy keeps it");
         }
 
         /// <summary>

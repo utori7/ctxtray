@@ -129,6 +129,7 @@ namespace CtxTray.Ui
         // --- HUD ---
         private CheckBox _hudRate, _hudSessions, _hideIdle, _hideStopped, _external;
         private CheckBox _highlightWaiting;
+        private CheckBox _showSubagents;
 
         /// <summary>強調の文字が入る名前の幅の下限（パネルで測った値。HudForm.BadgeMinNameWidth）。</summary>
         private readonly Func<int> _badgeMinNameWidth;
@@ -616,6 +617,10 @@ namespace CtxTray.Ui
             var badgeMin = BadgeMinNameWidth();
             if (badgeMin > HudLayout.MinNameWidth)
                 Hint(null).Text = Strings.Format("set.highlightWaitingHint", badgeMin);
+
+            _showSubagents = Check("set.showSubagents");
+            Full(_showSubagents);
+            Hint("set.showSubagentsHint");
 
             Section("set.secHudSessions");
             _hideIdle = new CheckBox { AutoSize = true, Margin = InlineCheckMargin };
@@ -1719,6 +1724,7 @@ namespace CtxTray.Ui
             _rowLayout.SelectedIndex = IndexOf(c.HudRowLayout, AppConfig.RowLayouts);
             UpdateRowLayoutEnabled();
             _highlightWaiting.Checked = c.HudHighlightWaiting;
+            _showSubagents.Checked = c.HudShowSubagents;
             _showResets.SelectedIndex = IndexOf(ResetDisplay.Normalize(c.ShowResets), ResetDisplay.Modes);
 
             _textSize.SelectedIndex = TextSizeIndex(c.HudTextSize);
@@ -1807,6 +1813,7 @@ namespace CtxTray.Ui
             c.HudShowBar = _showBar.Checked;
             c.HudShowTokens = _showTokens.Checked;
             c.HudHighlightWaiting = _highlightWaiting.Checked;
+            c.HudShowSubagents = _showSubagents.Checked;
             // オンのままなら設定ファイルの組み合わせ（片方だけ、など）を崩さない。
             // オフからオンにしたときだけ両方を出す。
             if (!_showModel.Checked) c.HudShowModel = c.HudShowEffort = false;

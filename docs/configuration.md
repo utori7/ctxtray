@@ -62,6 +62,7 @@ ctxtray rewrites the file when you press OK in the dialog or move the panel.
     "showEffort": false,         // effort on the row (e.g. high)
     "rowLayout": "oneLine",      // "oneLine" (token counts and model side by side, wider panel) | "twoLine" (on a second line, taller rows)
     "highlightWaiting": false,   // colour the rows that need you (approval, answer, or an unread reply that needs action), and say which
+    "showSubagents": true,       // while subagents run, say how many at the right end of the session name, and list them in the row details
     "showResets": "warn",        // "warn" | "always" | "never" (5-hour reset time; warn = only while the 5-hour limit is over its warn threshold)
     "opacity": 0.9,
     "clickThrough": false,

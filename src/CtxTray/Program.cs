@@ -536,7 +536,7 @@ namespace CtxTray
         /// 残りは「普段は見えないが、見え方を確かめたい」状態（2026-09-20）。
         /// </summary>
         private static readonly string[] HudPreviewStates =
-            { "danger", "reference", "stopped", "activity", "highlight", "welcome" };
+            { "danger", "reference", "stopped", "activity", "highlight", "subagents", "welcome" };
 
         private static int WriteHudPreview(string outDir)
         {
@@ -638,6 +638,7 @@ namespace CtxTray
         /// reference … Claude Desktop が起動していない。レート枠が淡く、見出しに「参考値」
         /// stopped … 止まっているセッションが混ざっている
         /// activity … 状態の丸の全種類。highlight は同じ行で、待っている行の強調をオンにしたもの
+        /// subagents … サブエージェントの札（普段・注意で自動圧縮あり・危険）
         /// welcome … 初めての起動の案内（呼び出し側が ShowNotice する）
         /// </param>
         private static Snapshot SampleSnapshot(bool japanese, string state = "normal")
@@ -698,7 +699,35 @@ namespace CtxTray
                 action.Activity = Core.SessionActivity.UnreadNeedsAction;
                 snap.Sessions.Add(action);
             }
+
+            // サブエージェントの札: 普段（灰色）・注意で自動圧縮あり・危険。
+            if (state == "subagents")
+            {
+                foreach (var row in snap.Sessions) row.Activity = Core.SessionActivity.Busy;
+                snap.Sessions[0].Subagents.Add(SampleSubagent("Explore", null, 184000, 0));
+                snap.Sessions[0].Subagents.Add(SampleSubagent("general-purpose", null, 96000, 0));
+                snap.Sessions[1].Subagents.Add(SampleSubagent("fork", japanese ? "テストの追加" : "Add tests", 842000, 0));
+                snap.Sessions[1].Subagents.Add(SampleSubagent("Explore", null, 222000, 1));
+                snap.Sessions[2].Subagents.Add(SampleSubagent("Plan", null, 931000, 0));
+            }
             return snap;
+        }
+
+        private static SubagentInfo SampleSubagent(string type, string description, int tokens, int compactions)
+        {
+            const int limit = 1000000;
+            return new SubagentInfo
+            {
+                AgentType = type,
+                Description = description,
+                Model = "claude-opus-5",
+                Tokens = tokens,
+                Limit = limit,
+                Pct = Math.Round(100.0 * tokens / limit, 1),
+                Compactions = compactions,
+                LastWriteUtc = DateTime.UtcNow,
+                Running = true,
+            };
         }
 
         private static SessionRow SampleRow(string title, int tokens, bool active, bool external,
@@ -818,12 +847,36 @@ namespace CtxTray
                     .Add("entrypoint", s.Entrypoint)
                     // 状態の丸の元（Core/SessionActivity.cs）。unknown は status を書かない版かプロセスが無い。
                     .Add("activity", ActivityName(s.Activity))
+                    // 最近書かれたサブエージェント（Collect/Subagents.cs）。running のものが札と行の詳細に出る。
+                    .Add("subagents", SubagentsJson(s.Subagents))
                     .Add("transcript", s.TranscriptPath));
             }
             root.Add("sessions", rows);
             root.Add("diag", snap.Diag.Summary);
 
             return JObj.Write(root, asciiOnly);
+        }
+
+        private static List<object> SubagentsJson(List<SubagentInfo> subagents)
+        {
+            var list = new List<object>();
+            if (subagents == null) return list;
+            foreach (var a in subagents)
+            {
+                list.Add(new JObj()
+                    .Add("agent_id", a.AgentId)
+                    .Add("agent_type", a.AgentType)
+                    .Add("description", a.Description)
+                    .Add("model", a.Model)
+                    .Add("model_name", a.ModelName)
+                    .Add("context_tokens", a.Tokens)
+                    .Add("context_limit", a.Limit)
+                    .Add("context_pct", a.Pct)
+                    .Add("compactions", a.Compactions)
+                    .Add("running", a.Running)
+                    .Add("last_write", Local(a.LastWriteUtc)));
+            }
+            return list;
         }
 
         private static string ActivityName(Core.SessionActivity a)

@@ -121,6 +121,9 @@ namespace CtxTray.Config
             { "hud.badgeInput",      new[] { "回答待ち", "Answer" } },
             { "hud.badgeNeedsAction", new[] { "対応待ち", "Action" } },
             { "hud.badgeWaiting",    new[] { "待機中",   "Waiting" } },
+            // サブエージェントの札（名前の列の右端、2 段目と同じ小さめの字。Core/SubagentBadge.cs）。
+            // 後ろに件数、注意・危険では最大の %、自動圧縮があれば ↻ が付く（「サブ 2 · 84% ↻」）。
+            { "hud.subBadge",        new[] { "サブ",     "Sub" } },
 
             // HUD の行にマウスを乗せたときに出す詳細（行は簡潔なまま、確かな値だけをここに出す）。
             { "hud.tipTerminal",  new[] { "ターミナルで実行中",        "Running in a terminal" } },
@@ -128,6 +131,15 @@ namespace CtxTray.Config
             { "hud.tipTokens",    new[] { "{0} / {1} トークン（{2}%）", "{0} / {1} tokens ({2}%)" } },
             { "hud.tipTokensOnly",new[] { "{0} トークン",              "{0} tokens" } },
             { "hud.tipToCompact", new[] { "自動圧縮まであと {0} トークン",  "{0} tokens until auto-compaction" } },
+            // 実行中のサブエージェント。{0} は種類と説明、{1}% は札と同じ基準、{2}/{3} はトークン数と上限。
+            { "hud.tipSubHead",    new[] { "サブエージェント {0} 件が実行中", "{0} subagents running" } },
+            { "hud.tipSubHeadOne", new[] { "サブエージェント 1 件が実行中",   "1 subagent running" } },
+            { "hud.tipSubLine",    new[] { "{0}  {1}%（{2}/{3}）",           "{0}  {1}% ({2}/{3})" } },
+            { "hud.tipSubTokens",  new[] { "{0}  {1} トークン",               "{0}  {1} tokens" } },
+            { "hud.tipSubNamed",   new[] { "{0}「{1}」",                     "{0} “{1}”" } },
+            { "hud.tipSubUnnamed", new[] { "サブエージェント",                "Subagent" } },
+            { "hud.tipSubCompactedOnce", new[] { " · 自動圧縮 1 回",          " · auto-compacted once" } },
+            { "hud.tipSubCompacted",     new[] { " · 自動圧縮 {0} 回",        " · auto-compacted {0} times" } },
             { "hud.tipLastReply", new[] { "最終応答: {0}",           "Last reply: {0}" } },
             { "hud.tipStopped",   new[] { "Claude Code のプロセスは実行されていません",
                                           "The Claude Code process is not running" } },
@@ -285,6 +297,10 @@ namespace CtxTray.Config
             // 「表示位置: セッション名の右／下」だった。2 段目のどこに何が出るかは見れば分かるので選択肢に書かない。
             { "set.rowLayout",     new[] { "並べ方",                 "Layout" } },
             { "set.highlightWaiting", new[] { "対応が必要な行を強調", "Highlight sessions waiting for you" } },
+            // 動いている間だけ名前の列の右端に出る。幅も高さも変わらないので既定オン（2026-10-19、利用者の決定）。
+            { "set.showSubagents",     new[] { "実行中のサブエージェント", "Running subagents" } },
+            { "set.showSubagentsHint", new[] { "サブエージェントが動いている間、セッション名の右端に件数を出します。",
+                                               "While subagents run, shows how many at the right end of the session name." } },
             // 1 行目は何が起きるか（項目名だけでは分からない、と利用者の指摘）。2 行目は、オンにするとセッション名の幅の下限が
             // 上がること（SettingsForm.UpdateNameWidthMinimum）。幅の欄は当時「詳細設定」に畳まれていて気付きにくかったので、
             // チェックボックスの側に書く（2026-10-03、利用者の依頼）。{0} はパネルで測った下限。

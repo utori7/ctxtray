@@ -464,7 +464,7 @@ namespace CtxTray.Collect
             return string.Join(",", parts.ToArray());
         }
 
-        private static bool IsInterrupt(string text)
+        internal static bool IsInterrupt(string text)
         {
             return text != null && text.StartsWith("[Request interrupted by user", StringComparison.Ordinal);
         }

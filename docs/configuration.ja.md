@@ -60,6 +60,7 @@
     "showEffort": false,         // 行にエフォートを表示（例: high）
     "rowLayout": "oneLine",      // "oneLine"（トークン数とモデルを横に並べる。パネルの幅が広がる）| "twoLine"（2 段目に表示。行が高くなる）
     "highlightWaiting": false,   // 対応が必要な行（承認待ち・回答待ち・対応待ち）に色を付け、待っている内容を表示
+    "showSubagents": true,       // サブエージェントが動いている間、セッション名の右端に件数を出し、行の詳細に一覧を出す
     "showResets": "warn",        // "warn" | "always" | "never"（5時間枠のリセット時刻。warn は 5時間枠が注意の値を超えたときだけ）
     "opacity": 0.9,
     "clickThrough": false,

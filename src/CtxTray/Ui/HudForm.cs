@@ -1154,6 +1154,8 @@ namespace CtxTray.Ui
             // 展開中は、絞り込みで落とした行を後ろに続ける（設定は変えない）。
             if (_showHidden) rows.AddRange(HiddenRows);
 
+            // サブエージェントの札の字。2 段目と同じ大きさ（実寸の見本で利用者が選んだ、2026-10-19）。
+            using (var small = new Font(_fontFace, 10.5f * Factor, FontStyle.Regular, GraphicsUnit.Pixel))
             foreach (var s in rows)
             {
                 var name = string.IsNullOrEmpty(s.Title) ? Strings.Get("hud.untitled") : s.Title;
@@ -1191,6 +1193,9 @@ namespace CtxTray.Ui
                 // 待っている行の強調（設定、既定オフ）。背景を淡く塗り、名前の列の右端に何を待っているかを出す。
                 // コントラストテーマでは淡い色を重ねず、文字だけにする（Theme.IsHighContrast）。
                 string note = null;
+                // 強調の文字はダークでは丸と同じ色、ライトでは読める濃さの注意の色（#FAB219 は白地で薄すぎる）。
+                var noteColor = _theme.IsDark ? _theme.StateWaiting : _theme.Warn;
+                Font noteFont = null;
                 if (_config.HudHighlightWaiting && SessionActivities.IsWaiting(s.Activity))
                 {
                     if (!_theme.IsHighContrast)
@@ -1198,13 +1203,24 @@ namespace CtxTray.Ui
                             g.FillRectangle(fill, 0, y, Width, SessionRowHeight);
                     note = BadgeText(s.Activity);
                 }
+                else if (_config.HudShowSubagents)
+                {
+                    // サブエージェントの札（Core/SubagentBadge.cs）。待っている行の強調が出ているときはそちらを優先する。
+                    // 手を打つべきなのは待ちの方で、バックグラウンドのサブエージェントの承認待ちも親の行に出るため。
+                    var subs = SubagentBadge.Summarize(s, _config);
+                    if (subs != null)
+                    {
+                        note = FitSubagentBadge(g, small, subs);
+                        noteColor = subs.Level == Level.Normal ? _theme.TextSecondary : _theme.For(subs.Level);
+                        noteFont = small;
+                    }
+                }
 
                 DrawActivityDot(g, y, s);
 
-                // 強調の文字はダークでは丸と同じ色、ライトでは読める濃さの注意の色（#FAB219 は白地で薄すぎる）。
                 DrawRow(g, body, bold, y, name, note, s.IsActive,
                         fraction, "context", Levels.ForContext(s, _config), !s.ProcessAlive,
-                        pct, tokens, modelText, _theme.IsDark ? _theme.StateWaiting : _theme.Warn);
+                        pct, tokens, modelText, noteColor, noteFont);
 
                 if (TwoLine) DrawSubLine(g, y, modelText, tokens);
 
@@ -1248,6 +1264,23 @@ namespace CtxTray.Ui
                     g.DrawEllipse(pen, x + 0.5f, top + 0.5f, d - 1, d - 1);
             }
             g.SmoothingMode = old;
+        }
+
+        /// <summary>
+        /// サブエージェントの札の文字。名前の欄の半分（DrawRow で札が使える幅）に収まる、いちばん長い形を選ぶ。
+        /// どれも収まらなければ最後の形を渡し、DrawRow が「…」で切る。
+        /// </summary>
+        private string FitSubagentBadge(Graphics g, Font font, SubagentSummary subs)
+        {
+            var forms = SubagentBadge.Forms(subs, Strings.Get("hud.subBadge"));
+            var room = NameW / 2;
+            foreach (var f in forms)
+            {
+                var w = TextRenderer.MeasureText(g, f, font, new Size(int.MaxValue, RowHeight),
+                                                 TextFormatFlags.NoPrefix).Width;
+                if (w <= room) return f;
+            }
+            return forms[forms.Count - 1];
         }
 
         /// <summary>強調の文字（名前の列の右端）。行の詳細の文言より短い（英語は 1 語）。</summary>
@@ -1318,7 +1351,8 @@ namespace CtxTray.Ui
         private void DrawRow(Graphics g, Font body, Font bold, int y,
                              string name, string note, bool emphasise,
                              double fraction, string value, Level level, bool dimmed,
-                             string pct, string tokens, string model = null, Color? noteColor = null)
+                             string pct, string tokens, string model = null, Color? noteColor = null,
+                             Font noteFont = null)
         {
             // 淡く出す行（止まっているセッション、参考値のレート枠）は色で区別しない。
             var valueColor = dimmed ? _theme.TextSecondary : _theme.ColorFor(value, level);
@@ -1328,10 +1362,11 @@ namespace CtxTray.Ui
 
             if (!string.IsNullOrEmpty(note))
             {
+                var font = noteFont ?? body;
                 var noteW = Math.Min(nameW / 2,
-                    TextRenderer.MeasureText(g, note, body, new Size(int.MaxValue, RowHeight),
+                    TextRenderer.MeasureText(g, note, font, new Size(int.MaxValue, RowHeight),
                                              TextFormatFlags.NoPrefix).Width);
-                DrawRight(g, body, note, noteColor ?? _theme.TextSecondary, PadX + nameW - noteW, y, noteW);
+                DrawRight(g, font, note, noteColor ?? _theme.TextSecondary, PadX + nameW - noteW, y, noteW);
                 nameW -= noteW + Gap;
             }
 
@@ -1503,6 +1538,8 @@ namespace CtxTray.Ui
                 }
             }
 
+            if (_config.HudShowSubagents) AddSubagentLines(lines, s);
+
             // 応答が記録された時刻（transcript の usage）と、タブ側の最終操作の新しい方を出す。
             // タブ側の記録は遅れることがあり、それだけを見ると「1 時間前」のように古く出る（実機で確認）。
             var last = Later(s.LastMeasuredUtc, s.LastActivityUtc);
@@ -1513,6 +1550,55 @@ namespace CtxTray.Ui
             if (!s.ProcessAlive) lines.Add(new TipLine(Strings.Get("hud.tipStopped"), true, false));
 
             return lines;
+        }
+
+        /// <summary>
+        /// 動いているサブエージェントを、% の大きい順に 1 行ずつ。行の札は件数と最大の % だけなので、中身はここで見る。
+        /// モデルはセッションと違うときだけ添える（同じなら繰り返さない）。
+        /// </summary>
+        private void AddSubagentLines(System.Collections.Generic.List<TipLine> lines, SessionRow s)
+        {
+            var subs = SubagentBadge.Summarize(s, _config);
+            if (subs == null) return;
+
+            lines.Add(new TipLine(Strings.Format(subs.Running == 1 ? "hud.tipSubHeadOne" : "hud.tipSubHead",
+                                                 subs.Running), false, true));
+            foreach (var a in subs.Items)
+            {
+                var name = SubagentName(a);
+                string text;
+                if (a.Pct.HasValue && a.Tokens.HasValue && a.Limit.HasValue)
+                    text = Strings.Format("hud.tipSubLine", name, PercentText.Format(a.Pct.Value),
+                                          Compact(a.Tokens.Value), Compact(a.Limit.Value));
+                else if (a.Tokens.HasValue)
+                    text = Strings.Format("hud.tipSubTokens", name, Thousands(a.Tokens.Value));
+                else
+                    text = name;
+
+                if (!string.IsNullOrEmpty(a.Model) && !string.Equals(a.Model, s.Model, StringComparison.OrdinalIgnoreCase))
+                    text += " · " + (a.ModelName ?? a.Model);
+                if (a.Compactions > 0)
+                    text += a.Compactions == 1
+                        ? Strings.Get("hud.tipSubCompactedOnce")
+                        : Strings.Format("hud.tipSubCompacted", a.Compactions);
+
+                lines.Add(new TipLine(text, false, false));
+            }
+        }
+
+        /// <summary>種類（Explore、fork など）と説明。説明は長いことがあるので詰める。</summary>
+        private static string SubagentName(SubagentInfo a)
+        {
+            var type = a.AgentType;
+            var desc = a.Description;
+            if (!string.IsNullOrEmpty(desc) && desc.Length > 24) desc = desc.Substring(0, 23) + "…";
+
+            if (!string.IsNullOrEmpty(type) && !string.IsNullOrEmpty(desc)
+                && !string.Equals(type, desc, StringComparison.OrdinalIgnoreCase))
+                return Strings.Format("hud.tipSubNamed", type, desc);
+            if (!string.IsNullOrEmpty(desc)) return desc;
+            if (!string.IsNullOrEmpty(type)) return type;
+            return Strings.Get("hud.tipSubUnnamed");
         }
 
         /// <summary>

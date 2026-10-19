@@ -85,7 +85,7 @@ this repository to get notified by GitHub.
 |---|---|
 | `Ctrl+Alt+C` | show / hide the panel (the shortcut can be changed in Settings) |
 | drag | move the panel |
-| hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, and when the value was recorded |
+| hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, running subagents, and when the value was recorded |
 | click the tray icon | show / hide the panel |
 | right-click the tray icon or the panel | menu (**Settings…**, **Pass clicks through**, **Start at sign-in**, **Exit**, and more) |
 
@@ -93,6 +93,9 @@ this repository to get notified by GitHub.
   sidebar: amber is waiting for your approval or answer, or an unread reply that needs you; blue
   is an unread reply; grey is working; and a ring means it has finished or is not running. The
   row details say which kind of amber it is. Settings can also highlight the rows that need you.
+- **Sub 2** at the right end of a session name means two of its subagents are running. It adds a
+  percentage in the warn or danger colour when one of them is running out of context, and **↻**
+  when one has been auto-compacted.
 - A session name in **grey** means its Claude Code process is not running. Grey sessions are
   left out of the tray icon and the notifications.
 - When the limits heading says **for reference**, Claude Desktop is not running or nothing has

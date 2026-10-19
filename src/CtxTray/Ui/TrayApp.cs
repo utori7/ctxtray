@@ -327,7 +327,7 @@ namespace CtxTray.Ui
                 Docs = _modelDocs.Limits(),
                 DocsNames = _modelDocs.Names(),
                 DocsState = m => _modelDocs.StateFor(m, fetch),
-            });
+            }, _config.HudShowSubagents);
 
             // 表示の対象を絞る。ここで一度だけ絞り、HUD・トレイ・ツールチップ・通知が
             // すべて同じ結果を見る（HUD で隠した行にトレイや通知が反応しないように）。

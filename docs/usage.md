@@ -20,7 +20,7 @@
 | `Ctrl+Alt+C` | show / hide the panel (configurable, or none) |
 | a shortcut you choose | turn click-through on or off (none by default; set one in Settings) |
 | drag | move the panel |
-| hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, and when the value was recorded |
+| hover over a row | details: the full name, the model and effort, token counts, how much is left before auto-compaction, running subagents, and when the value was recorded |
 | click the tray icon | show / hide the panel |
 | right-click the tray icon or the panel | menu: **Show panel**, **Pass clicks through**, **Start at sign-in**, **Settings…**, **Refresh now**, **Open config file**, **About ctxtray…**, **Exit** |
 
@@ -51,6 +51,13 @@ takes a few seconds to clear after you open the tab.
 
 Turn on **Highlight sessions waiting for you** on the Settings **Panel content** tab to give amber rows a
 coloured background and the word "Approval", "Answer" or "Action" at the right end of the session name column.
+
+While a session has subagents running, the right end of its session name column says how many in small grey
+text, for example "Sub 2". When the fullest of them passes the context warn threshold, the label turns the warn
+or danger colour and adds its percentage ("Sub 2 · 84%"), and "↻" means one of them has been auto-compacted.
+Hover over the row to see each subagent's usage. The label goes when they finish, and the highlight words above
+take its place when both apply. Subagents have context windows of their own, so they never change the session's
+percentage, the tray icon or the notifications. Turn the label off with **Running subagents** on the same tab.
 
 A session name in grey means its Claude Code process is not running right now
 (for example, a tab that has been idle). Grey sessions are left out of the tray icon and

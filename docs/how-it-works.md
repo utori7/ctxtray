@@ -258,7 +258,8 @@ indicator reports is the prompt length actually sent on the most recent request.
 
 Lines whose model is `<synthetic>` (interrupted or errored turns, all-zero usage) are
 skipped — taking one would display 0%. Subagent turns are written to separate files
-(`<sessionId>/subagents/…`) and do not affect the main session's number.
+(`<sessionId>/subagents/…`) and do not affect the main session's number; see
+[Subagents](#subagents).
 
 The same line also gives the model (`message.model`) and the effort (a top-level `effort`
 field, for example `"high"`). Both are taken from the transcript first and from the tab
@@ -267,6 +268,28 @@ the next response, and terminal and VS Code sessions — which have no tab recor
 effort too. Checked on 2026-09-26: across ten Desktop tabs the tab record and the last
 response agreed (including one tab switched from `medium` to `high`), and terminal and
 VS Code transcripts carry `effort` on every real response; only `<synthetic>` lines lack it.
+
+### Subagents
+
+Each subagent writes its own transcript, `<sessionId>/subagents/agent-<agentId>.jsonl`, in a folder
+next to the session's transcript, and `agent-<agentId>.meta.json` beside it holds its `agentType` and
+`description`. ctxtray reads them only for sessions whose process is running, and opens only files
+written in the last 15 minutes.
+
+- **Usage** is read the same way as a session's (the last `assistant` line with `usage`), and the context
+  window is looked up from the subagent's own model, so the percentage means the same thing.
+- **Auto-compactions** are `{"type":"system","subtype":"compact_boundary"}` lines. They are counted
+  from where the previous count stopped, so a long transcript is read in full only once.
+- **Running** is not recorded anywhere, so it is worked out from the last `user` or `assistant` line.
+  An `assistant` line with `stop_reason` `end_turn` is the final answer, a `<synthetic>` one is an error,
+  and a `user` line starting `[Request interrupted by user` is an interruption. Anything else (a tool call,
+  a tool result, or a message sent to resume it) means it is still running. A file with no write for
+  15 minutes counts as finished whatever its last line says, because a subagent stopped from the agent
+  panel is left in the middle of a tool call. A single Bash call runs for at most 10 minutes.
+
+The label on the row uses the largest percentage among the running subagents and the session's context
+thresholds. `--json` lists every recently written subagent under its session, with `running`, so the
+judgement can be checked against what Claude Code shows.
 
 ### Model names
 

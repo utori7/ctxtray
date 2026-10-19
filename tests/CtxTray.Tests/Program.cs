@@ -1186,8 +1186,7 @@ namespace CtxTray.Tests
             var sum = SubagentBadge.Summarize(normal, cfg);
             Equal(2, sum.Running, "only running ones are counted");
             Equal(Level.Normal, sum.Level, "41% is normal");
-            Equal("Sub 2|Sub|Sub", string.Join("|", SubagentBadge.Forms(sum, "Sub").ToArray()),
-                  "normal: the count, without a percentage");
+            Equal("Sub 2", SubagentBadge.Text(sum, "Sub"), "normal: the count, without a percentage");
 
             var warn = new SessionRow { ProcessAlive = true };
             warn.Subagents.Add(Sub(22, true, 1, 2000));
@@ -1196,14 +1195,24 @@ namespace CtxTray.Tests
             sum = SubagentBadge.Summarize(warn, cfg);
             Equal(Level.Warn, sum.Level, "the largest one sets the level");
             Check(sum.Compacted, "a compaction in any of them is shown");
-            Equal("Sub 3 · 84% ↻|Sub 84% ↻|Sub 84%", string.Join("|", SubagentBadge.Forms(sum, "Sub").ToArray()),
-                  "warn: the percentage, then shorter forms");
+            Equal("Sub 3 · 84% ↻", SubagentBadge.Text(sum, "Sub"), "warn: the percentage and the compaction mark");
             Equal(84.2, sum.Items[0].Pct.Value, "the details list the largest first");
             Check(!sum.Items[2].Pct.HasValue, "and unknown windows last");
 
             var danger = new SessionRow { ProcessAlive = true };
             danger.Subagents.Add(Sub(93));
             Equal(Level.Danger, SubagentBadge.Summarize(danger, cfg).Level, "93% is danger");
+
+            // 名前の幅の下限は Widest で測る。既定の上限（20 件）までと 99% までの札は、どれも Widest より長くならない
+            // （字数で比べる。数字は同じ幅の書体が多く、桁数が同じなら幅も同じ）。
+            var longest = 0;
+            for (var n = 1; n <= 20; n++)
+            {
+                var row = new SessionRow { ProcessAlive = true };
+                for (var i = 0; i < n; i++) row.Subagents.Add(Sub(i == 0 ? 99.4 : 10, true, 1));
+                longest = Math.Max(longest, SubagentBadge.Text(SubagentBadge.Summarize(row, cfg), "Sub").Length);
+            }
+            Equal(SubagentBadge.Widest("Sub").Length, longest, "the widest label is the one the minimum is measured with");
         }
 
         private static void ShowSubagentsKey()

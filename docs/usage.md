@@ -57,7 +57,8 @@ text, for example "Sub 2". When the fullest of them passes the context warn thre
 or danger colour and adds its percentage ("Sub 2 · 84%"), and "↻" means one of them has been auto-compacted.
 Hover over the row to see each subagent's usage. The label goes when they finish, and the highlight words above
 take its place when both apply. Subagents have context windows of their own, so they never change the session's
-percentage, the tray icon or the notifications. Turn the label off with **Running subagents** on the same tab.
+percentage, the tray icon or the notifications. While the label is on, the session name column is kept wide
+enough for it (Settings shows the width); turn it off with **Running subagents** on the same tab.
 
 A session name in grey means its Claude Code process is not running right now
 (for example, a tab that has been idle). Grey sessions are left out of the tray icon and

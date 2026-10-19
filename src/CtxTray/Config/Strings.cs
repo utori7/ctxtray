@@ -299,8 +299,11 @@ namespace CtxTray.Config
             { "set.highlightWaiting", new[] { "対応が必要な行を強調", "Highlight sessions waiting for you" } },
             // 動いている間だけ名前の列の右端に出る。幅も高さも変わらないので既定オン（2026-10-19、利用者の決定）。
             { "set.showSubagents",     new[] { "実行中のサブエージェント", "Running subagents" } },
-            { "set.showSubagentsHint", new[] { "サブエージェントが動いている間、セッション名の右端に件数を出します。",
-                                               "While subagents run, shows how many at the right end of the session name." } },
+            // 2 行目は強調と同じく、オンにするとセッション名の幅の下限が上がること。{0} はパネルで測った下限。
+            { "set.showSubagentsHint", new[] { "サブエージェントが動いている間、セッション名の右端に件数を出します。\nセッション名の幅は {0} px 以上になります。",
+                                               "While subagents run, shows how many at the right end of the session name.\nSession name width is kept at {0} px or more." } },
+            { "set.showSubagentsHintShort", new[] { "サブエージェントが動いている間、セッション名の右端に件数を出します。",
+                                                    "While subagents run, shows how many at the right end of the session name." } },
             // 1 行目は何が起きるか（項目名だけでは分からない、と利用者の指摘）。2 行目は、オンにするとセッション名の幅の下限が
             // 上がること（SettingsForm.UpdateNameWidthMinimum）。幅の欄は当時「詳細設定」に畳まれていて気付きにくかったので、
             // チェックボックスの側に書く（2026-10-03、利用者の依頼）。{0} はパネルで測った下限。

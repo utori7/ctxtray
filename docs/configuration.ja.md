@@ -48,7 +48,7 @@
   "display": {
     "theme": "auto",             // "light" | "dark"
     "textSize": "normal",        // "xsmall" | "small" | "large" | "xlarge"
-    "nameWidth": 180,            // セッション名の列の幅（表示倍率 100%・文字サイズ「標準」での px。実際は倍率と文字サイズに合わせて広がる）。パネルの幅はこれとオンにした列の合計。highlightWaiting がオンのときは強調の文字が入る幅より狭くしない
+    "nameWidth": 180,            // セッション名の列の幅（表示倍率 100%・文字サイズ「標準」での px。実際は倍率と文字サイズに合わせて広がる）。パネルの幅はこれとオンにした列の合計。highlightWaiting・showSubagents がオンのときは、強調の文字・サブエージェントの札が入る幅より狭くしない
     "showRateLimits": true,
     "showSessions": true,
     "hideIdleSessions": true,

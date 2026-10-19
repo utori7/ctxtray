@@ -1102,7 +1102,8 @@ namespace CtxTray.Ui
                                          () => HudWanted, SetHudVisible,
                                          _updates.Status, CheckUpdatesNow,
                                          () => OpenRelease(_updates.Status().Latest),
-                                         () => _hud != null && !_hud.IsDisposed ? _hud.BadgeMinNameWidth : HudLayout.MinNameWidth);
+                                         () => _hud != null && !_hud.IsDisposed ? _hud.BadgeMinNameWidth : HudLayout.MinNameWidth,
+                                         () => _hud != null && !_hud.IsDisposed ? _hud.SubagentMinNameWidth : HudLayout.MinNameWidth);
             if (modelsTab) _settings.ShowModelsTab();
             _settings.ResetHudPositionRequested += (s, e) =>
             {

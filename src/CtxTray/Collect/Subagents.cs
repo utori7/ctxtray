@@ -29,7 +29,8 @@ namespace CtxTray.Collect
     /// （公式ドキュメント「Subagents」）:
     ///   ~/.claude/projects/(slug)/(sessionId)/subagents/agent-(agentId).jsonl
     /// 横に agent-(agentId).meta.json があり、agentType と description が入っている
-    /// （Claude Code 2.1.303 の本体で確認、2026-10-19）。
+    /// （Claude Code 2.1.299 の実物のファイルで確認、2026-10-19）。
+    /// サブエージェントが立てたサブエージェントも同じフォルダーに置かれる（meta.json に parentAgentId と spawnDepth が入る）。
     /// 自動圧縮は {"type":"system","subtype":"compact_boundary"} の行として残る。
     ///
     /// ★ 「いま動いているか」はどこにも書かれていない。transcript の末尾から推し量る（JudgeRunning）。
@@ -39,7 +40,8 @@ namespace CtxTray.Collect
     {
         /// <summary>
         /// これより長く書き込みが無いものは、末尾がどうであれ動いていないとみなす。
-        /// 利用者が止めたサブエージェントは末尾がツールの呼び出しのまま残るので、時間で切るしかない。
+        /// エージェントの欄の x で止めると、すぐに「[Request interrupted by user]」の行が書かれる（2.1.299 で確認、2026-10-19）。
+        /// これは最後の行が書かれずに終わった場合の備え。
         /// Bash の 1 回の実行は最長 10 分なので、それより少し長くする。
         /// </summary>
         public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(15);
@@ -103,7 +105,7 @@ namespace CtxTray.Collect
             string[] files;
             try
             {
-                // 入れ子のサブエージェント（サブエージェントが立てたもの）の置き場所は確かめていないので、下の階層も見る。
+                // 入れ子のサブエージェントも同じフォルダーに置かれる（2.1.299 で確認）。置き場所が変わっても拾えるよう、下の階層も見る。
                 files = Directory.GetFiles(dir, "agent-*.jsonl", SearchOption.AllDirectories);
             }
             catch
@@ -206,7 +208,11 @@ namespace CtxTray.Collect
         ///   assistant で stop_reason が end_turn … 最後の答えを返して終わった
         ///   assistant でモデルが &lt;synthetic&gt; … エラーか中断で終わった
         ///   user で「[Request interrupted by user」… 中断された
+        ///   SubagentHandback の呼び出しか、その結果 … 報告を返して終わった
         ///   それ以外（ツールの呼び出し・ツールの結果・新しい依頼）… 動いている
+        /// ★ サブエージェントは（裏で動かしても前面で動かしても）end_turn で終わらず、SubagentHandback（呼び出し元へ報告を返すツール）の
+        ///   呼び出しと結果で終わる（Claude Code 2.1.299 で実物を確かめた、2026-10-19）。
+        ///   これを「ツールの結果」として扱うと、終わってから 15 分間「動いている」のままになっていた。
         /// SendMessage で再開されると user 行が足されるので、また「動いている」に戻る。
         /// 末尾がどうであれ、StaleAfter より長く書き込みが無ければ動いていない。
         /// </summary>
@@ -219,6 +225,10 @@ namespace CtxTray.Collect
         {
             if (tailLines == null) return true;
 
+            // 最後の user 行がツールの結果なら、その呼び出しが SubagentHandback かを前の assistant 行で確かめる。
+            // 呼び出しは content のブロックごとに別の行になるので、id の合う行まで遡る。
+            HashSet<string> resultIds = null;
+
             for (var i = tailLines.Count - 1; i >= 0; i--)
             {
                 var o = Json.ParseObject(tailLines[i]);
@@ -228,20 +238,83 @@ namespace CtxTray.Collect
                 if (type == "assistant")
                 {
                     var message = Json.Obj(o, "message");
+                    if (resultIds != null)
+                    {
+                        string name;
+                        if (!FindToolUse(message, resultIds, out name)) continue;
+                        return !IsHandback(name);
+                    }
+
                     if (message == null) return true;
                     if (string.Equals(Json.Str(message, "model"), "<synthetic>", StringComparison.Ordinal)) return false;
+                    string called;
+                    if (FindToolUse(message, null, out called) && IsHandback(called)) return false;
                     return !string.Equals(Json.Str(message, "stop_reason"), "end_turn", StringComparison.Ordinal);
                 }
 
                 if (type == "user")
                 {
                     if (Json.Bool(o, "isMeta")) continue;
-                    return !IsInterrupt(Json.Obj(o, "message"));
+                    // 結果の呼び出しが見つからないまま前の依頼まで来たら、ふつうのツールの結果とみなす。
+                    if (resultIds != null) return true;
+                    var message = Json.Obj(o, "message");
+                    if (IsInterrupt(message)) return false;
+                    resultIds = ToolResultIds(message);
+                    if (resultIds == null) return true;
                 }
             }
 
-            // まだ何も応答していない（立ち上がったところ）。
+            // まだ何も応答していない（立ち上がったところ）か、結果の呼び出しが末尾の範囲に無い。
             return true;
+        }
+
+        private const string HandbackTool = "SubagentHandback";
+
+        private static bool IsHandback(string toolName)
+        {
+            return string.Equals(toolName, HandbackTool, StringComparison.Ordinal);
+        }
+
+        /// <summary>user 行がツールの結果だけでできていれば、その tool_use_id を返す。そうでなければ null。</summary>
+        private static HashSet<string> ToolResultIds(Dictionary<string, object> message)
+        {
+            object content;
+            if (message == null || !message.TryGetValue("content", out content)) return null;
+            var blocks = content as object[];
+            if (blocks == null || blocks.Length == 0) return null;
+
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in blocks)
+            {
+                var b = item as Dictionary<string, object>;
+                if (b == null || Json.Str(b, "type") != "tool_result") return null;
+                var id = Json.Str(b, "tool_use_id");
+                if (!string.IsNullOrEmpty(id)) ids.Add(id);
+            }
+            return ids.Count == 0 ? null : ids;
+        }
+
+        /// <summary>
+        /// assistant 行のツールの呼び出しを探す。ids を渡したときはその id の呼び出しだけ、null なら最後の呼び出し。
+        /// </summary>
+        private static bool FindToolUse(Dictionary<string, object> message, HashSet<string> ids, out string name)
+        {
+            name = null;
+            object content;
+            if (message == null || !message.TryGetValue("content", out content)) return false;
+            var blocks = content as object[];
+            if (blocks == null) return false;
+
+            var found = false;
+            foreach (var item in blocks)
+            {
+                var b = item as Dictionary<string, object>;
+                if (b == null || Json.Str(b, "type") != "tool_use") continue;
+                if (ids != null && !ids.Contains(Json.Str(b, "id") ?? "")) continue;
+                name = Json.Str(b, "name");
+                found = true;
+            }
+            return found;
         }
 
         private static bool IsInterrupt(Dictionary<string, object> message)

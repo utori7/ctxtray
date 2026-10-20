@@ -22,8 +22,12 @@ container, so a PowerShell session started from Claude Code can see `%APPDATA%\C
 and any prototype written there appears to work. A tray application runs outside the
 container and sees nothing.
 
-ctxtray resolves the real path first (wildcard on the package name, never hardcoded)
-and falls back to `%APPDATA%\Claude` in case Claude Desktop is ever shipped
+Claude Desktop 2.42304 keeps their data outside the package,
+in `%LOCALAPPDATA%\Claude-Data\claude_*\`, and leave only an empty `.user-data-left.*`
+marker in the package folder.
+
+ctxtray looks in `%LOCALAPPDATA%\Claude-Data\claude_*\` first, then the package's real
+path (wildcard on the package name, never hardcoded), and falls back to `%APPDATA%\Claude` in case Claude Desktop is ever shipped
 non-packaged. `ctxtray --json` reports what it resolved under `paths`, so a failure is
 diagnosable instead of silently producing empty data.
 

@@ -48,6 +48,9 @@ namespace CtxTray.Collect
         ///   実体パスを優先し、見つからないときだけ %APPDATA% に落とす。
         ///
         ///   パッケージ名は決め打ちせずワイルドカードで拾う。
+        ///
+        ///   新しい Desktop はパッケージの外（%LOCALAPPDATA%\Claude-Data\）へ移したので、
+        ///   そちらを最初の候補にする。
         /// </summary>
         public static string FindClaudeDataRoot(Diagnostics diag)
         {
@@ -56,6 +59,19 @@ namespace CtxTray.Collect
             var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
             if (!string.IsNullOrEmpty(localAppData))
             {
+                // 2026-10 の Desktop（2.42304 で確認）はデータをパッケージの外
+                // %LOCALAPPDATA%\Claude-Data\claude_xxxxx\ へ移し、元の場所には
+                // .user-data-left.* という空の印だけを残す。こちらを先に見る。
+                var moved = Path.Combine(localAppData, "Claude-Data");
+                if (Directory.Exists(moved))
+                {
+                    string[] dirs;
+                    try { dirs = Directory.GetDirectories(moved, "Claude_*"); }
+                    catch { dirs = new string[0]; }
+
+                    candidates.AddRange(dirs);
+                }
+
                 var packages = Path.Combine(localAppData, "Packages");
                 if (Directory.Exists(packages))
                 {
